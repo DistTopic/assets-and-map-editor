@@ -1,0 +1,23 @@
+# Build results
+bin/
+obj/
+out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+
+# NuGet
+packages/
+*.nupkg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rider
+.idea/
+*.sln.iml
