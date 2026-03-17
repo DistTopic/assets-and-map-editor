@@ -7,8 +7,8 @@
         x:Class="POriginsItemEditor.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="POrigins Item Editor"
-        Width="1320" Height="780"
-        MinWidth="1000" MinHeight="600"
+        Width="1480" Height="820"
+        MinWidth="1100" MinHeight="600"
         Background="#1e1e2e">
 
   <Window.Styles>
@@ -125,6 +125,63 @@
       <Setter Property="CornerRadius" Value="4"/>
       <Setter Property="Padding" Value="6,2"/>
     </Style>
+
+    <!-- RadioButton base (native circle indicator for flags) -->
+    <Style Selector="RadioButton">
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,2"/>
+    </Style>
+
+    <!-- RadioButton pill toggle (view mode switcher) -->
+    <Style Selector="RadioButton.pill">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="RadioButton.pill:checked">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#89b4fa"/>
+    </Style>
+    <Style Selector="RadioButton.pill:pointerover">
+      <Setter Property="Background" Value="#262637"/>
+    </Style>
+    <Style Selector="RadioButton.pill:checked:pointerover">
+      <Setter Property="Background" Value="#3a3a4e"/>
+    </Style>
+
+    <!-- TabControl / TabItem dark theme -->
+    <Style Selector="TabControl">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#a6adc8"/>
+      <Setter Property="Padding" Value="12,6"/>
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Foreground" Value="#89b4fa"/>
+    </Style>
+
+    <!-- NumericUpDown dark theme -->
+    <Style Selector="NumericUpDown">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+      <Setter Property="BorderBrush" Value="#45475a"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="FontSize" Value="11"/>
+    </Style>
   </Window.Styles>
 
   <DockPanel>
@@ -138,9 +195,9 @@
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-          <Button Classes="client" Command="{Binding SelectClientFolderCommand}" Content="📁 Selecionar Client"/>
-          <Button Classes="toolbar" Command="{Binding OpenOtbCommand}" Content="📂 Abrir OTB"/>
-          <Button Classes="accent" Command="{Binding SaveOtbCommand}" Content="💾 Salvar"/>
+          <Button Classes="client" Command="{Binding SelectClientFolderCommand}" Content="Selecionar Client"/>
+          <Button Classes="toolbar" Command="{Binding OpenOtbCommand}" Content="Abrir OTB"/>
+          <Button Classes="accent" Command="{Binding SaveOtbCommand}" Content="Salvar"/>
           <Button Classes="toolbar" Command="{Binding SaveOtbAsCommand}" Content="Salvar Como..."/>
         </StackPanel>
 
@@ -175,253 +232,979 @@
     </Border>
 
     <!-- ═══ Main Content ═══ -->
-    <Grid ColumnDefinitions="*,420" Margin="12,10">
-      <!-- ─── Left: Search + List ─── -->
-      <DockPanel Grid.Column="0" Margin="0,0,10,0">
-        <!-- Search bar -->
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="10,0,0,0">
-            <CheckBox Content="Só Deprecated" IsChecked="{Binding ShowDeprecatedOnly}"
-                      VerticalAlignment="Center"/>
-            <CheckBox Content="Só mismatches" IsChecked="{Binding ShowMismatchesOnly}"
-                      VerticalAlignment="Center"/>
-            <Button Classes="danger" Command="{Binding FixAllMismatchesCommand}"
-                    Content="⚡ Corrigir Todos" VerticalAlignment="Center"/>
-          </StackPanel>
-          <TextBox Classes="search" Watermark="Buscar por Server ID, Client ID, grupo ou nome..."
-                   Text="{Binding SearchText}"/>
-        </DockPanel>
+    <Grid Margin="12,10">
 
-        <!-- Item list -->
-        <ListBox ItemsSource="{Binding Items}"
-                 SelectedItem="{Binding SelectedItem}"
-                 SelectionMode="Single"
-                 Background="#181825"
-                 BorderBrush="#313244"
-                 BorderThickness="1"
-                 Padding="0">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:ItemViewModel">
-              <Grid ColumnDefinitions="38,Auto,*,Auto" Height="38" Margin="4,1">
-                <!-- Sprite -->
-                <Border Background="#11111b" CornerRadius="4" Width="32" Height="32"
-                        VerticalAlignment="Center" HorizontalAlignment="Center"
-                        ClipToBounds="True">
-                  <Image Source="{Binding Sprite}" Width="32" Height="32"
-                         RenderOptions.BitmapInterpolationMode="None"
-                         Stretch="None"/>
-                </Border>
+      <DockPanel>
 
-                <!-- Server ID + Client ID -->
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0" Width="65">
-                  <TextBlock Text="{Binding ServerId}" Foreground="#89b4fa" FontWeight="Bold" FontSize="13"/>
-                  <TextBlock Text="{Binding ClientId, StringFormat='cid: {0}'}" Foreground="#585b70" FontSize="10"/>
-                </StackPanel>
+          <!-- ═══════════════════════════════════════════════════════════ -->
+          <!-- ═══ UNIFIED EDITOR ═══ -->
+          <!-- ═══════════════════════════════════════════════════════════ -->
+          <Grid RowDefinitions="*,Auto">
 
-                <!-- Name / Group -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0" Spacing="6">
-                  <TextBlock Text="{Binding DisplayName}"
-                             Foreground="#cdd6f4" FontSize="12"
-                             TextTrimming="CharacterEllipsis"/>
-                  <Border IsVisible="{Binding IsDeprecated}" Background="#585b70" CornerRadius="3" Padding="4,1">
-                    <TextBlock Text="DEPRECATED" FontSize="8" Foreground="#a6adc8" FontWeight="Bold"/>
-                  </Border>
-                </StackPanel>
+            <!-- ── Top: 3-column layout ── -->
+            <Grid Grid.Row="0" ColumnDefinitions="220,*,260">
 
-                <!-- Mismatch indicator -->
-                <Border Grid.Column="3" IsVisible="{Binding HasMismatch}"
-                        Background="#f38ba8" CornerRadius="3" Padding="6,2"
-                        VerticalAlignment="Center" Margin="0,0,6,0">
-                  <TextBlock Text="MISMATCH" FontSize="9" FontWeight="Bold" Foreground="#1e1e2e"/>
-                </Border>
-              </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-      </DockPanel>
-
-      <!-- ─── Right: Detail Panel ─── -->
-      <ScrollViewer Grid.Column="1">
-        <StackPanel Spacing="10" IsVisible="{Binding SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}">
-
-          <!-- ══ Appearance Card (Sprite + Identity) ══ -->
-          <Border Classes="card">
-            <StackPanel Spacing="8">
-              <TextBlock Classes="heading" Text="Appearance"/>
-              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                <!-- Sprite preview -->
-                <Border Grid.Column="0" Background="#11111b" CornerRadius="6"
-                        Width="68" Height="68" Padding="2"
-                        BorderBrush="#45475a" BorderThickness="1">
-                  <Image Source="{Binding SelectedItem.Sprite}"
-                         Width="64" Height="64"
-                         RenderOptions.BitmapInterpolationMode="None"
-                         Stretch="Uniform"
-                         VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                </Border>
-
-                <!-- Identity fields -->
-                <Grid Grid.Column="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto"
-                      ColumnSpacing="10" RowSpacing="5">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Server ID" VerticalAlignment="Center"/>
-                  <TextBox Grid.Row="0" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.ServerId}" IsReadOnly="True" IsEnabled="False"/>
-
-                  <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Client ID" VerticalAlignment="Center"/>
-                  <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto">
-                    <Button Grid.Column="0" Content="−" Padding="6,2" MinWidth="28" FontWeight="Bold"
-                            Background="#313244" Foreground="#cdd6f4" CornerRadius="4,0,0,4"
-                            Command="{Binding SelectedItem.DecrementClientIdCommand}"/>
-                    <TextBox Grid.Column="1" Classes="field" Text="{Binding SelectedItem.ClientId}"
-                             CornerRadius="0" HorizontalContentAlignment="Center"/>
-                    <Button Grid.Column="2" Content="+" Padding="6,2" MinWidth="28" FontWeight="Bold"
-                            Background="#313244" Foreground="#cdd6f4" CornerRadius="0,4,4,0"
-                            Command="{Binding SelectedItem.IncrementClientIdCommand}"/>
-                  </Grid>
-
-                  <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Name" VerticalAlignment="Center"/>
-                  <TextBox Grid.Row="2" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.Name}"/>
-
-                  <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Type" VerticalAlignment="Center"/>
-                  <ComboBox Grid.Row="3" Grid.Column="1"
-                            ItemsSource="{Binding GroupOptions}"
-                            SelectedItem="{Binding SelectedItem.Group}"
-                            FontSize="12" MinHeight="28" Padding="6,3"/>
-                </Grid>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <!-- ══ Flags Card (traditional OTServ names) ══ -->
-          <Border Classes="card">
-            <StackPanel Spacing="6">
-              <TextBlock Classes="heading" Text="Attributes"/>
-              <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-                    ColumnSpacing="8" RowSpacing="0">
-                <CheckBox Grid.Row="0" Grid.Column="0" Content="Unpassable"       IsChecked="{Binding SelectedItem.IsBlockSolid}"/>
-                <CheckBox Grid.Row="0" Grid.Column="1" Content="Has Elevation"    IsChecked="{Binding SelectedItem.IsHasHeight}"/>
-
-                <CheckBox Grid.Row="1" Grid.Column="0" Content="Movable"          IsChecked="{Binding SelectedItem.IsMoveable}"/>
-                <CheckBox Grid.Row="1" Grid.Column="1" Content="Ignore Look"      IsChecked="{Binding SelectedItem.IsLookThrough}"/>
-
-                <CheckBox Grid.Row="2" Grid.Column="0" Content="Block Missiles"   IsChecked="{Binding SelectedItem.IsBlockProjectile}"/>
-                <CheckBox Grid.Row="2" Grid.Column="1" Content="Readable"         IsChecked="{Binding SelectedItem.IsReadable}"/>
-
-                <CheckBox Grid.Row="3" Grid.Column="0" Content="Block Pathfinder" IsChecked="{Binding SelectedItem.IsBlockPathFind}"/>
-                <CheckBox Grid.Row="3" Grid.Column="1" Content="Full Ground"      IsChecked="{Binding SelectedItem.IsFullGround}"/>
-
-                <CheckBox Grid.Row="4" Grid.Column="0" Content="Pickupable"       IsChecked="{Binding SelectedItem.IsPickupable}"/>
-                <CheckBox Grid.Row="4" Grid.Column="1" Content="Stackable"        IsChecked="{Binding SelectedItem.IsStackable}"/>
-
-                <CheckBox Grid.Row="5" Grid.Column="0" Content="Force Use"        IsChecked="{Binding SelectedItem.IsForceUse}"/>
-                <CheckBox Grid.Row="5" Grid.Column="1" Content="Multi Use"        IsChecked="{Binding SelectedItem.IsUsable}"/>
-
-                <CheckBox Grid.Row="6" Grid.Column="0" Content="Rotatable"        IsChecked="{Binding SelectedItem.IsRotatable}"/>
-                <CheckBox Grid.Row="6" Grid.Column="1" Content="Hangable"         IsChecked="{Binding SelectedItem.IsHangable}"/>
-
-                <CheckBox Grid.Row="7" Grid.Column="0" Content="Hook South"       IsChecked="{Binding SelectedItem.IsVertical}"/>
-                <CheckBox Grid.Row="7" Grid.Column="1" Content="Hook East"        IsChecked="{Binding SelectedItem.IsHorizontal}"/>
-
-                <CheckBox Grid.Row="8" Grid.Column="0" Content="Animation"        IsChecked="{Binding SelectedItem.IsAnimation}"/>
-                <CheckBox Grid.Row="8" Grid.Column="1" Content="Allow Dist Read"  IsChecked="{Binding SelectedItem.IsAllowDistRead}"/>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <!-- ══ Properties Card ══ -->
-          <Border Classes="card">
-            <StackPanel Spacing="6">
-              <TextBlock Classes="heading" Text="Properties"/>
-              <Grid ColumnDefinitions="Auto,*,16,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto"
-                    ColumnSpacing="8" RowSpacing="5">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Ground Speed" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="0" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.Speed}"/>
-
-                <TextBlock Grid.Row="0" Grid.Column="3" Classes="label" Text="Minimap Color" VerticalAlignment="Center"/>
-                <StackPanel Grid.Row="0" Grid.Column="4" Orientation="Horizontal" Spacing="6">
-                  <TextBox Classes="field" Text="{Binding SelectedItem.MinimapColor}" MinWidth="50"/>
-                  <Border Width="24" Height="24" CornerRadius="4"
-                          Background="{Binding SelectedItem.MinimapColorBrush}"
-                          BorderBrush="#45475a" BorderThickness="1"
-                          VerticalAlignment="Center" Cursor="Hand"
-                          PointerPressed="OnMinimapSwatchClicked">
-                    <FlyoutBase.AttachedFlyout>
-                      <Flyout Placement="Bottom">
-                        <StackPanel Spacing="6" Width="240">
-                          <TextBlock Text="Tibia Minimap Palette" FontWeight="Bold" Foreground="#cdd6f4" FontSize="11"/>
-                          <ItemsControl ItemsSource="{Binding MinimapPalette}">
-                            <ItemsControl.ItemsPanel>
-                              <ItemsPanelTemplate>
-                                <WrapPanel/>
-                              </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                              <DataTemplate x:DataType="vm:MinimapColorEntry">
-                                <Border Width="14" Height="14" CornerRadius="2" Margin="1"
-                                        Background="{Binding Brush}" Cursor="Hand"
-                                        BorderBrush="#45475a" BorderThickness="0.5"
-                                        PointerPressed="OnMinimapColorPicked"
-                                        Tag="{Binding Index}"
-                                        ToolTip.Tip="{Binding Index}"/>
-                              </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                          </ItemsControl>
-                        </StackPanel>
-                      </Flyout>
-                    </FlyoutBase.AttachedFlyout>
-                  </Border>
-                </StackPanel>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Light Level" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="1" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.LightLevel}"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="3" Classes="label" Text="Light Color" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="1" Grid.Column="4" Classes="field" Text="{Binding SelectedItem.LightColor}"/>
-
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Trade As" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="2" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.WareId}"/>
-
-                <TextBlock Grid.Row="2" Grid.Column="3" Classes="label" Text="Stack Order" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="2" Grid.Column="4"
-                          ItemsSource="{Binding StackOrderOptions}"
-                          SelectedItem="{Binding SelectedItem.StackOrderValue}"
-                          FontSize="12" MinHeight="28" Padding="6,3"/>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <!-- ══ Animation Card ══ -->
-          <Border Classes="card" BorderBrush="{Binding SelectedItem.HasMismatch, Converter={StaticResource MismatchBorderConverter}}"
-                  BorderThickness="2">
-            <StackPanel Spacing="6">
-              <DockPanel>
-                <TextBlock Classes="heading" Text="Animation" DockPanel.Dock="Left"/>
-                <Border DockPanel.Dock="Right" IsVisible="{Binding SelectedItem.HasMismatch}"
-                        Classes="mismatch-badge" VerticalAlignment="Top">
-                  <TextBlock Text="MISMATCH" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
-                </Border>
+            <!-- ── LEFT: Client item list + pagination ── -->
+            <DockPanel Grid.Column="0" Margin="0,0,6,0">
+              <!-- Top: search + category filter -->
+              <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ClientCategoryOptions}"
+                          SelectedItem="{Binding ClientCategoryFilter}"
+                          FontSize="11" MinHeight="28" Padding="6,3" MinWidth="70" Margin="4,0,0,0"/>
+                <TextBox Classes="search" Watermark="Buscar ID..." Text="{Binding ClientSearchText}"
+                         FontSize="11" Padding="6,3" MinHeight="28"/>
               </DockPanel>
 
-              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="DAT Phases" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="0" Grid.Column="1"
-                           Text="{Binding SelectedItem.DatAnimPhases}"
-                           FontWeight="Bold" Foreground="#cba6f7" VerticalAlignment="Center"/>
+              <!-- Item management buttons -->
+              <Border DockPanel.Dock="Top" Background="#181825" CornerRadius="6" Padding="4,3" Margin="0,0,0,4">
+                <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
+                  <Button Classes="toolbar" Content="🔄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding ReplaceThingCommand}" ToolTip.Tip="Replace"/>
+                  <Button Classes="toolbar" Content="📥" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding ImportThingCommand}" ToolTip.Tip="Import"/>
+                  <Button Classes="toolbar" Content="📤" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding ExportThingCommand}" ToolTip.Tip="Export"/>
+                  <Button Classes="toolbar" Content="✏️" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding EditThingCommand}" ToolTip.Tip="Edit"/>
+                  <Button Classes="toolbar" Content="📄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding DuplicateThingCommand}" ToolTip.Tip="Duplicate"/>
+                  <Button Classes="toolbar" Content="➕" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding NewThingCommand}" ToolTip.Tip="New"/>
+                  <Button Classes="toolbar" Content="➖" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#f38ba8"
+                          Command="{Binding RemoveThingCommand}" ToolTip.Tip="Remove"/>
+                  <Button Classes="toolbar" Content="↩" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#fab387"
+                          Command="{Binding ResetThingCommand}" ToolTip.Tip="Reset"/>
+                </StackPanel>
+              </Border>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Animate Always" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="1" Grid.Column="1"
-                           Text="{Binding SelectedItem.DatAnimateAlways}"
-                           Foreground="#585b70" VerticalAlignment="Center"/>
+              <!-- Bottom: pagination bar -->
+              <Border DockPanel.Dock="Bottom" Background="#181825" CornerRadius="6" Padding="4,4" Margin="0,4,0,0">
+                <DockPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Button Classes="toolbar" Content="⏮" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientFirstPageCommand}" ToolTip.Tip="First"/>
+                    <Button Classes="toolbar" Content="◀◀" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientPrevPageCommand}" ToolTip.Tip="Previous page"/>
+                    <Button Classes="toolbar" Content="◀" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientPrevItemCommand}" ToolTip.Tip="Previous item"/>
+                    <Border Background="#313244" CornerRadius="4" Padding="6,2" Margin="2,0">
+                      <TextBlock Text="{Binding SelectedClientItem.Id}" Foreground="#cba6f7" FontSize="10"
+                                 FontWeight="Bold" VerticalAlignment="Center"/>
+                    </Border>
+                    <Button Classes="toolbar" Content="▶" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientNextItemCommand}" ToolTip.Tip="Next item"/>
+                    <Button Classes="toolbar" Content="▶▶" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientNextPageCommand}" ToolTip.Tip="Next page"/>
+                    <Button Classes="toolbar" Content="⏭" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                            Command="{Binding ClientLastPageCommand}" ToolTip.Tip="Last"/>
+                  </StackPanel>
+                </DockPanel>
+              </Border>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="{Binding SelectedItem.MismatchDetail}"
-                           Foreground="#f38ba8" FontSize="11" TextWrapping="Wrap"
-                           IsVisible="{Binding SelectedItem.HasMismatch}"/>
-              </Grid>
-            </StackPanel>
+              <!-- Info line -->
+              <Border DockPanel.Dock="Bottom" Margin="0,2,0,0">
+                <TextBlock Text="{Binding ClientFilteredCount, StringFormat='{}{0} itens'}" TextAlignment="Center"
+                           Foreground="#585b70" FontSize="10"/>
+              </Border>
+
+              <!-- Item list -->
+              <ListBox ItemsSource="{Binding ClientItems}"
+                       SelectedItem="{Binding SelectedClientItem}"
+                       SelectionMode="Single"
+                       Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       DoubleTapped="OnClientItemDoubleTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ClientItemViewModel">
+                    <Grid ColumnDefinitions="38,*" Height="38" Margin="2,1">
+                      <Border Background="#11111b" CornerRadius="4" Width="32" Height="32"
+                              VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
+                        <Image Source="{Binding Sprite}" Width="32" Height="32"
+                               RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
+                      </Border>
+                      <TextBlock Grid.Column="1" Text="{Binding Id}" Foreground="#cba6f7"
+                                 FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+
+            <!-- ── CENTER: Split top (client editor) / bottom (OTB detail) ── -->
+            <Grid Grid.Column="1" RowDefinitions="*,*" Margin="0,0,6,0">
+
+            <!-- ── TOP: Thing Type Editor (OB two-tab layout) ── -->
+            <TabControl Grid.Row="0">
+
+              <!-- ══════════════ TAB 1: TEXTURE ══════════════ -->
+              <TabItem Header="Texture">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                  <StackPanel Spacing="8" Margin="4"
+                              IsVisible="{Binding IsClientItemEditing}">
+
+                    <!-- ── Appearance GroupBox ── -->
+                    <Border Classes="card">
+                      <StackPanel Spacing="8">
+                        <TextBlock Classes="heading" Text="Appearance"/>
+
+                        <!-- Sprite Preview -->
+                        <Border Background="#11111b" CornerRadius="6" Padding="12" MinHeight="80"
+                                HorizontalAlignment="Center">
+                          <Grid Width="{Binding CompositionPreviewWidth}"
+                                Height="{Binding CompositionPreviewHeight}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Background="{Binding CompositionGridBrush}">
+                              <ItemsControl ItemsSource="{Binding CompositionSprites}">
+                                <ItemsControl.ItemsPanel>
+                                  <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:SpriteViewModel">
+                                    <Border Width="64" Height="64" Margin="1" Background="#11111b"
+                                            ToolTip.Tip="{Binding SpriteId}"
+                                            DoubleTapped="OnCompositionSpriteDoubleTapped">
+                                      <Image Source="{Binding Bitmap}" Width="64" Height="64"
+                                             RenderOptions.BitmapInterpolationMode="None" Stretch="Fill"/>
+                                    </Border>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Border>
+                            <Rectangle IsVisible="{Binding ShowCropSize}"
+                                       Width="{Binding CropOverlaySize}" Height="{Binding CropOverlaySize}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                       Stroke="#a6e3a1" StrokeThickness="2" StrokeDashArray="4,3"
+                                       IsHitTestVisible="False"/>
+                          </Grid>
+                        </Border>
+
+                        <!-- Checkboxes below sprite -->
+                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                          <CheckBox Content="Show Crop Size" IsChecked="{Binding ShowCropSize}" FontSize="11" Margin="0,0,12,0"/>
+                          <CheckBox Content="Show Grid" IsChecked="{Binding ShowGrid}" FontSize="11" Margin="0,0,12,0"/>
+                          <CheckBox Content="All Frames" IsChecked="{Binding ShowAllFrames}" FontSize="11"
+                                    IsVisible="{Binding HasAnimation}" Margin="0,0,12,0"/>
+                          <CheckBox Content="Play" IsChecked="{Binding IsPlayingAnimation}" FontSize="11"
+                                    IsVisible="{Binding HasAnimation}"/>
+                        </WrapPanel>
+
+                        <!-- Animation info label (loop / pingpong) -->
+                        <TextBlock Text="{Binding AnimationLoopLabel}" FontSize="10" Foreground="#6c7086"
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{Binding HasAnimation}"/>
+
+                        <!-- Filmstrip: all animation frames in a horizontal row -->
+                        <Border IsVisible="{Binding ShowAllFrames}" Background="#11111b"
+                                CornerRadius="4" Padding="4" MaxHeight="80">
+                          <ListBox ItemsSource="{Binding FilmstripFrames}"
+                                   SelectedIndex="{Binding CompositionFrame}"
+                                   Background="Transparent" BorderThickness="0"
+                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                   ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4"/>
+                              </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.Styles>
+                              <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="MinWidth" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="Border.filmframe">
+                                <Setter Property="BorderBrush" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="ListBoxItem:selected">
+                                <Setter Property="Background" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="ListBoxItem:pointerover">
+                                <Setter Property="Background" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                              </Style>
+                              <Style Selector="ListBoxItem:selected Border.filmframe">
+                                <Setter Property="BorderBrush" Value="White"/>
+                              </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:SpriteViewModel">
+                                <Border Classes="filmframe" Width="64" Height="64" CornerRadius="3"
+                                        Background="#181825" BorderThickness="2"
+                                        ToolTip.Tip="{Binding SpriteId}">
+                                  <Image Source="{Binding Bitmap}" Width="60" Height="60"
+                                         RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
+                                </Border>
+                              </DataTemplate>
+                            </ListBox.ItemTemplate>
+                          </ListBox>
+                        </Border>
+
+                        <!-- Single-frame slider: ◀ [slider] ▶ (shown when not in filmstrip mode) -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding HasAnimation}" Margin="0,2,0,0">
+                          <Grid.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                              <Binding Path="HasAnimation"/>
+                              <Binding Path="!ShowAllFrames"/>
+                            </MultiBinding>
+                          </Grid.IsVisible>
+                          <Button Grid.Column="0" Content="◀" Padding="6,2" FontSize="11"
+                                  Background="#313244" Foreground="#cdd6f4" MinWidth="28"
+                                  Command="{Binding PreviousAnimationFrameCommand}"/>
+                          <Slider Grid.Column="1" Minimum="0" Maximum="{Binding AnimationFrameMax}"
+                                  Value="{Binding CompositionFrame}" IsSnapToTickEnabled="True" TickFrequency="1"
+                                  Margin="6,0"/>
+                          <Button Grid.Column="2" Content="▶" Padding="6,2" FontSize="11"
+                                  Background="#313244" Foreground="#cdd6f4" MinWidth="28"
+                                  Command="{Binding NextAnimationFrameCommand}"/>
+                        </Grid>
+
+                        <!-- Separator -->
+                        <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                        <!-- Navigation: Group / Layer (conditional) -->
+                        <StackPanel Spacing="2">
+                          <!-- Group row: only visible when multiple frame groups (outfits) -->
+                          <StackPanel Orientation="Horizontal" Spacing="8"
+                                      IsVisible="{Binding HasMultipleGroups}">
+                            <RadioButton Content="Idle" IsChecked="{Binding IsIdleGroup}" GroupName="ClientFrameGroup" FontSize="11" Padding="4,0" MinHeight="20"/>
+                            <RadioButton Content="Walking" IsChecked="{Binding IsWalkingGroup}" GroupName="ClientFrameGroup" FontSize="11" Padding="4,0" MinHeight="20"/>
+                          </StackPanel>
+
+                          <!-- Layer row: only visible when layers > 1 -->
+                          <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="4"
+                                IsVisible="{Binding HasMultipleLayers}">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Layer" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Classes="field" Text="{Binding CompositionLayer}"
+                                     MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                            <StackPanel Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                              <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementLayerCommand}"/>
+                              <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementLayerCommand}"/>
+                            </StackPanel>
+                          </Grid>
+
+                          <!-- OB-style direction buttons for outfits/missiles -->
+                          <StackPanel IsVisible="{Binding IsOutfitOrMissile}" Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center">
+                              <Button Content="↑" Padding="6,2" FontSize="12" MinWidth="28" MinHeight="24"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding SetDirectionNorthCommand}" ToolTip.Tip="North"/>
+                              <Button Content="→" Padding="6,2" FontSize="12" MinWidth="28" MinHeight="24"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding SetDirectionEastCommand}" ToolTip.Tip="East"/>
+                              <Button Content="↓" Padding="6,2" FontSize="12" MinWidth="28" MinHeight="24"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding SetDirectionSouthCommand}" ToolTip.Tip="South"/>
+                              <Button Content="←" Padding="6,2" FontSize="12" MinWidth="28" MinHeight="24"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding SetDirectionWestCommand}" ToolTip.Tip="West"/>
+                              <TextBlock Text="{Binding DirectionLabel}" Foreground="#a6adc8" VerticalAlignment="Center" FontSize="11" Margin="4,0,0,0"/>
+                            </StackPanel>
+                            <!-- Addons (PatternY for outfits) -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center"
+                                        IsVisible="{Binding IsOutfitSelected}">
+                              <TextBlock Classes="label" Text="Addon" VerticalAlignment="Center"/>
+                              <Button Content="◀" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding DecrementPatternYCommand}"/>
+                              <TextBlock Text="{Binding CompositionPatternYLabel}" Foreground="#a6adc8" VerticalAlignment="Center" FontSize="11" MinWidth="30" TextAlignment="Center"/>
+                              <Button Content="▶" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding IncrementPatternYCommand}"/>
+                            </StackPanel>
+                            <!-- Mount (PatternZ) -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center"
+                                        IsVisible="{Binding ShowPatternZNav}">
+                              <TextBlock Classes="label" Text="Mount" VerticalAlignment="Center"/>
+                              <Button Content="◀" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding DecrementPatternZCommand}"/>
+                              <TextBlock Text="{Binding CompositionPatternZ}" Foreground="#a6adc8" VerticalAlignment="Center" FontSize="11" MinWidth="20" TextAlignment="Center"/>
+                              <Button Content="▶" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding IncrementPatternZCommand}"/>
+                            </StackPanel>
+                          </StackPanel>
+
+                          <!-- Items/Effects: PatZ only (PatX/PatY shown in grid) -->
+                          <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center"
+                                      IsVisible="{Binding !IsOutfitOrMissile}">
+                            <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ShowPatternZNav}">
+                              <TextBlock Classes="label" Text="PatZ" VerticalAlignment="Center"/>
+                              <Button Content="◀" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding DecrementPatternZCommand}"/>
+                              <TextBlock Text="{Binding CompositionPatternZ}" Foreground="#a6adc8" VerticalAlignment="Center" FontSize="11" MinWidth="20" TextAlignment="Center"/>
+                              <Button Content="▶" Padding="4,1" FontSize="9" MinWidth="20" MinHeight="20"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      Command="{Binding IncrementPatternZCommand}"/>
+                            </StackPanel>
+                          </StackPanel>
+                        </StackPanel>
+
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Patterns GroupBox ── -->
+                    <Border Classes="card">
+                      <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Patterns"/>
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,16,Auto,Auto,Auto"
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                              ColumnSpacing="4" RowSpacing="2">
+                          <!-- Left column -->
+                          <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Frame Groups" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="0" Grid.Column="1" Classes="field" Text="{Binding CompositionFrameGroupCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="0" Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementFrameGroupCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementFrameGroupCountCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Width" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="1" Grid.Column="1" Classes="field" Text="{Binding CompositionWidth}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="1" Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementWidthCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementWidthCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Height" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="2" Grid.Column="1" Classes="field" Text="{Binding CompositionHeight}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="2" Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementHeightCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementHeightCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Crop Size" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="3" Grid.Column="1" Classes="field" Text="{Binding CompositionCropSize}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="3" Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementCropSizeCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementCropSizeCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="Layers" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="4" Grid.Column="1" Classes="field" Text="{Binding CompositionLayerCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="4" Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementLayerCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementLayerCountCommand}"/>
+                          </StackPanel>
+
+                          <!-- Right column -->
+                          <TextBlock Grid.Row="0" Grid.Column="4" Classes="label" Text="Pattern X" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="0" Grid.Column="5" Classes="field" Text="{Binding CompositionPatternXCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="0" Grid.Column="6" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementPatternXCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementPatternXCountCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="1" Grid.Column="4" Classes="label" Text="Pattern Y" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="1" Grid.Column="5" Classes="field" Text="{Binding CompositionPatternYCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="1" Grid.Column="6" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementPatternYCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementPatternYCountCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="2" Grid.Column="4" Classes="label" Text="Pattern Z" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="2" Grid.Column="5" Classes="field" Text="{Binding CompositionPatternZCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="2" Grid.Column="6" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementPatternZCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementPatternZCountCommand}"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Row="3" Grid.Column="4" Classes="label" Text="Animations" VerticalAlignment="Center"/>
+                          <TextBox Grid.Row="3" Grid.Column="5" Classes="field" Text="{Binding CompositionFrameCount}"
+                                   MinWidth="36" MaxWidth="44" Padding="4,2" FontSize="11" HorizontalContentAlignment="Center"/>
+                          <StackPanel Grid.Row="3" Grid.Column="6" Spacing="0" VerticalAlignment="Center">
+                            <Button Content="▲" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding IncrementFrameCountCommand}"/>
+                            <Button Content="▼" Padding="2,0" FontSize="7" MinWidth="16" MinHeight="11" Background="#313244" Foreground="#cdd6f4" Command="{Binding DecrementFrameCountCommand}"/>
+                          </StackPanel>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                  </StackPanel>
+                </ScrollViewer>
+              </TabItem>
+
+              <!-- ══════════════ TAB 2: PROPERTIES ══════════════ -->
+              <TabItem Header="Properties">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                  <StackPanel Spacing="8" Margin="4"
+                              IsVisible="{Binding IsClientItemEditing}">
+
+                    <!-- ── Is Ground (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkGround" Content="Is Ground" IsChecked="{Binding SelectedClientItem.ThingType.IsGround}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkGround}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Ground Speed" VerticalAlignment="Center"/>
+                          <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.GroundSpeed}"
+                                         Minimum="0" Maximum="1000" Increment="1" FormatString="0"
+                                         MinWidth="80" Padding="4,2"/>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Has Light (not Missile) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsNotMissileSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkLight" Content="Has Light" IsChecked="{Binding SelectedClientItem.ThingType.HasLight}" FontWeight="SemiBold"/>
+                        <StackPanel Spacing="4" IsEnabled="{Binding IsChecked, ElementName=chkLight}" Margin="10,0,0,0">
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Light Color" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.LightColor}"
+                                           Minimum="0" Maximum="215" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Light Intensity" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.LightLevel}"
+                                           Minimum="0" Maximum="255" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Automap (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkAutomap" Content="Automap" IsChecked="{Binding SelectedClientItem.ThingType.IsMiniMap}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkAutomap}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Automap Color" VerticalAlignment="Center"/>
+                          <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MiniMapColor}"
+                                         Minimum="0" Maximum="215" Increment="1" FormatString="0"
+                                         MinWidth="80" Padding="4,2"/>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Has Offset (not Missile) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsNotMissileSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkOffset" Content="Has Offset" IsChecked="{Binding SelectedClientItem.ThingType.HasOffset}" FontWeight="SemiBold"/>
+                        <StackPanel Spacing="4" IsEnabled="{Binding IsChecked, ElementName=chkOffset}" Margin="10,0,0,0">
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Offset X" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.OffsetX}"
+                                           Minimum="-64" Maximum="64" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Offset Y" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.OffsetY}"
+                                           Minimum="-64" Maximum="64" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Has Elevation (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkElevation" Content="Has Elevation" IsChecked="{Binding SelectedClientItem.ThingType.HasElevation}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkElevation}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Elevation" VerticalAlignment="Center"/>
+                          <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.Elevation}"
+                                         Minimum="0" Maximum="32" Increment="1" FormatString="0"
+                                         MinWidth="80" Padding="4,2"/>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Equip / Cloth (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkEquip" Content="Cloth" IsChecked="{Binding SelectedClientItem.ThingType.IsCloth}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkEquip}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Cloth Slot" VerticalAlignment="Center"/>
+                          <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedClientItem.ThingType.ClothSlotIndex}"
+                                    MinWidth="140" FontSize="11" Padding="4,2">
+                            <ComboBoxItem Content="Two Hand Weapon"/>
+                            <ComboBoxItem Content="Helmet"/>
+                            <ComboBoxItem Content="Amulet"/>
+                            <ComboBoxItem Content="Backpack"/>
+                            <ComboBoxItem Content="Armor"/>
+                            <ComboBoxItem Content="Shield"/>
+                            <ComboBoxItem Content="One Hand Weapon"/>
+                            <ComboBoxItem Content="Legs"/>
+                            <ComboBoxItem Content="Boots"/>
+                            <ComboBoxItem Content="Ring"/>
+                            <ComboBoxItem Content="Arrow"/>
+                          </ComboBox>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Market (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkMarket" Content="Market" IsChecked="{Binding SelectedClientItem.ThingType.IsMarketItem}" FontWeight="SemiBold"/>
+                        <StackPanel Spacing="6" IsEnabled="{Binding IsChecked, ElementName=chkMarket}" Margin="10,0,0,0">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Name" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SelectedClientItem.ThingType.MarketName}"
+                                     FontSize="11" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Category" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedClientItem.ThingType.MarketCategoryIndex}"
+                                      MinWidth="150" FontSize="11" Padding="4,2">
+                              <ComboBoxItem Content="Armors"/>
+                              <ComboBoxItem Content="Amulets"/>
+                              <ComboBoxItem Content="Boots"/>
+                              <ComboBoxItem Content="Containers"/>
+                              <ComboBoxItem Content="Decoration"/>
+                              <ComboBoxItem Content="Foods"/>
+                              <ComboBoxItem Content="Helmets and Hats"/>
+                              <ComboBoxItem Content="Legs"/>
+                              <ComboBoxItem Content="Others"/>
+                              <ComboBoxItem Content="Potions"/>
+                              <ComboBoxItem Content="Rings"/>
+                              <ComboBoxItem Content="Runes"/>
+                              <ComboBoxItem Content="Shields"/>
+                              <ComboBoxItem Content="Tools"/>
+                              <ComboBoxItem Content="Valuables"/>
+                              <ComboBoxItem Content="Ammunition"/>
+                              <ComboBoxItem Content="Axes"/>
+                              <ComboBoxItem Content="Clubs"/>
+                              <ComboBoxItem Content="Distance"/>
+                              <ComboBoxItem Content="Swords"/>
+                              <ComboBoxItem Content="Wands and Rods"/>
+                              <ComboBoxItem Content="Premium Scrolls"/>
+                              <ComboBoxItem Content="Meta Weapons"/>
+                            </ComboBox>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Trade As" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MarketTradeAs}"
+                                           Minimum="0" Maximum="65535" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Show As" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MarketShowAs}"
+                                           Minimum="0" Maximum="65535" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Vocation" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MarketRestrictProfession}"
+                                           Minimum="0" Maximum="65535" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Level" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MarketRestrictLevel}"
+                                           Minimum="0" Maximum="65535" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Write / Read (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <TextBlock Classes="heading" Text="Write / Read" FontSize="12"/>
+                        <StackPanel Spacing="2" Margin="10,0,0,0">
+                          <CheckBox Content="Writable" IsChecked="{Binding SelectedClientItem.ThingType.IsWritable}"/>
+                          <CheckBox Content="Writable Once" IsChecked="{Binding SelectedClientItem.ThingType.IsWritableOnce}"/>
+                          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8" Margin="0,4,0,0">
+                            <TextBlock Grid.Column="0" Classes="label" Text="Max Length" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding SelectedClientItem.ThingType.MaxTextLength}"
+                                           Minimum="0" Maximum="65535" Increment="1" FormatString="0"
+                                           MinWidth="80" Padding="4,2"/>
+                          </Grid>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Has Action (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkAction" Content="Has Action" IsChecked="{Binding SelectedClientItem.ThingType.HasDefaultAction}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkAction}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Action Type" VerticalAlignment="Center"/>
+                          <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedClientItem.ThingType.DefaultActionIndex}"
+                                    MinWidth="140" FontSize="11" Padding="4,2">
+                            <ComboBoxItem Content="None"/>
+                            <ComboBoxItem Content="Look"/>
+                            <ComboBoxItem Content="Use"/>
+                            <ComboBoxItem Content="Open"/>
+                            <ComboBoxItem Content="Autowalk Highlight"/>
+                          </ComboBox>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Lens Help (Item only) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsItemSelected}">
+                      <StackPanel Spacing="4">
+                        <CheckBox x:Name="chkLensHelp" Content="Lens Help" IsChecked="{Binding SelectedClientItem.ThingType.IsLensHelp}" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                              IsEnabled="{Binding IsChecked, ElementName=chkLensHelp}" Margin="10,0,0,0">
+                          <TextBlock Grid.Column="0" Classes="label" Text="Type" VerticalAlignment="Center"/>
+                          <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedClientItem.ThingType.LensHelpIndex}"
+                                    MinWidth="140" FontSize="11" Padding="4,2">
+                            <ComboBoxItem Content="Ladders"/>
+                            <ComboBoxItem Content="Sewer Grates"/>
+                            <ComboBoxItem Content="Dungeon Floor"/>
+                            <ComboBoxItem Content="Levers"/>
+                            <ComboBoxItem Content="Doors"/>
+                            <ComboBoxItem Content="Special Doors"/>
+                            <ComboBoxItem Content="Stairs"/>
+                            <ComboBoxItem Content="Mailboxes"/>
+                            <ComboBoxItem Content="Depot Boxes"/>
+                            <ComboBoxItem Content="Dustbins"/>
+                            <ComboBoxItem Content="Stone Piles"/>
+                            <ComboBoxItem Content="Signs"/>
+                            <ComboBoxItem Content="Books and Scrolls"/>
+                          </ComboBox>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- ── Flags (not Missile) ── -->
+                    <Border Classes="card" IsVisible="{Binding IsNotMissileSelected}">
+                      <StackPanel Spacing="4">
+                        <TextBlock Classes="heading" Text="Flags"/>
+
+                        <!-- Render Order (Item only, radio buttons with native look) -->
+                        <StackPanel IsVisible="{Binding IsItemSelected}" Spacing="0" Margin="0,0,0,4">
+                          <StackPanel Spacing="0" Margin="4,0,0,0">
+                            <RadioButton GroupName="RenderOrder" Content="Common"/>
+                            <RadioButton GroupName="RenderOrder" Content="Ground Border" IsChecked="{Binding SelectedClientItem.ThingType.IsGroundBorder}"/>
+                            <RadioButton GroupName="RenderOrder" Content="Bottom" IsChecked="{Binding SelectedClientItem.ThingType.IsOnBottom}"/>
+                            <RadioButton GroupName="RenderOrder" Content="Top" IsChecked="{Binding SelectedClientItem.ThingType.IsOnTop}"/>
+                          </StackPanel>
+                        </StackPanel>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+                          <!-- Left column (Item flags) -->
+                          <StackPanel Grid.Column="0" Spacing="0">
+                            <CheckBox Content="Container" IsChecked="{Binding SelectedClientItem.ThingType.IsContainer}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Stackable" IsChecked="{Binding SelectedClientItem.ThingType.IsStackable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Force Use" IsChecked="{Binding SelectedClientItem.ThingType.IsForceUse}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Multi Use" IsChecked="{Binding SelectedClientItem.ThingType.IsMultiUse}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Fluid Container" IsChecked="{Binding SelectedClientItem.ThingType.IsFluidContainer}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Fluid" IsChecked="{Binding SelectedClientItem.ThingType.IsFluid}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Unpassable" IsChecked="{Binding SelectedClientItem.ThingType.IsUnpassable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Unmovable" IsChecked="{Binding SelectedClientItem.ThingType.IsUnmoveable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Block Missile" IsChecked="{Binding SelectedClientItem.ThingType.IsBlockMissile}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Block Pathfinder" IsChecked="{Binding SelectedClientItem.ThingType.IsBlockPathfind}" IsVisible="{Binding IsItemSelected}"/>
+                          </StackPanel>
+                          <!-- Right column -->
+                          <StackPanel Grid.Column="1" Spacing="0">
+                            <CheckBox Content="No Move Animation" IsChecked="{Binding SelectedClientItem.ThingType.IsNoMoveAnimation}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Pickupable" IsChecked="{Binding SelectedClientItem.ThingType.IsPickupable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Hangable" IsChecked="{Binding SelectedClientItem.ThingType.IsHangable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Hook East" IsChecked="{Binding SelectedClientItem.ThingType.IsHorizontal}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Hook South" IsChecked="{Binding SelectedClientItem.ThingType.IsVertical}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Rotatable" IsChecked="{Binding SelectedClientItem.ThingType.IsRotatable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Don't Hide" IsChecked="{Binding SelectedClientItem.ThingType.IsDontHide}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Translucent" IsChecked="{Binding SelectedClientItem.ThingType.IsTranslucent}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Lying Object" IsChecked="{Binding SelectedClientItem.ThingType.IsLyingObject}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Animate Always" IsChecked="{Binding SelectedClientItem.ThingType.IsAnimateAlways}" IsVisible="{Binding IsOutfitSelected}"/>
+                            <CheckBox Content="Full Ground" IsChecked="{Binding SelectedClientItem.ThingType.IsFullGround}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Ignore Look" IsChecked="{Binding SelectedClientItem.ThingType.IsIgnoreLook}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Useable" IsChecked="{Binding SelectedClientItem.ThingType.IsUsable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Wrappable" IsChecked="{Binding SelectedClientItem.ThingType.IsWrappable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Unwrappable" IsChecked="{Binding SelectedClientItem.ThingType.IsUnwrappable}" IsVisible="{Binding IsItemSelected}"/>
+                            <CheckBox Content="Top Effect" IsChecked="{Binding SelectedClientItem.ThingType.IsTopEffect}" IsVisible="{Binding IsEffectSelected}"/>
+                          </StackPanel>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+
+                  </StackPanel>
+                </ScrollViewer>
+              </TabItem>
+            </TabControl>
+
+            <!-- ── BOTTOM: OTB Item Detail (double-click to open) ── -->
+            <ScrollViewer Grid.Row="1" IsVisible="{Binding IsOtbItemEditing}" Margin="0,6,0,0">
+              <StackPanel Spacing="10" IsVisible="{Binding SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+                <!-- OTB Appearance Card -->
+                <Border Classes="card">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="heading" Text="OTB Properties"/>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                      <Border Grid.Column="0" Background="#11111b" CornerRadius="6" Width="52" Height="52" Padding="2"
+                              BorderBrush="#45475a" BorderThickness="1">
+                        <Image Source="{Binding SelectedItem.Sprite}" Width="48" Height="48"
+                               RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                      </Border>
+                      <Grid Grid.Column="1" ColumnDefinitions="Auto,*,16,Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Server ID" VerticalAlignment="Center"/>
+                        <TextBox Grid.Row="0" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.ServerId}" IsReadOnly="True" IsEnabled="False"/>
+                        <TextBlock Grid.Row="0" Grid.Column="3" Classes="label" Text="Client ID" VerticalAlignment="Center"/>
+                        <Grid Grid.Row="0" Grid.Column="4" ColumnDefinitions="Auto,*,Auto">
+                          <Button Grid.Column="0" Content="−" Padding="6,2" MinWidth="28" FontWeight="Bold"
+                                  Background="#313244" Foreground="#cdd6f4" CornerRadius="4,0,0,4"
+                                  Command="{Binding SelectedItem.DecrementClientIdCommand}"/>
+                          <TextBox Grid.Column="1" Classes="field" Text="{Binding SelectedItem.ClientId}"
+                                   CornerRadius="0" HorizontalContentAlignment="Center"/>
+                          <Button Grid.Column="2" Content="+" Padding="6,2" MinWidth="28" FontWeight="Bold"
+                                  Background="#313244" Foreground="#cdd6f4" CornerRadius="0,4,4,0"
+                                  Command="{Binding SelectedItem.IncrementClientIdCommand}"/>
+                        </Grid>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Name" VerticalAlignment="Center"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.Name}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="3" Classes="label" Text="Type" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="1" Grid.Column="4" ItemsSource="{Binding GroupOptions}"
+                                  SelectedItem="{Binding SelectedItem.Group}" FontSize="12" MinHeight="28" Padding="6,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Ground Speed" VerticalAlignment="Center"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.Speed}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="3" Classes="label" Text="Stack Order" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="2" Grid.Column="4" ItemsSource="{Binding StackOrderOptions}"
+                                  SelectedItem="{Binding SelectedItem.StackOrderValue}" FontSize="12" MinHeight="28" Padding="6,3"/>
+                      </Grid>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- OTB Flags -->
+                <Border Classes="card">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="heading" Text="OTB Attributes"/>
+                    <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4" RowSpacing="0">
+                      <CheckBox Grid.Row="0" Grid.Column="0" Content="Unpassable"       IsChecked="{Binding SelectedItem.IsBlockSolid}"/>
+                      <CheckBox Grid.Row="0" Grid.Column="1" Content="Has Elevation"    IsChecked="{Binding SelectedItem.IsHasHeight}"/>
+                      <CheckBox Grid.Row="0" Grid.Column="2" Content="Movable"          IsChecked="{Binding SelectedItem.IsMoveable}"/>
+                      <CheckBox Grid.Row="0" Grid.Column="3" Content="Ignore Look"      IsChecked="{Binding SelectedItem.IsLookThrough}"/>
+                      <CheckBox Grid.Row="1" Grid.Column="0" Content="Block Missiles"   IsChecked="{Binding SelectedItem.IsBlockProjectile}"/>
+                      <CheckBox Grid.Row="1" Grid.Column="1" Content="Readable"         IsChecked="{Binding SelectedItem.IsReadable}"/>
+                      <CheckBox Grid.Row="1" Grid.Column="2" Content="Block Pathfinder" IsChecked="{Binding SelectedItem.IsBlockPathFind}"/>
+                      <CheckBox Grid.Row="1" Grid.Column="3" Content="Full Ground"      IsChecked="{Binding SelectedItem.IsFullGround}"/>
+                      <CheckBox Grid.Row="2" Grid.Column="0" Content="Pickupable"       IsChecked="{Binding SelectedItem.IsPickupable}"/>
+                      <CheckBox Grid.Row="2" Grid.Column="1" Content="Stackable"        IsChecked="{Binding SelectedItem.IsStackable}"/>
+                      <CheckBox Grid.Row="2" Grid.Column="2" Content="Force Use"        IsChecked="{Binding SelectedItem.IsForceUse}"/>
+                      <CheckBox Grid.Row="2" Grid.Column="3" Content="Multi Use"        IsChecked="{Binding SelectedItem.IsUsable}"/>
+                      <CheckBox Grid.Row="3" Grid.Column="0" Content="Rotatable"        IsChecked="{Binding SelectedItem.IsRotatable}"/>
+                      <CheckBox Grid.Row="3" Grid.Column="1" Content="Hangable"         IsChecked="{Binding SelectedItem.IsHangable}"/>
+                      <CheckBox Grid.Row="3" Grid.Column="2" Content="Hook South"       IsChecked="{Binding SelectedItem.IsVertical}"/>
+                      <CheckBox Grid.Row="3" Grid.Column="3" Content="Hook East"        IsChecked="{Binding SelectedItem.IsHorizontal}"/>
+                      <CheckBox Grid.Row="4" Grid.Column="0" Content="Animation"        IsChecked="{Binding SelectedItem.IsAnimation}"/>
+                      <CheckBox Grid.Row="4" Grid.Column="1" Content="Allow Dist Read"  IsChecked="{Binding SelectedItem.IsAllowDistRead}"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- OTB Extra -->
+                <Border Classes="card">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="heading" Text="OTB Extra"/>
+                    <Grid ColumnDefinitions="Auto,*,16,Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                      <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Minimap Color" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <TextBox Classes="field" Text="{Binding SelectedItem.MinimapColor}" MinWidth="50"/>
+                        <Border Width="24" Height="24" CornerRadius="4"
+                                Background="{Binding SelectedItem.MinimapColorBrush}"
+                                BorderBrush="#45475a" BorderThickness="1"
+                                VerticalAlignment="Center" Cursor="Hand"
+                                PointerPressed="OnMinimapSwatchClicked">
+                          <FlyoutBase.AttachedFlyout>
+                            <Flyout Placement="Bottom">
+                              <StackPanel Spacing="6" Width="240">
+                                <TextBlock Text="Tibia Minimap Palette" FontWeight="Bold" Foreground="#cdd6f4" FontSize="11"/>
+                                <ItemsControl ItemsSource="{Binding MinimapPalette}">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MinimapColorEntry">
+                                      <Border Width="14" Height="14" CornerRadius="2" Margin="1"
+                                              Background="{Binding Brush}" Cursor="Hand"
+                                              BorderBrush="#45475a" BorderThickness="0.5"
+                                              PointerPressed="OnMinimapColorPicked"
+                                              Tag="{Binding Index}" ToolTip.Tip="{Binding Index}"/>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                              </StackPanel>
+                            </Flyout>
+                          </FlyoutBase.AttachedFlyout>
+                        </Border>
+                      </StackPanel>
+                      <TextBlock Grid.Row="0" Grid.Column="3" Classes="label" Text="Light Level" VerticalAlignment="Center"/>
+                      <TextBox Grid.Row="0" Grid.Column="4" Classes="field" Text="{Binding SelectedItem.LightLevel}"/>
+                      <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Light Color" VerticalAlignment="Center"/>
+                      <TextBox Grid.Row="1" Grid.Column="1" Classes="field" Text="{Binding SelectedItem.LightColor}"/>
+                      <TextBlock Grid.Row="1" Grid.Column="3" Classes="label" Text="Trade As" VerticalAlignment="Center"/>
+                      <TextBox Grid.Row="1" Grid.Column="4" Classes="field" Text="{Binding SelectedItem.WareId}"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- Animation Card -->
+                <Border Classes="card" BorderBrush="{Binding SelectedItem.HasMismatch, Converter={StaticResource MismatchBorderConverter}}" BorderThickness="2">
+                  <StackPanel Spacing="4">
+                    <DockPanel>
+                      <TextBlock Classes="heading" Text="Animation" DockPanel.Dock="Left"/>
+                      <Border DockPanel.Dock="Right" IsVisible="{Binding SelectedItem.HasMismatch}" Classes="mismatch-badge" VerticalAlignment="Top">
+                        <TextBlock Text="MISMATCH" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
+                      </Border>
+                    </DockPanel>
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" RowSpacing="4">
+                      <TextBlock Grid.Column="0" Classes="label" Text="DAT Phases" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="1" Text="{Binding SelectedItem.DatAnimPhases}" FontWeight="Bold" Foreground="#cba6f7" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="2" Classes="label" Text="Animate Always" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="3" Text="{Binding SelectedItem.DatAnimateAlways}" Foreground="#585b70" VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Text="{Binding SelectedItem.MismatchDetail}" Foreground="#f38ba8" FontSize="11" TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedItem.HasMismatch}"/>
+                  </StackPanel>
+                </Border>
+
+              </StackPanel>
+            </ScrollViewer>
+
+            </Grid><!-- end center split grid -->
+
+            <!-- ── RIGHT: OTB Server Items List ── -->
+            <DockPanel Grid.Column="2" Margin="6,0,0,0">
+              <TextBlock DockPanel.Dock="Top" Text="OTB Items" Classes="heading" Margin="0,0,0,4"/>
+              <!-- Search -->
+              <TextBox DockPanel.Dock="Top" Classes="search" Watermark="Buscar Server/Client ID..."
+                       Text="{Binding OtbPanelSearchText}" FontSize="11" Padding="6,3" MinHeight="28"
+                       Margin="0,0,0,4"/>
+              <!-- Pagination bar -->
+              <Border DockPanel.Dock="Bottom" Background="#181825" CornerRadius="6" Padding="4,4" Margin="0,4,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Button Classes="toolbar" Content="⏮" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                          Command="{Binding OtbPanelFirstPageCommand}" ToolTip.Tip="First"/>
+                  <Button Classes="toolbar" Content="◀◀" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                          Command="{Binding OtbPanelPrevPageCommand}" ToolTip.Tip="Previous page"/>
+                  <TextBlock VerticalAlignment="Center" Foreground="#a6adc8" FontSize="10" Margin="3,0">
+                    <TextBlock.Text>
+                      <MultiBinding StringFormat="{}{0} / {1}">
+                        <Binding Path="OtbPanelCurrentPage"/>
+                        <Binding Path="OtbPanelTotalPages"/>
+                      </MultiBinding>
+                    </TextBlock.Text>
+                  </TextBlock>
+                  <Button Classes="toolbar" Content="▶▶" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                          Command="{Binding OtbPanelNextPageCommand}" ToolTip.Tip="Next page"/>
+                  <Button Classes="toolbar" Content="⏭" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                          Command="{Binding OtbPanelLastPageCommand}" ToolTip.Tip="Last"/>
+                </StackPanel>
+              </Border>
+              <!-- OTB items list -->
+              <ListBox ItemsSource="{Binding OtbPanelItems}"
+                       SelectedItem="{Binding SelectedItem}"
+                       SelectionMode="Single"
+                       Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       DoubleTapped="OnOtbItemDoubleTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ItemViewModel">
+                    <Grid ColumnDefinitions="38,Auto,*" Height="36" Margin="3,1">
+                      <Border Background="#11111b" CornerRadius="4" Width="30" Height="30"
+                              VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
+                        <Image Source="{Binding Sprite}" Width="30" Height="30"
+                               RenderOptions.BitmapInterpolationMode="None" Stretch="None"/>
+                      </Border>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0,0,0" Width="55">
+                        <TextBlock Text="{Binding ServerId}" Foreground="#89b4fa" FontWeight="Bold" FontSize="12"/>
+                        <TextBlock Text="{Binding ClientId, StringFormat='cid: {0}'}" Foreground="#585b70" FontSize="9"/>
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Foreground="#cdd6f4" FontSize="11"
+                                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="4,0"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Grid><!-- end 3-column grid -->
+
+          <!-- ── BOTTOM: Horizontal Sprite Strip ── -->
+          <Border Grid.Row="1" Background="#181825" CornerRadius="8" Padding="6,4" Margin="0,6,0,0">
+            <DockPanel>
+              <!-- Sprite management buttons (left) -->
+              <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,6,0">
+                <Button Classes="toolbar" Content="🔄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                        Command="{Binding ReplaceSpriteCommand}" ToolTip.Tip="Replace"/>
+                <Button Classes="toolbar" Content="📥" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                        Command="{Binding ImportSpriteCommand}" ToolTip.Tip="Import"/>
+                <Button Classes="toolbar" Content="📤" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                        Command="{Binding ExportSpriteCommand}" ToolTip.Tip="Export"/>
+                <Button Classes="toolbar" Content="➕" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                        Command="{Binding NewSpriteCommand}" ToolTip.Tip="New"/>
+                <Button Classes="toolbar" Content="➖" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#f38ba8"
+                        Command="{Binding RemoveSpriteCommand}" ToolTip.Tip="Remove"/>
+              </StackPanel>
+              <!-- Pagination (right) -->
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="6,0,0,0">
+                <Button Classes="toolbar" Content="⏮" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                        Command="{Binding RightSpriteFirstPageCommand}" ToolTip.Tip="First page"/>
+                <Button Classes="toolbar" Content="◀◀" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                        Command="{Binding RightSpritePrevPageCommand}" ToolTip.Tip="Previous page"/>
+                <TextBlock VerticalAlignment="Center" Foreground="#a6adc8" FontSize="10" Margin="3,0">
+                  <TextBlock.Text>
+                    <MultiBinding StringFormat="{}{0} / {1}">
+                      <Binding Path="RightSpriteCurrentPage"/>
+                      <Binding Path="RightSpriteTotalPages"/>
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+                <Button Classes="toolbar" Content="▶▶" Padding="4,2" FontSize="9" MinWidth="24" MinHeight="22"
+                        Command="{Binding RightSpriteNextPageCommand}" ToolTip.Tip="Next page"/>
+                <Button Classes="toolbar" Content="⏭" Padding="4,2" FontSize="11" MinWidth="24" MinHeight="22"
+                        Command="{Binding RightSpriteLastPageCommand}" ToolTip.Tip="Last page"/>
+              </StackPanel>
+              <!-- Horizontal sprite list -->
+              <ListBox ItemsSource="{Binding RightSprites}"
+                       SelectedItem="{Binding SelectedRightSprite}"
+                       SelectionMode="Single"
+                       Background="Transparent" BorderThickness="0" Padding="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="2"/>
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SpriteViewModel">
+                    <Border Width="38" Height="46" Margin="1" Background="#11111b"
+                            CornerRadius="3" BorderBrush="#313244" BorderThickness="1"
+                            ToolTip.Tip="{Binding SpriteId}">
+                      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="1">
+                        <Image Source="{Binding Bitmap}" Width="32" Height="32"
+                               RenderOptions.BitmapInterpolationMode="None" Stretch="None"/>
+                        <TextBlock Text="{Binding SpriteId}" FontSize="7" Foreground="#585b70" HorizontalAlignment="Center"/>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
           </Border>
 
-        </StackPanel>
-      </ScrollViewer>
+          </Grid><!-- end outer Grid RowDefinitions="*,Auto" -->
+      </DockPanel>
     </Grid>
   </DockPanel>
 </Window>

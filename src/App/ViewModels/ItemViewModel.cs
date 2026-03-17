@@ -124,6 +124,9 @@ public partial class ItemViewModel : ObservableObject
     [ObservableProperty] private bool _hasMismatch;
     [ObservableProperty] private uint _firstSpriteId;
 
+    /// <summary>Full DAT thing type (set during cross-reference).</summary>
+    public DatThingType? DatThingType { get; set; }
+
     public string MismatchDetail
     {
         get

@@ -1,17 +1,14 @@
 using System.Buffers.Binary;
+using System.Text;
 
 namespace POriginsItemEditor.OTB;
 
 /// <summary>
-/// Minimal Tibia.dat parser for protocol 1098.
-/// Extracts animation phase count per client-ID so we can cross-reference with OTB.
+/// Tibia.dat parser for protocol 1098 (MetadataFlags6).
+/// Parses all thing types (items, outfits, effects, missiles) with full structure.
 /// </summary>
 public static class DatFile
 {
-    /// <summary>
-    /// Load a .dat file and return a dictionary mapping client-ID → animation phase count.
-    /// Only items are parsed (outfits/effects/missiles are skipped).
-    /// </summary>
     public static DatData Load(string path)
     {
         var raw = File.ReadAllBytes(path);
@@ -23,134 +20,220 @@ public static class DatFile
         var r = new DatReader(raw);
 
         var signature = r.U32();
-        var numItems = r.U16();
-        var numOutfits = r.U16();
-        var numEffects = r.U16();
-        var numMissiles = r.U16();
+        var lastItemId = r.U16();     // header stores LAST ID, not count
+        var lastOutfitId = r.U16();
+        var lastEffectId = r.U16();
+        var lastMissileId = r.U16();
 
-        const int firstId = 100;
-        var lastId = firstId + numItems - 1;
+        int numItems = lastItemId - 100 + 1;     // items start at 100
+        int numOutfits = lastOutfitId;            // outfits start at 1
+        int numEffects = lastEffectId;            // effects start at 1
+        int numMissiles = lastMissileId;          // missiles start at 1
 
-        var items = new Dictionary<ushort, DatItemInfo>(numItems);
+        var items = new Dictionary<ushort, DatThingType>(numItems);
+        var outfits = new Dictionary<ushort, DatThingType>(numOutfits);
+        var effects = new Dictionary<ushort, DatThingType>(numEffects);
+        var missiles = new Dictionary<ushort, DatThingType>(numMissiles);
 
-        for (int id = firstId; id <= lastId; id++)
+        // Items: 100..lastItemId (inclusive)
+        for (int id = 100; id <= lastItemId; id++)
         {
-            var info = ParseThing(r, isCreature: false);
-            items[(ushort)id] = info;
+            var thing = ParseThing(r, (ushort)id, ThingCategory.Item);
+            items[(ushort)id] = thing;
+        }
+
+        // Parse outfits/effects/missiles independently — don't let failures block items
+        try
+        {
+            for (int id = 1; id <= numOutfits; id++)
+                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit);
+
+            for (int id = 1; id <= numEffects; id++)
+                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect);
+
+            for (int id = 1; id <= numMissiles; id++)
+                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile);
+        }
+        catch
+        {
+            // Non-item categories may fail on certain DAT variants; items are still valid
         }
 
         return new DatData
         {
             Signature = signature,
-            ItemCount = numItems,
-            OutfitCount = numOutfits,
-            EffectCount = numEffects,
-            MissileCount = numMissiles,
+            ItemCount = (ushort)numItems,
+            OutfitCount = (ushort)numOutfits,
+            EffectCount = (ushort)numEffects,
+            MissileCount = (ushort)numMissiles,
             Items = items,
+            Outfits = outfits,
+            Effects = effects,
+            Missiles = missiles,
         };
     }
 
-    private static DatItemInfo ParseThing(DatReader r, bool isCreature)
+    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category)
     {
-        var attrs = ParseAttrs(r);
+        var thing = new DatThingType { Id = id, Category = category };
 
-        uint firstSpriteId = 0;
-        int groupCount = 1;
-        if (isCreature)
-            groupCount = r.U8();
+        // ── Parse flags (MetadataFlags6) ──
+        ParseFlags(r, thing);
 
-        int animPhases = 0;
+        // ── Parse frame groups ──
+        bool isOutfit = category == ThingCategory.Outfit;
+        int groupCount = isOutfit ? r.U8() : 1;
+        var groups = new FrameGroup[groupCount];
+
         for (int g = 0; g < groupCount; g++)
         {
-            if (isCreature) r.U8(); // frameGroupType
+            var fg = new FrameGroup();
+            if (isOutfit)
+                fg.Type = (FrameGroupType)r.U8();
 
-            int w = r.U8();
-            int h = r.U8();
-            if (w > 1 || h > 1) r.U8(); // realSize
+            fg.Width = r.U8();
+            fg.Height = r.U8();
+            if (fg.Width > 1 || fg.Height > 1)
+                fg.ExactSize = r.U8();
 
-            int layers = r.U8();
-            int patX = r.U8();
-            int patY = r.U8();
-            int patZ = r.U8();
+            fg.Layers = r.U8();
+            fg.PatternX = r.U8();
+            fg.PatternY = r.U8();
+            fg.PatternZ = r.U8();
+            fg.Frames = r.U8();
 
-            int phases = r.U8();
-            animPhases += phases;
-
-            if (phases > 1) // Enhanced animations (active for 1098)
+            // Improved animations (protocol >= 1050, active for 1098)
+            if (fg.Frames > 1)
             {
-                r.U8();  // async
-                r.S32(); // loopCount
-                r.S8();  // startPhase
-                for (int i = 0; i < phases; i++)
+                fg.AnimationMode = (AnimationMode)r.U8();
+                fg.LoopCount = r.S32();
+                fg.StartFrame = r.S8();
+                fg.FrameDurations = new FrameDuration[fg.Frames];
+                for (int i = 0; i < fg.Frames; i++)
                 {
-                    r.U32(); // min
-                    r.U32(); // max
+                    fg.FrameDurations[i] = new FrameDuration
+                    {
+                        Minimum = r.U32(),
+                        Maximum = r.U32(),
+                    };
                 }
             }
 
-            int totalSprites = w * h * layers * patX * patY * patZ * phases;
+            // Sprite index (extended = U32 for protocol >= 960)
+            int totalSprites = fg.SpriteCount;
+            fg.SpriteIndex = new uint[totalSprites];
             for (int i = 0; i < totalSprites; i++)
-            {
-                uint sid = r.U32();
-                if (i == 0 && g == 0) firstSpriteId = sid;
-            }
+                fg.SpriteIndex[i] = r.U32();
+
+            groups[g] = fg;
         }
 
-        return new DatItemInfo
-        {
-            AnimPhases = animPhases,
-            AnimateAlways = attrs.Contains(27), // ThingAttrAnimateAlways
-            FirstSpriteId = firstSpriteId,
-        };
+        thing.FrameGroups = groups;
+        return thing;
     }
 
-    private static HashSet<int> ParseAttrs(DatReader r)
+    private static void ParseFlags(DatReader r, DatThingType thing)
     {
-        var attrs = new HashSet<int>();
-        for (int safety = 0; safety < 255; safety++)
+        while (true)
         {
-            int raw = r.U8();
-            if (raw == 0xFF) break;
+            int flag = r.U8();
+            if (flag == 0xFF) break;
 
-            int attr = RemapAttr(raw);
-            attrs.Add(attr);
-
-            // Attrs with payloads
-            if (attr is 0 or 25 or 8 or 9 or 28 or 32 or 29 or 251) // U16 payload
-                r.U16();
-            else if (attr is 24 or 21) // 2x U16 payload
+            switch (flag)
             {
-                r.U16();
-                r.U16();
+                case 0x00: // Ground
+                    thing.IsGround = true;
+                    thing.GroundSpeed = r.U16();
+                    break;
+                case 0x01: thing.IsGroundBorder = true; break;
+                case 0x02: thing.IsOnBottom = true; break;
+                case 0x03: thing.IsOnTop = true; break;
+                case 0x04: thing.IsContainer = true; break;
+                case 0x05: thing.IsStackable = true; break;
+                case 0x06: thing.IsForceUse = true; break;
+                case 0x07: thing.IsMultiUse = true; break;
+                case 0x08: // Writable
+                    thing.IsWritable = true;
+                    thing.MaxTextLength = r.U16();
+                    break;
+                case 0x09: // Writable once
+                    thing.IsWritableOnce = true;
+                    thing.MaxTextLength = r.U16();
+                    break;
+                case 0x0A: thing.IsFluidContainer = true; break;
+                case 0x0B: thing.IsFluid = true; break;
+                case 0x0C: thing.IsUnpassable = true; break;
+                case 0x0D: thing.IsUnmoveable = true; break;
+                case 0x0E: thing.IsBlockMissile = true; break;
+                case 0x0F: thing.IsBlockPathfind = true; break;
+                case 0x10: thing.IsNoMoveAnimation = true; break;
+                case 0x11: thing.IsPickupable = true; break;
+                case 0x12: thing.IsHangable = true; break;
+                case 0x13: thing.IsVertical = true; break;
+                case 0x14: thing.IsHorizontal = true; break;
+                case 0x15: thing.IsRotatable = true; break;
+                case 0x16: // Has light
+                    thing.HasLight = true;
+                    thing.LightLevel = r.U16();
+                    thing.LightColor = r.U16();
+                    break;
+                case 0x17: thing.IsDontHide = true; break;
+                case 0x18: thing.IsTranslucent = true; break;
+                case 0x19: // Has offset
+                    thing.HasOffset = true;
+                    thing.OffsetX = r.S16();
+                    thing.OffsetY = r.S16();
+                    break;
+                case 0x1A: // Has elevation
+                    thing.HasElevation = true;
+                    thing.Elevation = r.U16();
+                    break;
+                case 0x1B: thing.IsLyingObject = true; break;
+                case 0x1C: thing.IsAnimateAlways = true; break;
+                case 0x1D: // Minimap
+                    thing.IsMiniMap = true;
+                    thing.MiniMapColor = r.U16();
+                    break;
+                case 0x1E: // Lens help
+                    thing.IsLensHelp = true;
+                    thing.LensHelp = r.U16();
+                    break;
+                case 0x1F: thing.IsFullGround = true; break;
+                case 0x20: thing.IsIgnoreLook = true; break;
+                case 0x21: // Cloth
+                    thing.IsCloth = true;
+                    thing.ClothSlot = r.U16();
+                    break;
+                case 0x22: // Market item
+                    thing.IsMarketItem = true;
+                    thing.MarketCategory = r.U16();
+                    thing.MarketTradeAs = r.U16();
+                    thing.MarketShowAs = r.U16();
+                    var nameLen = r.U16();
+                    if (nameLen > 512) nameLen = 512;
+                    var rawName = r.String(nameLen);
+                    // Keep only printable ASCII (valid market names are plain text)
+                    thing.MarketName = new string(rawName.Where(c => c >= 0x20 && c <= 0x7E).ToArray());
+                    thing.MarketRestrictProfession = r.U16();
+                    thing.MarketRestrictLevel = r.U16();
+                    break;
+                case 0x23: // Default action
+                    thing.HasDefaultAction = true;
+                    thing.DefaultAction = r.U16();
+                    break;
+                case 0x24: thing.IsWrappable = true; break;
+                case 0x25: thing.IsUnwrappable = true; break;
+                case 0x26: thing.IsTopEffect = true; break;
+                case 0xFE: thing.IsUsable = true; break;
             }
-            else if (attr == 33) // Market
-            {
-                r.U16(); // category
-                r.U16(); // tradeAs
-                r.U16(); // showAs
-                var nameLen = r.U16();
-                r.Skip(nameLen);
-                r.U16(); // voc
-                r.U16(); // level
-            }
-            // else: boolean flag, no payload
         }
-        return attrs;
     }
 
-    /// <summary>Version >=1000 attribute remapping.</summary>
-    private static int RemapAttr(int raw)
-    {
-        if (raw == 16) return 253;  // NoMoveAnimation
-        if (raw == 254) return 34;  // Usable
-        if (raw == 35) return 251;  // DefaultAction
-        if (raw > 16) return raw - 1;
-        return raw;
-    }
-
-    private sealed class DatReader(byte[] data)
+    internal sealed class DatReader(byte[] data)
     {
         private int _pos;
+
+        public int Remaining => data.Length - _pos;
 
         public byte U8() => data[_pos++];
 
@@ -164,6 +247,13 @@ public static class DatFile
         public ushort U16()
         {
             var v = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(_pos));
+            _pos += 2;
+            return v;
+        }
+
+        public short S16()
+        {
+            var v = BinaryPrimitives.ReadInt16LittleEndian(data.AsSpan(_pos));
             _pos += 2;
             return v;
         }
@@ -182,6 +272,13 @@ public static class DatFile
             return v;
         }
 
+        public string String(int length)
+        {
+            var s = Encoding.Latin1.GetString(data, _pos, length);
+            _pos += length;
+            return s;
+        }
+
         public void Skip(int n) => _pos += n;
     }
 }
@@ -194,10 +291,14 @@ public sealed class DatData
     public ushort EffectCount { get; init; }
     public ushort MissileCount { get; init; }
 
-    /// <summary>Client-ID → item animation info.</summary>
-    public Dictionary<ushort, DatItemInfo> Items { get; init; } = [];
+    /// <summary>Client-ID → full thing type for items.</summary>
+    public Dictionary<ushort, DatThingType> Items { get; init; } = [];
+    public Dictionary<ushort, DatThingType> Outfits { get; init; } = [];
+    public Dictionary<ushort, DatThingType> Effects { get; init; } = [];
+    public Dictionary<ushort, DatThingType> Missiles { get; init; } = [];
 }
 
+// Keep backward compat alias
 public sealed class DatItemInfo
 {
     public int AnimPhases { get; init; }

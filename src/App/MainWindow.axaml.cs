@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using POriginsItemEditor.App.ViewModels;
 
 namespace POriginsItemEditor.App;
@@ -10,6 +11,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += async (_, _) =>
+        {
+            if (DataContext is MainWindowViewModel vm)
+                await vm.TryLoadLastSessionAsync();
+        };
     }
 
     private void OnMinimapSwatchClicked(object? sender, PointerPressedEventArgs e)
@@ -23,7 +29,6 @@ public partial class MainWindow : Window
         if (sender is not Border border || DataContext is not MainWindowViewModel vm || vm.SelectedItem is not { } item)
             return;
 
-        // Tag may be boxed as ushort or int depending on XAML binding
         ushort index = border.Tag switch
         {
             ushort u => u,
@@ -34,7 +39,6 @@ public partial class MainWindow : Window
 
         item.MinimapColor = index;
 
-        // Walk up to find the control with the attached flyout and close it
         Control? current = border;
         while (current != null)
         {
@@ -46,5 +50,27 @@ public partial class MainWindow : Window
             }
             current = current.Parent as Control;
         }
+    }
+
+    private void OnCompositionSpriteDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border border
+            && border.DataContext is SpriteViewModel svm
+            && DataContext is MainWindowViewModel vm)
+        {
+            vm.NavigateRightSpriteToIdCommand.Execute(svm.SpriteId);
+        }
+    }
+
+    private void OnClientItemDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.OpenClientItemEditor();
+    }
+
+    private void OnOtbItemDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.OpenOtbItemEditor();
     }
 }
