@@ -24,7 +24,440 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Original snapshots for reset: keyed by (Category, Id).</summary>
     private readonly Dictionary<(ThingCategory, ushort), DatThingType> _originalSnapshots = [];
 
-    [ObservableProperty] private string _statusText = "Selecione a pasta do client para começar";
+    // ── Workspace navigation ──
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsItemEditorActive))]
+    [NotifyPropertyChangedFor(nameof(IsMapEditorActive))]
+    private int _activeEditorIndex;
+
+    public bool IsItemEditorActive => ActiveEditorIndex == 0;
+    public bool IsMapEditorActive => ActiveEditorIndex == 1;
+
+    [RelayCommand]
+    private void SwitchToItemEditor() => ActiveEditorIndex = 0;
+
+    [RelayCommand]
+    private void SwitchToMapEditor() => ActiveEditorIndex = 1;
+
+    // ── Map Editor ──
+    [ObservableProperty] private MapData? _mapData;
+    [ObservableProperty] private string _mapStatusText = "No map loaded";
+    [ObservableProperty] private byte _mapCurrentFloor = 7;
+    [ObservableProperty] private double _mapZoom = 1.0;
+    [ObservableProperty] private string _mapHoveredTile = string.Empty;
+    [ObservableProperty] private int _mapTileCount;
+    [ObservableProperty] private string? _mapFilePath;
+    [ObservableProperty] private WriteableBitmap? _mapMinimapBitmap;
+    [ObservableProperty] private bool _mapHasUnsavedChanges;
+
+    // ── Action log (strategic user action messages) ──
+    public ObservableCollection<string> MapActionLog { get; } = [];
+    private const int MaxLogEntries = 200;
+
+    // ── Tile inspector (single selected tile) ──
+    [ObservableProperty] private ObservableCollection<TileItemInfo> _selectedTileItems = [];
+    [ObservableProperty] private string _selectedTileHeader = string.Empty;
+
+    // ── Inspector detail (single item selected from list) ──
+    [ObservableProperty] private TileItemInfo? _inspectorSelectedItem;
+    [ObservableProperty] private ObservableCollection<InspectorSection> _inspectorDetailSections = [];
+
+    // ── Log panel south of map ──
+    [ObservableProperty] private bool _isLogPanelVisible = true;
+    [ObservableProperty] private double _logFontSize = 9;
+    [ObservableProperty] private double _logPanelHeight = 140;
+
+    [RelayCommand]
+    private void ToggleLogPanel() => IsLogPanelVisible = !IsLogPanelVisible;
+
+    [RelayCommand]
+    private void LogFontIncrease() => LogFontSize = Math.Min(LogFontSize + 1, 18);
+
+    [RelayCommand]
+    private void LogFontDecrease() => LogFontSize = Math.Max(LogFontSize - 1, 7);
+
+    [RelayCommand]
+    private void SelectInspectorItem(TileItemInfo? item)
+    {
+        InspectorSelectedItem = item;
+        InspectorDetailSections.Clear();
+        if (item == null) return;
+
+        ushort serverId = item.ServerId;
+        var otbItem = _otbData?.Items.FirstOrDefault(o => o.ServerId == serverId);
+        ushort clientId = otbItem?.ClientId ?? 0;
+        DatThingType? datType = null;
+        if (clientId > 0) _datData?.Items.TryGetValue(clientId, out datType);
+
+        // ═══ Section 1: Identification ═══
+        var idSection = new InspectorSection { Title = "Identification" };
+        idSection.Props.Add(new("Server ID", serverId.ToString()));
+        idSection.Props.Add(new("Client ID", clientId > 0 ? clientId.ToString() : "—"));
+        if (otbItem != null)
+        {
+            idSection.Props.Add(new("Group", otbItem.Group.ToString()));
+            if (!string.IsNullOrEmpty(otbItem.Name)) idSection.Props.Add(new("Name", otbItem.Name));
+        }
+        if (datType != null)
+            idSection.Props.Add(new("Category", datType.Category.ToString()));
+        InspectorDetailSections.Add(idSection);
+
+        // ═══ Section 2: OTB Properties ═══
+        if (otbItem != null)
+        {
+            var otbProps = new InspectorSection { Title = "OTB Properties" };
+            if (otbItem.Speed > 0) otbProps.Props.Add(new("Speed", otbItem.Speed.ToString()));
+            if (otbItem.TopOrder > 0) otbProps.Props.Add(new("Top Order", otbItem.TopOrder.ToString()));
+            if (otbItem.LightLevel > 0 || otbItem.LightColor > 0)
+                otbProps.Props.Add(new("Light", $"Level {otbItem.LightLevel}, Color {otbItem.LightColor}"));
+            if (otbItem.MinimapColor > 0) otbProps.Props.Add(new("Minimap Color", otbItem.MinimapColor.ToString()));
+            if (otbItem.WareId > 0) otbProps.Props.Add(new("Ware ID", otbItem.WareId.ToString()));
+            if (otbItem.MaxReadWriteChars > 0) otbProps.Props.Add(new("Max Write", otbItem.MaxReadWriteChars.ToString()));
+            if (otbItem.MaxReadChars > 0) otbProps.Props.Add(new("Max Read", otbItem.MaxReadChars.ToString()));
+
+            // OTB Flags as individual pills
+            if (otbItem.IsBlockSolid) otbProps.Flags.Add("Block Solid");
+            if (otbItem.IsBlockProjectile) otbProps.Flags.Add("Block Projectile");
+            if (otbItem.IsStackable) otbProps.Flags.Add("Stackable");
+            if (otbItem.IsPickupable) otbProps.Flags.Add("Pickupable");
+            if (otbItem.IsMoveable) otbProps.Flags.Add("Moveable");
+            if (otbItem.IsHasHeight) otbProps.Flags.Add("Has Height");
+            if (otbItem.IsUsable) otbProps.Flags.Add("Usable");
+            if (otbItem.IsHangable) otbProps.Flags.Add("Hangable");
+            if (otbItem.IsRotatable) otbProps.Flags.Add("Rotatable");
+            if (otbItem.IsReadable) otbProps.Flags.Add("Readable");
+            if (otbItem.IsAnimation) otbProps.Flags.Add("Animated");
+            if (otbItem.IsFullGround) otbProps.Flags.Add("Full Ground");
+            if (otbItem.IsLookThrough) otbProps.Flags.Add("Look Through");
+            if (otbItem.IsForceUse) otbProps.Flags.Add("Force Use");
+            if (otbProps.HasProps || otbProps.HasFlags)
+                InspectorDetailSections.Add(otbProps);
+        }
+
+        // ═══ Section 3: DAT Properties ═══
+        if (datType != null)
+        {
+            var datProps = new InspectorSection { Title = "DAT Properties" };
+            if (datType.GroundSpeed > 0) datProps.Props.Add(new("Ground Speed", datType.GroundSpeed.ToString()));
+            if (datType.MaxTextLength > 0) datProps.Props.Add(new("Max Text", datType.MaxTextLength.ToString()));
+            if (datType.LightLevel > 0 || datType.LightColor > 0)
+                datProps.Props.Add(new("Light", $"Level {datType.LightLevel}, Color {datType.LightColor}"));
+            if (datType.OffsetX != 0 || datType.OffsetY != 0)
+                datProps.Props.Add(new("Offset", $"X:{datType.OffsetX}  Y:{datType.OffsetY}"));
+            if (datType.Elevation > 0) datProps.Props.Add(new("Elevation", datType.Elevation.ToString()));
+            if (datType.MiniMapColor > 0) datProps.Props.Add(new("Minimap Color", datType.MiniMapColor.ToString()));
+            if (datType.LensHelp > 0) datProps.Props.Add(new("Cursor", datType.LensHelp.ToString()));
+            if (datType.ClothSlot > 0) datProps.Props.Add(new("Cloth Slot", datType.ClothSlot.ToString()));
+            if (datType.DefaultAction > 0) datProps.Props.Add(new("Default Action", datType.DefaultAction.ToString()));
+            if (datProps.HasProps)
+                InspectorDetailSections.Add(datProps);
+
+            // ═══ Section 4: DAT Flags (Posicionamento) ═══
+            var posFlags = new InspectorSection { Title = "Positioning" };
+            if (datType.IsGround) posFlags.Flags.Add("Ground");
+            if (datType.IsGroundBorder) posFlags.Flags.Add("Ground Border");
+            if (datType.IsOnBottom) posFlags.Flags.Add("On Bottom");
+            if (datType.IsOnTop) posFlags.Flags.Add("On Top");
+            if (datType.IsFullGround) posFlags.Flags.Add("Full Ground");
+            if (datType.IsHangable) posFlags.Flags.Add("Hangable");
+            if (datType.IsVertical) posFlags.Flags.Add("Vertical (Hook South)");
+            if (datType.IsHorizontal) posFlags.Flags.Add("Horizontal (Hook East)");
+            if (datType.IsLyingObject) posFlags.Flags.Add("Lying Object");
+            if (datType.HasElevation) posFlags.Flags.Add("Has Elevation");
+            if (datType.HasOffset) posFlags.Flags.Add("Has Offset");
+            if (posFlags.HasFlags) InspectorDetailSections.Add(posFlags);
+
+            // ═══ Section 5: DAT Flags (Bloqueio) ═══
+            var blockFlags = new InspectorSection { Title = "Blocking" };
+            if (datType.IsUnpassable) blockFlags.Flags.Add("Unpassable");
+            if (datType.IsBlockMissile) blockFlags.Flags.Add("Block Missile");
+            if (datType.IsBlockPathfind) blockFlags.Flags.Add("Block Pathfind");
+            if (datType.IsUnmoveable) blockFlags.Flags.Add("Unmoveable");
+            if (blockFlags.HasFlags) InspectorDetailSections.Add(blockFlags);
+
+            // ═══ Section 6: DAT Flags (Interaction) ═══
+            var interFlags = new InspectorSection { Title = "Interaction" };
+            if (datType.IsContainer) interFlags.Flags.Add("Container");
+            if (datType.IsStackable) interFlags.Flags.Add("Stackable");
+            if (datType.IsPickupable) interFlags.Flags.Add("Pickupable");
+            if (datType.IsRotatable) interFlags.Flags.Add("Rotatable");
+            if (datType.IsForceUse) interFlags.Flags.Add("Force Use");
+            if (datType.IsMultiUse) interFlags.Flags.Add("Multi-Use");
+            if (datType.IsUsable) interFlags.Flags.Add("Usable");
+            if (datType.IsWritable) interFlags.Flags.Add("Writable");
+            if (datType.IsWritableOnce) interFlags.Flags.Add("Writable Once");
+            if (datType.IsFluidContainer) interFlags.Flags.Add("Fluid Container");
+            if (datType.IsFluid) interFlags.Flags.Add("Fluid");
+            if (interFlags.HasFlags) InspectorDetailSections.Add(interFlags);
+
+            // ═══ Section 7: DAT Flags (Visual) ═══
+            var visFlags = new InspectorSection { Title = "Visual" };
+            if (datType.HasLight) visFlags.Flags.Add("Has Light");
+            if (datType.IsTranslucent) visFlags.Flags.Add("Translucent");
+            if (datType.IsDontHide) visFlags.Flags.Add("Don't Hide");
+            if (datType.IsAnimateAlways) visFlags.Flags.Add("Animate Always");
+            if (datType.IsNoMoveAnimation) visFlags.Flags.Add("No Move Animation");
+            if (datType.IsMiniMap) visFlags.Flags.Add("Minimap");
+            if (datType.IsIgnoreLook) visFlags.Flags.Add("Ignore Look");
+            if (datType.IsTopEffect) visFlags.Flags.Add("Top Effect");
+            if (visFlags.HasFlags) InspectorDetailSections.Add(visFlags);
+
+            // ═══ Section 8: DAT Flags (Outros) ═══
+            var otherFlags = new InspectorSection { Title = "Other" };
+            if (datType.IsCloth) otherFlags.Flags.Add("Cloth");
+            if (datType.IsWrappable) otherFlags.Flags.Add("Wrappable");
+            if (datType.IsUnwrappable) otherFlags.Flags.Add("Unwrappable");
+            if (datType.IsMarketItem) otherFlags.Flags.Add("Market Item");
+            if (otherFlags.HasFlags) InspectorDetailSections.Add(otherFlags);
+
+            // ═══ Section 9: Market ═══
+            if (datType.MarketCategory > 0 || !string.IsNullOrEmpty(datType.MarketName))
+            {
+                var marketSection = new InspectorSection { Title = "Market" };
+                if (!string.IsNullOrEmpty(datType.MarketName)) marketSection.Props.Add(new("Name", datType.MarketName));
+                if (datType.MarketCategory > 0) marketSection.Props.Add(new("Category", datType.MarketCategory.ToString()));
+                if (datType.MarketTradeAs > 0) marketSection.Props.Add(new("Trade As", datType.MarketTradeAs.ToString()));
+                if (datType.MarketShowAs > 0) marketSection.Props.Add(new("Show As", datType.MarketShowAs.ToString()));
+                if (datType.MarketRestrictProfession > 0) marketSection.Props.Add(new("Profession", datType.MarketRestrictProfession.ToString()));
+                if (datType.MarketRestrictLevel > 0) marketSection.Props.Add(new("Min. Level", datType.MarketRestrictLevel.ToString()));
+                InspectorDetailSections.Add(marketSection);
+            }
+
+            // ═══ Section 10: Sprite Data ═══
+            if (datType.FrameGroups.Length > 0)
+            {
+                var sprSection = new InspectorSection { Title = "Sprites" };
+                for (int i = 0; i < datType.FrameGroups.Length; i++)
+                {
+                    var fg = datType.FrameGroups[i];
+                    sprSection.Props.Add(new("Group", fg.Type.ToString()));
+                    sprSection.Props.Add(new("Size", $"{fg.Width}×{fg.Height}"));
+                    sprSection.Props.Add(new("Layers", fg.Layers.ToString()));
+                    sprSection.Props.Add(new("Pattern", $"{fg.PatternX}×{fg.PatternY}×{fg.PatternZ}"));
+                    sprSection.Props.Add(new("Frames", fg.Frames.ToString()));
+                    sprSection.Props.Add(new("Total Sprites", fg.SpriteIndex.Length.ToString()));
+                    if (fg.IsAnimation)
+                    {
+                        sprSection.Props.Add(new("Anim. Mode", fg.AnimationMode.ToString()));
+                        sprSection.Props.Add(new("Loop", fg.LoopCount == 0 ? "Infinite" : fg.LoopCount.ToString()));
+                    }
+                }
+                InspectorDetailSections.Add(sprSection);
+            }
+        }
+
+        // If not found in either
+        if (otbItem == null && datType == null)
+        {
+            var missing = new InspectorSection { Title = "Warning" };
+            missing.Props.Add(new("Status", "Item not found in OTB or DAT"));
+            InspectorDetailSections.Add(missing);
+        }
+    }
+
+    [RelayCommand]
+    private void ClearInspectorDetail()
+    {
+        InspectorSelectedItem = null;
+        InspectorDetailSections.Clear();
+    }
+
+    public DatData? ExposedDatData => _datData;
+    public SprFile? ExposedSprFile => _sprFile;
+    public OtbData? ExposedOtbData => _otbData;
+    public BrushDatabase? BrushDb { get; private set; }
+
+    public byte[] MapFloors => MapData?.GetFloors() ?? [7];
+
+    partial void OnMapCurrentFloorChanged(byte value)
+    {
+        OnPropertyChanged(nameof(MapFloors));
+    }
+
+    [RelayCommand]
+    private async Task OpenMapAsync()
+    {
+        var path = await FileDialogHelper.OpenFileAsync("Open OTBM Map",
+            [("OTBM Files", "*.otbm"), ("All Files", "*")]);
+        if (path == null) return;
+        await LoadMapFromPath(path);
+    }
+
+    private async Task LoadMapFromPath(string path)
+    {
+        try
+        {
+            MapData = OtbmFile.Load(path);
+            MapFilePath = path;
+            MapTileCount = MapData.Tiles.Count;
+            MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns — {Path.GetFileName(path)}";
+            MapHasUnsavedChanges = false;
+            AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
+            OnPropertyChanged(nameof(MapFloors));
+            OnPropertyChanged(nameof(ExposedDatData));
+            OnPropertyChanged(nameof(ExposedSprFile));
+            OnPropertyChanged(nameof(ExposedOtbData));
+
+            // Auto-select floor 7 if available
+            var floors = MapData.GetFloors();
+            if (floors.Length > 0)
+                MapCurrentFloor = floors.Contains((byte)7) ? (byte)7 : floors[0];
+        }
+        catch (Exception ex)
+        {
+            MapStatusText = $"Error: {ex.Message}";
+        }
+    }
+
+    // ── Save map ──
+
+    [RelayCommand]
+    public void SaveMap()
+    {
+        if (MapData == null || string.IsNullOrEmpty(MapFilePath)) return;
+        try
+        {
+            OtbmFile.Save(MapFilePath, MapData);
+            MapTileCount = MapData.Tiles.Count;
+            MapHasUnsavedChanges = false;
+            MapStatusText = $"Map saved: {MapTileCount:N0} tiles — {Path.GetFileName(MapFilePath)}";
+            AddMapLog("Map saved successfully");
+        }
+        catch (Exception ex)
+        {
+            MapStatusText = $"Save error: {ex.Message}";
+            AddMapLog($"SAVE ERROR: {ex.Message}");
+        }
+    }
+
+    /// <summary>Called by MapCanvasControl.MapEdited event.</summary>
+    public void MarkMapDirty()
+    {
+        MapHasUnsavedChanges = true;
+        MapTileCount = MapData?.Tiles.Count ?? 0;
+    }
+
+    /// <summary>Called by MapCanvasControl.ActionLogged event.</summary>
+    public void AddMapLog(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+        MapActionLog.Insert(0, $"[{timestamp}] {message}");
+        while (MapActionLog.Count > MaxLogEntries)
+            MapActionLog.RemoveAt(MapActionLog.Count - 1);
+    }
+
+    /// <summary>Called by MapCanvasControl.SelectedTileChanged event.</summary>
+    public void OnSelectedTileChanged(MapPosition? pos)
+    {
+        SelectedTileItems.Clear();
+        SelectedTileHeader = string.Empty;
+        // Clear detail view when tile changes
+        InspectorSelectedItem = null;
+        InspectorDetailSections.Clear();
+
+        if (pos == null || MapData == null) return;
+        if (!MapData.Tiles.TryGetValue(pos.Value, out var tile)) return;
+
+        SelectedTileHeader = $"Tile ({pos.Value.X}, {pos.Value.Y}, {pos.Value.Z}) — {tile.Items.Count} items";
+        if (tile.Flags != 0)
+            SelectedTileHeader += $" | Flags: 0x{tile.Flags:X}";
+        if (tile.HouseId > 0)
+            SelectedTileHeader += $" | House: {tile.HouseId}";
+
+        for (int i = 0; i < tile.Items.Count; i++)
+        {
+            var item = tile.Items[i];
+            var info = new TileItemInfo
+            {
+                Index = i,
+                ServerId = item.Id,
+                Label = i == 0 ? "Ground" : $"Item #{i}"
+            };
+
+            // Resolve name from OTB if available
+            if (_otbData != null)
+            {
+                var otbItem = _otbData.Items.FirstOrDefault(o => o.ServerId == item.Id);
+                if (otbItem != null && !string.IsNullOrEmpty(otbItem.Name))
+                    info.Name = otbItem.Name;
+            }
+
+            if (item.Count != 0) info.Details.Add($"Count: {item.Count}");
+            if (item.ActionId != 0) info.Details.Add($"ActionId: {item.ActionId}");
+            if (item.UniqueId != 0) info.Details.Add($"UniqueId: {item.UniqueId}");
+            if (item.Text != null) info.Details.Add($"Text: \"{item.Text}\"");
+            if (item.TeleportDestination is { } dest)
+                info.Details.Add($"Teleport: ({dest.X}, {dest.Y}, {dest.Z})");
+            if (item.DepotId != 0) info.Details.Add($"DepotId: {item.DepotId}");
+            if (item.DoorId != 0) info.Details.Add($"DoorId: {item.DoorId}");
+            if (item.Contents.Count > 0) info.Details.Add($"Contents: {item.Contents.Count} items");
+
+            SelectedTileItems.Add(info);
+        }
+
+        // Auto-select detail when tile has only one item
+        if (SelectedTileItems.Count == 1)
+            SelectInspectorItem(SelectedTileItems[0]);
+    }
+
+    // ── Map floor/zoom/goto commands ──
+    [ObservableProperty] private int _mapGoToX;
+    [ObservableProperty] private int _mapGoToY;
+    [ObservableProperty] private int _mapGoToZ = 7;
+
+    [RelayCommand]
+    private void MapFloorUp()
+    {
+        if (MapCurrentFloor > 0) MapCurrentFloor = (byte)(MapCurrentFloor - 1);
+    }
+
+    [RelayCommand]
+    private void MapFloorDown()
+    {
+        if (MapCurrentFloor < 15) MapCurrentFloor = (byte)(MapCurrentFloor + 1);
+    }
+
+    [RelayCommand]
+    private void MapZoomIn() => MapZoom = Math.Min(MapZoom * 1.25, 4.0);
+
+    [RelayCommand]
+    private void MapZoomOut() => MapZoom = Math.Max(MapZoom * 0.8, 0.125);
+
+    [RelayCommand]
+    private void MapCenter() => _mapCenterRequested?.Invoke();
+
+    [RelayCommand]
+    private void MapGoTo() => _mapGoToRequested?.Invoke((ushort)MapGoToX, (ushort)MapGoToY, (byte)MapGoToZ);
+
+    // Events for the View to hook into (for MapCanvasControl interaction)
+    internal Action? _mapCenterRequested;
+    internal Action<ushort, ushort, byte>? _mapGoToRequested;
+
+    // ── View menu toggles (bound to MapCanvasControl properties) ──
+    [ObservableProperty] private bool _viewShowAllFloors = true;
+    [ObservableProperty] private bool _viewShowAnimation = true;
+    [ObservableProperty] private bool _viewShowLights = true;
+    [ObservableProperty] private bool _viewShowGrid;
+    [ObservableProperty] private bool _viewShowShade = true;
+    [ObservableProperty] private bool _viewShowAsMinimap;
+    [ObservableProperty] private bool _viewGhostItems;
+    [ObservableProperty] private bool _viewGhostHigherFloors;
+    [ObservableProperty] private bool _viewShowSpecial = true;
+    [ObservableProperty] private bool _viewShowHouses = true;
+    [ObservableProperty] private bool _viewShowWaypoints = true;
+    [ObservableProperty] private bool _viewShowTowns;
+    [ObservableProperty] private bool _viewShowPathing;
+    [ObservableProperty] private bool _viewHighlightItems;
+    [ObservableProperty] private bool _viewShowTooltips = true;
+    [ObservableProperty] private bool _viewShowIngameBox;
+
+    // ── Palette ──
+    [ObservableProperty] private PaletteViewModel? _palette;
+
+    // ── Brush (selected item for map placement) ──
+    [ObservableProperty] private ushort _brushServerId;
+
+    [ObservableProperty] private string _statusText = "Select the client folder to begin";
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private ItemViewModel? _selectedItem;
     [ObservableProperty] private bool _showMismatchesOnly;
@@ -605,7 +1038,7 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task SelectClientFolderAsync()
     {
-        var folderPath = await FileDialogHelper.OpenFolderAsync("Selecionar pasta do Client");
+        var folderPath = await FileDialogHelper.OpenFolderAsync("Select Client Folder");
         if (folderPath == null) return;
         await LoadClientFromFolder(folderPath);
     }
@@ -616,7 +1049,7 @@ public partial class MainWindowViewModel : ObservableObject
         var (datPath, sprPath) = FindClientFiles(folderPath);
         if (datPath == null || sprPath == null)
         {
-            StatusText = "Não encontrado Tibia.dat/Tibia.spr na pasta selecionada";
+            StatusText = "Tibia.dat/Tibia.spr not found in selected folder";
             return;
         }
 
@@ -627,8 +1060,11 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile = SprFile.Load(sprPath);
             ClientFolderPath = folderPath;
             IsClientLoaded = true;
-            StatusText = $"Client carregado: {_datData.ItemCount} itens, {_sprFile.SpriteCount} sprites — {Path.GetFileName(Path.GetDirectoryName(datPath))}";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — {Path.GetFileName(Path.GetDirectoryName(datPath))}";
 
+            // Notify map editor of new data sources
+            OnPropertyChanged(nameof(ExposedDatData));
+            OnPropertyChanged(nameof(ExposedSprFile));
             _appSettings.LastClientFolderPath = folderPath;
             _appSettings.Save();
 
@@ -642,18 +1078,19 @@ public partial class MainWindowViewModel : ObservableObject
                 CrossReferenceDat();
                 LoadAllSprites();
                 ApplyFilter();
+                InitializePalette();
             }
         }
         catch (Exception ex)
         {
-            StatusText = $"Erro ao carregar client: {ex.Message}";
+            StatusText = $"Client load error: {ex.Message}";
         }
     }
 
     [RelayCommand]
     private async Task OpenOtbAsync()
     {
-        var path = await FileDialogHelper.OpenFileAsync("Abrir items.otb", [("OTB Files", "*.otb"), ("All Files", "*")]);
+        var path = await FileDialogHelper.OpenFileAsync("Open items.otb", [("OTB Files", "*.otb"), ("All Files", "*")]);
         if (path == null) return;
         await LoadOtbFromPath(path);
     }
@@ -665,15 +1102,22 @@ public partial class MainWindowViewModel : ObservableObject
             _otbData = OtbFile.Load(path);
             _otbPath = path;
             BuildItemList();
-            StatusText = $"OTB carregado: {_otbData.Items.Count} itens — {Path.GetFileName(path)}";
+            StatusText = $"OTB loaded: {_otbData.Items.Count} items — {Path.GetFileName(path)}";
             HasUnsavedChanges = false;
+
+            // Notify map editor
+            OnPropertyChanged(nameof(ExposedOtbData));
 
             _appSettings.LastOtbPath = path;
             _appSettings.Save();
+
+            // Initialize palette if client already loaded
+            if (_datData != null && _sprFile != null)
+                InitializePalette();
         }
         catch (Exception ex)
         {
-            StatusText = $"Erro ao carregar OTB: {ex.Message}";
+            StatusText = $"OTB load error: {ex.Message}";
         }
     }
 
@@ -683,6 +1127,35 @@ public partial class MainWindowViewModel : ObservableObject
             await LoadClientFromFolder(_appSettings.LastClientFolderPath);
         if (!string.IsNullOrEmpty(_appSettings.LastOtbPath) && File.Exists(_appSettings.LastOtbPath))
             await LoadOtbFromPath(_appSettings.LastOtbPath);
+    }
+
+    // ── Palette initialization ──
+
+    private void InitializePalette()
+    {
+        Palette ??= new PaletteViewModel(this);
+        Palette.Initialize(_otbData, _datData, _sprFile);
+        LoadBrushDatabase();
+    }
+
+    private void LoadBrushDatabase()
+    {
+        try
+        {
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var bordersPath = Path.Combine(baseDir, "data", "brushes", "borders.xml");
+            var groundsPath = Path.Combine(baseDir, "data", "brushes", "grounds.xml");
+            if (File.Exists(bordersPath) && File.Exists(groundsPath))
+            {
+                BrushDb = BrushDatabase.Load(bordersPath, groundsPath);
+                OnPropertyChanged(nameof(BrushDb));
+                AddMapLog($"Brush system loaded: {BrushDb.GroundBrushes.Count} ground brushes, {BrushDb.AutoBorders.Count} borders");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMapLog($"Brush load error: {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -696,12 +1169,13 @@ public partial class MainWindowViewModel : ObservableObject
                 vm.ApplyToModel();
 
             OtbFile.Save(_otbPath, _otbData);
+            SaveDatIfLoaded();
             HasUnsavedChanges = false;
-            StatusText = $"Salvo: {Path.GetFileName(_otbPath)}";
+            StatusText = $"Saved: {Path.GetFileName(_otbPath)}";
         }
         catch (Exception ex)
         {
-            StatusText = $"Erro ao salvar: {ex.Message}";
+            StatusText = $"Save error: {ex.Message}";
         }
     }
 
@@ -710,7 +1184,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (_otbData == null) return;
 
-        var path = await FileDialogHelper.SaveFileAsync("Salvar items.otb como...", [("OTB Files", "*.otb")]);
+        var path = await FileDialogHelper.SaveFileAsync("Save items.otb as...", [("OTB Files", "*.otb")]);
         if (path == null) return;
 
         try
@@ -719,14 +1193,23 @@ public partial class MainWindowViewModel : ObservableObject
                 vm.ApplyToModel();
 
             OtbFile.Save(path, _otbData);
+            SaveDatIfLoaded();
             _otbPath = path;
             HasUnsavedChanges = false;
-            StatusText = $"Salvo como: {Path.GetFileName(path)}";
+            StatusText = $"Saved as: {Path.GetFileName(path)}";
         }
         catch (Exception ex)
         {
-            StatusText = $"Erro ao salvar: {ex.Message}";
+            StatusText = $"Save error: {ex.Message}";
         }
+    }
+
+    private void SaveDatIfLoaded()
+    {
+        if (_datData == null || ClientFolderPath == null) return;
+        var (datPath, _) = FindClientFiles(ClientFolderPath);
+        if (datPath == null) return;
+        DatFile.Save(datPath, _datData);
     }
 
     [RelayCommand]
@@ -751,11 +1234,85 @@ public partial class MainWindowViewModel : ObservableObject
         {
             HasUnsavedChanges = true;
             CrossReferenceDat();
-            StatusText = $"{fixed_} mismatches corrigidos automaticamente";
+            StatusText = $"{fixed_} mismatches fixed automatically";
         }
     }
 
     public void MarkDirty() => HasUnsavedChanges = true;
+
+    /// <summary>Create a new OTB server item from the currently selected DAT client item.</summary>
+    [RelayCommand]
+    private void CreateServerItemFromClient()
+    {
+        if (_otbData == null || SelectedClientItem == null) return;
+        var dat = SelectedClientItem.ThingType;
+        if (dat.Category != ThingCategory.Item) { StatusText = "Only Item-category things can be added to OTB"; return; }
+
+        // Derive next server ID
+        ushort nextServerId = (ushort)(_otbData.Items.Count > 0
+            ? _otbData.Items.Max(i => i.ServerId) + 1
+            : 100);
+
+        // Derive OTB group from DAT flags
+        OtbGroup group = OtbGroup.None;
+        if (dat.IsGround) group = OtbGroup.Ground;
+        else if (dat.IsContainer) group = OtbGroup.Container;
+        else if (dat.IsFluidContainer) group = OtbGroup.Splash;
+        else if (dat.IsFluid) group = OtbGroup.Fluid;
+        else if (dat.IsWritable || dat.IsWritableOnce) group = OtbGroup.Writable;
+        else if (dat.IsStackable) group = OtbGroup.Ammunition;
+        else if (dat.IsPickupable) group = OtbGroup.Armor;
+
+        // Build OTB flags from DAT flags
+        OtbFlags flags = OtbFlags.None;
+        if (dat.IsStackable) flags |= OtbFlags.Stackable;
+        if (dat.IsPickupable) flags |= OtbFlags.Pickupable;
+        if (!dat.IsUnmoveable) flags |= OtbFlags.Moveable;
+        if (dat.IsUnpassable) flags |= OtbFlags.BlockSolid;
+        if (dat.IsBlockMissile) flags |= OtbFlags.BlockProjectile;
+        if (dat.IsBlockPathfind) flags |= OtbFlags.BlockPathFind;
+        if (dat.HasElevation) flags |= OtbFlags.HasHeight;
+        if (dat.IsUsable || dat.IsMultiUse) flags |= OtbFlags.Usable;
+        if (dat.IsHangable) flags |= OtbFlags.Hangable;
+        if (dat.IsRotatable) flags |= OtbFlags.Rotatable;
+        if (dat.IsWritable || dat.IsWritableOnce) flags |= OtbFlags.Readable;
+        if (dat.IsForceUse) flags |= OtbFlags.ForceUse;
+        if (dat.IsFullGround) flags |= OtbFlags.FullGround;
+        if (dat.IsVertical) flags |= OtbFlags.Vertical;
+        if (dat.IsHorizontal) flags |= OtbFlags.Horizontal;
+
+        var newItem = new OtbItem
+        {
+            ServerId = nextServerId,
+            ClientId = dat.Id,
+            Group = group,
+            Flags = flags,
+            Speed = dat.GroundSpeed,
+            LightLevel = dat.LightLevel,
+            LightColor = dat.LightColor,
+            MinimapColor = dat.MiniMapColor,
+            MaxReadWriteChars = dat.MaxTextLength,
+            Name = dat.MarketName.Length > 0 ? dat.MarketName : null,
+        };
+
+        // Check animation phases
+        if (dat.FrameGroups.Length > 0)
+        {
+            var fg = dat.FrameGroups[0];
+            if (fg.Frames > 1) newItem.IsAnimation = true;
+        }
+
+        _otbData.Items.Add(newItem);
+        var vm = new ItemViewModel(newItem, this);
+        _allItems.Add(vm);
+        TotalItems = _allItems.Count;
+        CrossReferenceDat();
+        LoadAllSprites();
+        ApplyFilter();
+        HasUnsavedChanges = true;
+        SelectedItem = vm;
+        StatusText = $"Created server item {nextServerId} from client {dat.Id} (group: {group})";
+    }
 
     private void BuildItemList()
     {
@@ -865,7 +1422,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         foreach (var vm in _allItems)
         {
-            // When "Só Deprecated" is on, show only deprecated items
+            // When "Deprecated Only" is on, show only deprecated items
             // By default hide deprecated unless the filter is active
             if (ShowDeprecatedOnly && !vm.IsDeprecated) continue;
             if (!ShowDeprecatedOnly && vm.IsDeprecated) continue;
@@ -1496,14 +2053,43 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task ReplaceSpriteAsync()
     {
         if (SelectedRightSprite == null || _sprFile == null) return;
-        StatusText = "Replace sprite: not yet implemented — SPR write support needed";
+
+        var path = await FileDialogHelper.OpenFileAsync("Replace Sprite (32×32 PNG)", [("PNG Image", "*.png"), ("All Files", "*")]);
+        if (path == null) return;
+
+        try
+        {
+            var rgba = LoadPngAsRgba32(path);
+            if (rgba == null) { StatusText = "Invalid image — must be 32×32 PNG"; return; }
+
+            _sprFile.SetSpriteRgba(SelectedRightSprite.SpriteId, rgba);
+            SelectedRightSprite.Bitmap = LoadSpriteBitmap(SelectedRightSprite.SpriteId);
+            InvalidateSpriteCache();
+            Palette?.RefreshSprites();
+            LoadAllSprites();
+            StatusText = $"Replaced sprite {SelectedRightSprite.SpriteId}";
+        }
+        catch (Exception ex) { StatusText = $"Replace sprite error: {ex.Message}"; }
     }
 
     [RelayCommand]
     private async Task ImportSpriteAsync()
     {
         if (_sprFile == null) return;
-        StatusText = "Import sprite: not yet implemented — SPR write support needed";
+
+        var path = await FileDialogHelper.OpenFileAsync("Import Sprite (32×32 PNG)", [("PNG Image", "*.png"), ("All Files", "*")]);
+        if (path == null) return;
+
+        try
+        {
+            var rgba = LoadPngAsRgba32(path);
+            if (rgba == null) { StatusText = "Invalid image — must be 32×32 PNG"; return; }
+
+            var newId = _sprFile.AddSprite(rgba);
+            RefreshSpritePanel();
+            StatusText = $"Imported sprite as ID {newId}";
+        }
+        catch (Exception ex) { StatusText = $"Import sprite error: {ex.Message}"; }
     }
 
     [RelayCommand]
@@ -1529,17 +2115,100 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void DuplicateSprite()
+    {
+        if (SelectedRightSprite == null || _sprFile == null) return;
+
+        var rgba = _sprFile.GetSpriteRgba(SelectedRightSprite.SpriteId);
+        var newId = _sprFile.AddSprite(rgba);
+        RefreshSpritePanel();
+        StatusText = $"Duplicated sprite {SelectedRightSprite.SpriteId} → new ID {newId}";
+    }
+
+    [RelayCommand]
     private void NewSprite()
     {
         if (_sprFile == null) return;
-        StatusText = "New sprite: not yet implemented — SPR write support needed";
+        var newId = _sprFile.AddSprite(null);
+        RefreshSpritePanel();
+        StatusText = $"New blank sprite ID {newId}";
     }
 
     [RelayCommand]
     private void RemoveSprite()
     {
         if (SelectedRightSprite == null || _sprFile == null) return;
-        StatusText = "Remove sprite: not yet implemented — SPR write support needed";
+
+        var id = SelectedRightSprite.SpriteId;
+        _sprFile.RemoveSprite(id);
+        InvalidateSpriteCache();
+        Palette?.RefreshSprites();
+        LoadAllSprites();
+        RefreshSpritePanel();
+        StatusText = id == _sprFile.SpriteCount + 1
+            ? $"Removed sprite {id} (last — count decremented)"
+            : $"Blanked sprite {id} (not last)";
+    }
+
+    [RelayCommand]
+    private async Task SaveSprAsync()
+    {
+        if (_sprFile == null) return;
+        var path = await FileDialogHelper.SaveFileAsync("Save SPR file", [("SPR Files", "*.spr")]);
+        if (path == null) return;
+
+        try
+        {
+            _sprFile.Save(path);
+            StatusText = $"Saved SPR: {Path.GetFileName(path)} ({_sprFile.SpriteCount} sprites)";
+        }
+        catch (Exception ex) { StatusText = $"Save SPR error: {ex.Message}"; }
+    }
+
+    /// <summary>Load a 32×32 PNG and return its raw RGBA bytes, or null if invalid.</summary>
+    private static byte[]? LoadPngAsRgba32(string path)
+    {
+        using var skBmp = SkiaSharp.SKBitmap.Decode(path);
+        if (skBmp == null || skBmp.Width != 32 || skBmp.Height != 32)
+            return null;
+
+        // Ensure Rgba8888 format
+        SkiaSharp.SKBitmap? temp = null;
+        try
+        {
+            var source = skBmp;
+            if (skBmp.ColorType != SkiaSharp.SKColorType.Rgba8888)
+            {
+                temp = skBmp.Copy(SkiaSharp.SKColorType.Rgba8888);
+                if (temp == null) return null;
+                source = temp;
+            }
+
+            var src = source.GetPixelSpan();
+            var rgba = new byte[32 * 32 * 4];
+            src[..(32 * 32 * 4)].CopyTo(rgba);
+            return rgba;
+        }
+        finally { temp?.Dispose(); }
+    }
+
+    /// <summary>Refresh the sprite panel after adding/removing sprites.</summary>
+    private void RefreshSpritePanel()
+    {
+        if (_sprFile == null) return;
+        RightSpriteTotalPages = Math.Max(1, ((int)_sprFile.SpriteCount + RightSpritesPerPage - 1) / RightSpritesPerPage);
+        if (RightSpriteCurrentPage > RightSpriteTotalPages)
+            RightSpriteCurrentPage = RightSpriteTotalPages;
+        LoadRightSpritePage();
+    }
+
+    /// <summary>Invalidate palette sprite cache and reload compositions after sprite mutation.</summary>
+    private void InvalidateSpriteCache()
+    {
+        Palette?.ClearSpriteCache();
+        // Reload the composition/expanded preview if something is selected
+        if (SelectedItem != null)
+            OnPropertyChanged(nameof(SelectedItem));
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1670,3 +2339,30 @@ public partial class MainWindowViewModel : ObservableObject
         renderTarget.Save(stream);
     }
 }
+
+/// <summary>Display model for a single item in the tile inspector.</summary>
+public sealed class TileItemInfo
+{
+    public int Index { get; set; }
+    public ushort ServerId { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public List<string> Details { get; } = [];
+
+    public string DisplayName => Name != null ? $"{Label}: {Name} (id:{ServerId})" : $"{Label}: id:{ServerId}";
+    public string DetailsText => Details.Count > 0 ? string.Join(" · ", Details) : string.Empty;
+    public bool HasDetails => Details.Count > 0;
+}
+
+/// <summary>A named section in the inspector detail view (e.g. "OTB · Identification").</summary>
+public sealed class InspectorSection
+{
+    public string Title { get; set; } = string.Empty;
+    public List<InspectorProp> Props { get; } = [];
+    public List<string> Flags { get; } = [];
+    public bool HasFlags => Flags.Count > 0;
+    public bool HasProps => Props.Count > 0;
+}
+
+/// <summary>A single property row (key → value).</summary>
+public sealed record InspectorProp(string Key, string Value);

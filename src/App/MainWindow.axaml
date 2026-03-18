@@ -3,10 +3,12 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:POriginsItemEditor.App.ViewModels"
+        xmlns:i="https://github.com/projektanker/icons.avalonia"
+        xmlns:ctrl="using:POriginsItemEditor.App.Controls"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="POriginsItemEditor.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="POrigins Item Editor"
+        Title="POrigins Editor"
         Width="1480" Height="820"
         MinWidth="1100" MinHeight="600"
         Background="#1e1e2e">
@@ -182,6 +184,24 @@
       <Setter Property="CornerRadius" Value="6"/>
       <Setter Property="FontSize" Value="11"/>
     </Style>
+
+    <!-- Navigation Rail -->
+    <Style Selector="Button.nav">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="4,10"/>
+      <Setter Property="Margin" Value="3,0,0,0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.nav /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1e1e2e"/>
+    </Style>
   </Window.Styles>
 
   <DockPanel>
@@ -190,19 +210,65 @@
       <DockPanel>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
           <TextBlock Text="⚙" FontSize="22" VerticalAlignment="Center" Foreground="#89b4fa" Margin="0,0,6,0"/>
-          <TextBlock Text="POrigins Item Editor" FontSize="16" FontWeight="Bold"
+          <TextBlock Text="POrigins Editor" FontSize="16" FontWeight="Bold"
                      Foreground="#cdd6f4" VerticalAlignment="Center"/>
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-          <Button Classes="client" Command="{Binding SelectClientFolderCommand}" Content="Selecionar Client"/>
-          <Button Classes="toolbar" Command="{Binding OpenOtbCommand}" Content="Abrir OTB"/>
-          <Button Classes="accent" Command="{Binding SaveOtbCommand}" Content="Salvar"/>
-          <Button Classes="toolbar" Command="{Binding SaveOtbAsCommand}" Content="Salvar Como..."/>
+          <!-- Item editor actions -->
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsItemEditorActive}">
+            <Button Classes="client" Command="{Binding SelectClientFolderCommand}" Content="Select Client"/>
+            <Button Classes="toolbar" Command="{Binding OpenOtbCommand}" Content="Open OTB"/>
+            <Button Classes="accent" Command="{Binding SaveOtbCommand}" Content="Save"/>
+            <Button Classes="toolbar" Command="{Binding SaveOtbAsCommand}" Content="Save As..."/>
+            <Button Classes="toolbar" Command="{Binding SaveSprCommand}" Content="Save SPR"/>
+          </StackPanel>
+          <!-- Map editor actions -->
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsMapEditorActive}">
+            <Button Classes="toolbar" Command="{Binding OpenMapCommand}" Content="Open Map"/>
+            <Button Classes="accent" Command="{Binding SaveMapCommand}" Content="Save Map"
+                    IsEnabled="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <TextBlock Text="● Unsaved" Foreground="#fab387" FontSize="11" FontWeight="SemiBold"
+                       VerticalAlignment="Center" Margin="4,0,0,0"
+                       IsVisible="{Binding MapHasUnsavedChanges}"/>
+            <!-- View menu dropdown -->
+            <Button Classes="toolbar" Content="View ▾">
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="View">
+                    <MenuItem Header="Show All Floors                ⌘W" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors}"/>
+                    <MenuItem Header="Show as Minimap              ⇧E" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap}"/>
+                    <Separator/>
+                    <MenuItem Header="Show Tooltips                    Y" ToggleType="CheckBox" IsChecked="{Binding ViewShowTooltips}"/>
+                    <MenuItem Header="Show Grid                        ⇧G" ToggleType="CheckBox" IsChecked="{Binding ViewShowGrid}"/>
+                    <MenuItem Header="Show Client Box                ⇧I" ToggleType="CheckBox" IsChecked="{Binding ViewShowIngameBox}"/>
+                    <Separator/>
+                    <MenuItem Header="Ghost Loose Items              G" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems}"/>
+                    <MenuItem Header="Ghost Higher Floors          ⌘L" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors}"/>
+                    <MenuItem Header="Show Shade                       Q" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade}"/>
+                  </MenuItem>
+                  <MenuItem Header="Show">
+                    <MenuItem Header="Show Animation                  L" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation}"/>
+                    <MenuItem Header="Show Lights                      ⇧L" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights}"/>
+                    <Separator/>
+                    <MenuItem Header="Show Special                      E" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial}"/>
+                    <MenuItem Header="Show Houses                    ⌘H" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses}"/>
+                    <MenuItem Header="Show Pathing                     O" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing}"/>
+                    <Separator/>
+                    <MenuItem Header="Show Waypoints               ⇧W" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints}"/>
+                    <MenuItem Header="Show Towns" ToggleType="CheckBox" IsChecked="{Binding ViewShowTowns}"/>
+                    <Separator/>
+                    <MenuItem Header="Highlight Items                    V" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems}"/>
+                  </MenuItem>
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
         </StackPanel>
 
-        <!-- Stats -->
-        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <!-- Stats (Item Editor) -->
+        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsVisible="{Binding IsItemEditorActive}">
           <StackPanel Orientation="Horizontal" Spacing="4">
             <TextBlock Text="Total:" Classes="label" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding TotalItems}" Foreground="#89b4fa" FontWeight="Bold" VerticalAlignment="Center"/>
@@ -218,6 +284,19 @@
           <TextBlock IsVisible="{Binding IsClientLoaded}" Text="✓ Client" Foreground="#a6e3a1"
                      FontWeight="Bold" VerticalAlignment="Center" FontSize="12"/>
         </StackPanel>
+        <!-- Stats (Map Editor) -->
+        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsVisible="{Binding IsMapEditorActive}">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="Tiles:" Classes="label" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MapTileCount}" Foreground="#89b4fa" FontWeight="Bold" VerticalAlignment="Center"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="Floor:" Classes="label" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MapCurrentFloor}" Foreground="#a6e3a1" FontWeight="Bold" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock Text="{Binding MapHoveredTile}" Foreground="#585b70" FontSize="12" VerticalAlignment="Center"/>
+        </StackPanel>
       </DockPanel>
     </Border>
 
@@ -231,10 +310,38 @@
       </DockPanel>
     </Border>
 
-    <!-- ═══ Main Content ═══ -->
-    <Grid Margin="12,10">
+    <!-- ═══ Navigation Rail ═══ -->
+    <Border DockPanel.Dock="Left" Background="#11111b" Width="52" Padding="0,6"
+            BorderBrush="#313244" BorderThickness="0,0,1,0">
+      <StackPanel Spacing="2">
+        <!-- Item Editor -->
+        <Panel>
+          <Rectangle Width="3" HorizontalAlignment="Left" Fill="#89b4fa"
+                     IsVisible="{Binding IsItemEditorActive}"/>
+          <Button Classes="nav" Command="{Binding SwitchToItemEditorCommand}"
+                  ToolTip.Tip="Item Editor">
+            <i:Icon Value="fa-solid fa-cube" FontSize="18"
+                    Foreground="{Binding IsItemEditorActive, Converter={StaticResource ActiveForegroundConverter}}"/>
+          </Button>
+        </Panel>
+        <!-- Map Editor -->
+        <Panel>
+          <Rectangle Width="3" HorizontalAlignment="Left" Fill="#89b4fa"
+                     IsVisible="{Binding IsMapEditorActive}"/>
+          <Button Classes="nav" Command="{Binding SwitchToMapEditorCommand}"
+                  ToolTip.Tip="Map Editor">
+            <i:Icon Value="fa-solid fa-map" FontSize="18"
+                    Foreground="{Binding IsMapEditorActive, Converter={StaticResource ActiveForegroundConverter}}"/>
+          </Button>
+        </Panel>
+      </StackPanel>
+    </Border>
 
-      <DockPanel>
+    <!-- ═══ Main Content ═══ -->
+    <Grid Margin="8,10">
+
+      <!-- ═══ ITEM EDITOR ═══ -->
+      <DockPanel IsVisible="{Binding IsItemEditorActive}">
 
           <!-- ═══════════════════════════════════════════════════════════ -->
           <!-- ═══ UNIFIED EDITOR ═══ -->
@@ -251,7 +358,7 @@
                 <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ClientCategoryOptions}"
                           SelectedItem="{Binding ClientCategoryFilter}"
                           FontSize="11" MinHeight="28" Padding="6,3" MinWidth="70" Margin="4,0,0,0"/>
-                <TextBox Classes="search" Watermark="Buscar ID..." Text="{Binding ClientSearchText}"
+                <TextBox Classes="search" Watermark="Search ID..." Text="{Binding ClientSearchText}"
                          FontSize="11" Padding="6,3" MinHeight="28"/>
               </DockPanel>
 
@@ -274,6 +381,9 @@
                           Command="{Binding RemoveThingCommand}" ToolTip.Tip="Remove"/>
                   <Button Classes="toolbar" Content="↩" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#fab387"
                           Command="{Binding ResetThingCommand}" ToolTip.Tip="Reset"/>
+                  <Rectangle Width="1" Height="18" Fill="#313244" Margin="4,0"/>
+                  <Button Classes="accent" Content="📦" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding CreateServerItemFromClientCommand}" ToolTip.Tip="Create Server Item from Client"/>
                 </StackPanel>
               </Border>
 
@@ -1191,6 +1301,16 @@
                     <Border Width="38" Height="46" Margin="1" Background="#11111b"
                             CornerRadius="3" BorderBrush="#313244" BorderThickness="1"
                             ToolTip.Tip="{Binding SpriteId}">
+                      <Border.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Replace" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ReplaceSpriteCommand}"/>
+                          <MenuItem Header="Remove" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveSpriteCommand}"/>
+                          <MenuItem Header="Duplicate" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).DuplicateSpriteCommand}"/>
+                          <Separator/>
+                          <MenuItem Header="Export" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ExportSpriteCommand}"/>
+                          <MenuItem Header="Import" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ImportSpriteCommand}"/>
+                        </ContextMenu>
+                      </Border.ContextMenu>
                       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="1">
                         <Image Source="{Binding Bitmap}" Width="32" Height="32"
                                RenderOptions.BitmapInterpolationMode="None" Stretch="None"/>
@@ -1205,6 +1325,649 @@
 
           </Grid><!-- end outer Grid RowDefinitions="*,Auto" -->
       </DockPanel>
+
+      <!-- ═══ MAP EDITOR ═══ -->
+      <DockPanel IsVisible="{Binding IsMapEditorActive}">
+        <Grid ColumnDefinitions="56,280,*,240">
+          <!-- Left: Tool palette -->
+          <Border Grid.Column="0" Background="#181825" CornerRadius="8" Margin="0,0,6,0" Padding="4,8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Tools" Classes="heading" FontSize="11" HorizontalAlignment="Center"/>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Draw">
+                <i:Icon Value="fa-solid fa-pencil" FontSize="14"/>
+              </Button>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Select">
+                <i:Icon Value="fa-solid fa-arrow-pointer" FontSize="14"/>
+              </Button>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Fill">
+                <i:Icon Value="fa-solid fa-fill-drip" FontSize="14"/>
+              </Button>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Erase">
+                <i:Icon Value="fa-solid fa-eraser" FontSize="14"/>
+              </Button>
+              <Separator Background="#313244" Height="1" Margin="0,8"/>
+              <!-- Floor controls -->
+              <TextBlock Text="Floor" Classes="heading" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Floor Up (PageUp)"
+                      Command="{Binding MapFloorUpCommand}">
+                <i:Icon Value="fa-solid fa-arrow-up" FontSize="14"/>
+              </Button>
+              <TextBlock Text="{Binding MapCurrentFloor}" FontSize="16" FontWeight="Bold"
+                         Foreground="#a6e3a1" HorizontalAlignment="Center" Margin="0,2"/>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Floor Down (PageDown)"
+                      Command="{Binding MapFloorDownCommand}">
+                <i:Icon Value="fa-solid fa-arrow-down" FontSize="14"/>
+              </Button>
+              <Separator Background="#313244" Height="1" Margin="0,8"/>
+              <!-- Zoom controls -->
+              <TextBlock Text="Zoom" Classes="heading" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Zoom In"
+                      Command="{Binding MapZoomInCommand}">
+                <i:Icon Value="fa-solid fa-magnifying-glass-plus" FontSize="14"/>
+              </Button>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Zoom Out"
+                      Command="{Binding MapZoomOutCommand}">
+                <i:Icon Value="fa-solid fa-magnifying-glass-minus" FontSize="14"/>
+              </Button>
+              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Center (Home)"
+                      Command="{Binding MapCenterCommand}">
+                <i:Icon Value="fa-solid fa-crosshairs" FontSize="14"/>
+              </Button>
+            </StackPanel>
+          </Border>
+
+          <!-- Palette panel: Column 1 -->
+          <Border Grid.Column="1" Background="#181825" CornerRadius="8" Margin="0,0,6,0" Padding="0"
+                  IsVisible="{Binding Palette, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  x:DataType="vm:MainWindowViewModel">
+            <Grid RowDefinitions="Auto,*" DataContext="{Binding Palette}"
+                  x:DataType="vm:PaletteViewModel">
+
+              <!-- Header + toolbar -->
+              <DockPanel Grid.Row="0" Margin="10,8,10,0">
+                <TextBlock Text="Palette" Classes="heading" FontSize="12" DockPanel.Dock="Left" Margin="0,0,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right">
+                  <Button Classes="toolbar" Padding="5" ToolTip.Tip="New Collection"
+                          Command="{Binding AddCollectionCommand}">
+                    <i:Icon Value="fa-solid fa-folder-plus" FontSize="11"/>
+                  </Button>
+                  <Button Classes="toolbar" Padding="5" ToolTip.Tip="New Sub-Collection"
+                          Command="{Binding AddSubCollectionCommand}">
+                    <i:Icon Value="fa-solid fa-plus" FontSize="11"/>
+                  </Button>
+                </StackPanel>
+              </DockPanel>
+
+              <!-- Content: 50% collections (north) + 50% catalog/items (south) -->
+              <Grid Grid.Row="1" RowDefinitions="*,4,*" Margin="6,4,6,6">
+
+                <!-- ══ NORTH: Collection tree ══ -->
+                <ScrollViewer Grid.Row="0">
+                  <ItemsControl ItemsSource="{Binding Collections}">
+                    <ItemsControl.DataTemplates>
+                      <DataTemplate x:DataType="vm:PaletteCollectionViewModel">
+                        <StackPanel Margin="0,0,0,2">
+                          <!-- Collection header (normal mode) -->
+                          <Button Background="Transparent" HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left" Padding="6,4"
+                                  Cursor="Hand"
+                                  Command="{Binding ToggleExpandCommand}"
+                                  IsVisible="{Binding !IsRenaming}">
+                            <Button.ContextMenu>
+                              <ContextMenu>
+                                <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}"/>
+                                <MenuItem Header="New Sub-Collection"
+                                          Click="OnNewSubCollectionFromContext"/>
+                                <Separator/>
+                                <MenuItem Header="Delete Collection"
+                                          Click="OnDeleteCollectionFromContext"/>
+                              </ContextMenu>
+                            </Button.ContextMenu>
+                            <DockPanel>
+                              <i:Icon DockPanel.Dock="Left" FontSize="10" Margin="0,0,6,0"
+                                      Value="{Binding IsExpanded, Converter={StaticResource ExpandIconConverter}}"/>
+                              <i:Icon DockPanel.Dock="Left" Value="{Binding Icon}" FontSize="11" Margin="0,0,6,0"
+                                      Foreground="#89b4fa"/>
+                              <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                         Foreground="#cdd6f4" VerticalAlignment="Center"/>
+                            </DockPanel>
+                          </Button>
+                          <!-- Rename mode -->
+                          <DockPanel IsVisible="{Binding IsRenaming}" Margin="6,1" Height="26">
+                            <Button DockPanel.Dock="Right" Classes="toolbar" Padding="3" Margin="2,0,0,0"
+                                    Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
+                              <i:Icon Value="fa-solid fa-xmark" FontSize="9"/>
+                            </Button>
+                            <Button DockPanel.Dock="Right" Classes="accent" Padding="3" Margin="2,0,0,0"
+                                    Command="{Binding CommitRenameCommand}" ToolTip.Tip="Confirm">
+                              <i:Icon Value="fa-solid fa-check" FontSize="9" Foreground="#1e1e2e"/>
+                            </Button>
+                            <TextBox Text="{Binding RenameText}" FontSize="10"
+                                     Background="#313244" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                                     CornerRadius="3" Padding="4,1" MinHeight="0"
+                                     KeyDown="OnRenameKeyDown"/>
+                          </DockPanel>
+                          <!-- Sub-collections (indented) -->
+                          <ItemsControl ItemsSource="{Binding SubCollections}"
+                                        IsVisible="{Binding IsExpanded}" Margin="16,0,0,0">
+                            <ItemsControl.DataTemplates>
+                              <DataTemplate x:DataType="vm:PaletteSubCollectionViewModel">
+                                <StackPanel>
+                                  <!-- Normal mode -->
+                                  <Button HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Left" Padding="6,3"
+                                          Cursor="Hand"
+                                          Click="OnPaletteSubCollectionClick"
+                                          DoubleTapped="OnPaletteSubCollectionDoubleTapped"
+                                          IsVisible="{Binding !IsRenaming}">
+                                    <Button.Styles>
+                                      <Style Selector="Button">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="CornerRadius" Value="4"/>
+                                      </Style>
+                                      <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#1a89b4fa"/>
+                                      </Style>
+                                    </Button.Styles>
+                                    <Button.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}"/>
+                                        <Separator/>
+                                        <MenuItem Header="Delete Sub-Collection"
+                                                  Click="OnDeleteSubCollectionFromContext"/>
+                                      </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <Panel>
+                                      <!-- Selection highlight background -->
+                                      <Border Background="#2689b4fa" CornerRadius="4"
+                                              IsVisible="{Binding IsSelected}"
+                                              Margin="-6,-3"/>
+                                      <DockPanel>
+                                        <Border DockPanel.Dock="Left" Width="3" Height="14"
+                                                CornerRadius="2" Margin="0,0,5,0"
+                                                Background="#89b4fa"
+                                                IsVisible="{Binding IsSelected}"/>
+                                        <i:Icon DockPanel.Dock="Left" Value="fa-solid fa-list" FontSize="9"
+                                                Margin="0,0,6,0"
+                                                IsVisible="{Binding !IsSelected}">
+                                          <i:Icon.Foreground>
+                                            <SolidColorBrush Color="#585b70"/>
+                                          </i:Icon.Foreground>
+                                        </i:Icon>
+                                        <i:Icon DockPanel.Dock="Left" Value="fa-solid fa-list" FontSize="9"
+                                                Margin="0,0,6,0"
+                                                IsVisible="{Binding IsSelected}">
+                                          <i:Icon.Foreground>
+                                            <SolidColorBrush Color="#89b4fa"/>
+                                          </i:Icon.Foreground>
+                                        </i:Icon>
+                                        <TextBlock Text="{Binding Items.Count, StringFormat='({0})'}"
+                                                   DockPanel.Dock="Right"
+                                                   FontSize="9" Foreground="#585b70" Margin="4,0,0,0"
+                                                   VerticalAlignment="Center"/>
+                                        <!-- Name: selected = bright, unselected = muted -->
+                                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#cdd6f4"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   FontWeight="Medium"
+                                                   IsVisible="{Binding IsSelected}"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#a6adc8"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding !IsSelected}"/>
+                                      </DockPanel>
+                                    </Panel>
+                                  </Button>
+                                  <!-- Rename mode -->
+                                  <DockPanel IsVisible="{Binding IsRenaming}" Margin="0,1" Height="24">
+                                    <Button DockPanel.Dock="Right" Classes="toolbar" Padding="3" Margin="2,0,0,0"
+                                            Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
+                                      <i:Icon Value="fa-solid fa-xmark" FontSize="9"/>
+                                    </Button>
+                                    <Button DockPanel.Dock="Right" Classes="accent" Padding="3" Margin="2,0,0,0"
+                                            Command="{Binding CommitRenameCommand}" ToolTip.Tip="Confirm">
+                                      <i:Icon Value="fa-solid fa-check" FontSize="9" Foreground="#1e1e2e"/>
+                                    </Button>
+                                    <TextBox Text="{Binding RenameText}" FontSize="10"
+                                             Background="#313244" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                                             CornerRadius="3" Padding="4,1" MinHeight="0"
+                                             KeyDown="OnRenameKeyDown"/>
+                                  </DockPanel>
+                                </StackPanel>
+                              </DataTemplate>
+                            </ItemsControl.DataTemplates>
+                          </ItemsControl>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.DataTemplates>
+                  </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Splitter -->
+                <GridSplitter Grid.Row="1" Background="#313244" Height="4" HorizontalAlignment="Stretch"
+                              Cursor="SizeNorthSouth"/>
+
+                <!-- ══ SOUTH: Catalog or Sub-Collection items ══ -->
+                <Panel Grid.Row="2">
+
+                  <!-- Catalog view (default) -->
+                  <Grid RowDefinitions="Auto,*,Auto"
+                        IsVisible="{Binding IsViewingCatalog}">
+                    <TextBox Grid.Row="0" Watermark="Search catalog..."
+                             Text="{Binding CatalogSearchText}" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
+                    <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
+                      <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding CatalogResults}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                      BorderBrush="White"
+                                      DoubleTapped="OnCatalogItemDoubleTapped"
+                                      PointerPressed="OnCatalogItemPressed">
+                                <Border.ContextMenu>
+                                  <ContextMenu>
+                                    <MenuItem Header="Add to Sub-Collection"
+                                              Click="OnAddCatalogItemToSubCollection"/>
+                                  </ContextMenu>
+                                </Border.ContextMenu>
+                                <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                       RenderOptions.BitmapInterpolationMode="None"/>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
+                    </Border>
+                    <DockPanel Grid.Row="2" Margin="0,4,0,0">
+                      <Button DockPanel.Dock="Left" Classes="toolbar" Padding="4,2"
+                              Command="{Binding CatalogPreviousPageCommand}"
+                              ToolTip.Tip="Previous page">
+                        <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
+                      </Button>
+                      <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2"
+                              Command="{Binding CatalogNextPageCommand}"
+                              ToolTip.Tip="Next page">
+                        <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
+                      </Button>
+                      <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </Grid>
+
+                  <!-- Sub-collection items view -->
+                  <Grid RowDefinitions="Auto,Auto,*"
+                        IsVisible="{Binding IsViewingSubCollection}">
+                    <!-- Back button + sub-collection name -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,4">
+                      <Button DockPanel.Dock="Left" Classes="toolbar" Padding="4,3"
+                              Command="{Binding BackToCatalogCommand}" ToolTip.Tip="Back to catalog">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <i:Icon Value="fa-solid fa-arrow-left" FontSize="10"/>
+                          <TextBlock Text="Catalog" FontSize="10" Foreground="#a6adc8"/>
+                        </StackPanel>
+                      </Button>
+                      <TextBlock Text="{Binding ViewingSubCollectionName}" FontSize="11"
+                                 FontWeight="SemiBold" Foreground="#cdd6f4"
+                                 VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </DockPanel>
+                    <TextBox Grid.Row="1" Watermark="Search items..."
+                             Text="{Binding ItemSearchText}" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
+                    <Border Grid.Row="2" CornerRadius="4" Background="#11111b" Padding="4">
+                      <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding DisplayedItems}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                      BorderBrush="White"
+                                      PointerPressed="OnPaletteItemPointerPressed">
+                                <Border.ContextMenu>
+                                  <ContextMenu>
+                                    <MenuItem Header="Remove from Sub-Collection"
+                                              Click="OnRemoveItemFromSubCollection"/>
+                                  </ContextMenu>
+                                </Border.ContextMenu>
+                                <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                       RenderOptions.BitmapInterpolationMode="None"/>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
+                    </Border>
+                  </Grid>
+
+                </Panel>
+              </Grid>
+            </Grid>
+          </Border>
+
+          <!-- Center: Map canvas + Log panel south -->
+          <Grid Grid.Column="2" RowDefinitions="*,Auto,Auto" Margin="0,0,6,0">
+            <!-- Map area -->
+            <Border Grid.Row="0" Background="#11111b" CornerRadius="8" ClipToBounds="True">
+              <Panel>
+                <!-- Map render control -->
+                <ctrl:MapCanvasControl x:Name="MapCanvas"
+                                       MapDataSource="{Binding MapData}"
+                                       DatDataSource="{Binding ExposedDatData}"
+                                       SprFileSource="{Binding ExposedSprFile}"
+                                       OtbDataSource="{Binding ExposedOtbData}"
+                                       CurrentFloor="{Binding MapCurrentFloor, Mode=TwoWay}"
+                                       ZoomLevel="{Binding MapZoom, Mode=TwoWay}"
+                                       HoveredTileInfo="{Binding MapHoveredTile, Mode=OneWayToSource}"
+                                       ShowAllFloors="{Binding ViewShowAllFloors, Mode=TwoWay}"
+                                       ShowAnimation="{Binding ViewShowAnimation, Mode=TwoWay}"
+                                       ShowLights="{Binding ViewShowLights, Mode=TwoWay}"
+                                       ShowGrid="{Binding ViewShowGrid, Mode=TwoWay}"
+                                       ShowShade="{Binding ViewShowShade, Mode=TwoWay}"
+                                       ShowAsMinimap="{Binding ViewShowAsMinimap, Mode=TwoWay}"
+                                       GhostItems="{Binding ViewGhostItems, Mode=TwoWay}"
+                                       GhostHigherFloors="{Binding ViewGhostHigherFloors, Mode=TwoWay}"
+                                       ShowSpecial="{Binding ViewShowSpecial, Mode=TwoWay}"
+                                       ShowHouses="{Binding ViewShowHouses, Mode=TwoWay}"
+                                       ShowWaypoints="{Binding ViewShowWaypoints, Mode=TwoWay}"
+                                       ShowTowns="{Binding ViewShowTowns, Mode=TwoWay}"
+                                       ShowPathing="{Binding ViewShowPathing, Mode=TwoWay}"
+                                       HighlightItems="{Binding ViewHighlightItems, Mode=TwoWay}"
+                                       ShowTooltips="{Binding ViewShowTooltips, Mode=TwoWay}"
+                                       ShowIngameBox="{Binding ViewShowIngameBox, Mode=TwoWay}"
+                                       BrushServerId="{Binding BrushServerId, Mode=TwoWay}"/>
+
+                <!-- Overlay: empty state message (when no map loaded) -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12"
+                            IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNull}}">
+                  <i:Icon Value="fa-solid fa-map" FontSize="64" HorizontalAlignment="Center" Foreground="#585b70"/>
+                  <TextBlock Text="Map Editor" FontSize="22" FontWeight="Bold" Foreground="#cdd6f4"
+                             HorizontalAlignment="Center"/>
+                  <TextBlock Text="Open an OTBM map to visualize" FontSize="13" Foreground="#585b70"
+                             HorizontalAlignment="Center"/>
+                  <Button Classes="accent" HorizontalAlignment="Center" Command="{Binding OpenMapCommand}"
+                          Content="Open Map" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <!-- Minimap overlay (bottom-right) -->
+                <Border Background="#181825" CornerRadius="6" Padding="4" Opacity="0.9"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="0,0,8,8" BorderBrush="#313244" BorderThickness="1"
+                        IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="Minimap" FontSize="9" Foreground="#585b70" HorizontalAlignment="Center"/>
+                    <Image Source="{Binding #MapCanvas.MinimapBitmap}" MaxWidth="180" MaxHeight="140"
+                           RenderOptions.BitmapInterpolationMode="None"
+                           ToolTip.Tip="Minimap"/>
+                  </StackPanel>
+                </Border>
+
+                <!-- Map info overlay (top-left) -->
+                <Border Background="#181825BB" CornerRadius="6" Padding="8,4"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="8,8,0,0"
+                        IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding MapStatusText}" FontSize="11" Foreground="#a6adc8"/>
+                    <TextBlock Text="● Unsaved" FontSize="11" Foreground="#fab387" FontWeight="SemiBold"
+                               IsVisible="{Binding MapHasUnsavedChanges}"/>
+                  </StackPanel>
+                </Border>
+              </Panel>
+            </Border>
+
+            <!-- GridSplitter between map and log -->
+            <GridSplitter Grid.Row="1" Height="5" Background="Transparent"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          IsVisible="{Binding IsLogPanelVisible}"/>
+
+            <!-- Log panel south of map (resizable + minimizable) -->
+            <Border Grid.Row="2" Background="#181825" CornerRadius="6,6,8,8" ClipToBounds="True"
+                    Margin="0,2,0,0"
+                    IsVisible="{Binding IsLogPanelVisible}"
+                    Height="{Binding LogPanelHeight, Mode=TwoWay}"
+                    MinHeight="60" MaxHeight="400">
+              <DockPanel>
+                <!-- Log header bar -->
+                <DockPanel DockPanel.Dock="Top" Margin="8,4,8,2">
+                  <TextBlock Text="Log" Classes="heading" FontSize="11" VerticalAlignment="Center"
+                             DockPanel.Dock="Left"/>
+                  <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Classes="toolbar" Padding="3" ToolTip.Tip="Diminuir fonte"
+                            Command="{Binding LogFontDecreaseCommand}">
+                      <TextBlock Text="A-" FontSize="9" Foreground="#a6adc8"/>
+                    </Button>
+                    <Button Classes="toolbar" Padding="3" ToolTip.Tip="Aumentar fonte"
+                            Command="{Binding LogFontIncreaseCommand}">
+                      <TextBlock Text="A+" FontSize="9" Foreground="#a6adc8"/>
+                    </Button>
+                    <Button Classes="toolbar" Padding="3" ToolTip.Tip="Minimizar log"
+                            Command="{Binding ToggleLogPanelCommand}">
+                      <i:Icon Value="fa-solid fa-chevron-down" FontSize="9" Foreground="#a6adc8"/>
+                    </Button>
+                  </StackPanel>
+                </DockPanel>
+                <!-- Log content -->
+                <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="4,0,4,4">
+                  <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding MapActionLog}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding}"
+                                     FontSize="{Binding $parent[Border].DataContext.LogFontSize}"
+                                     Foreground="#585b70" TextWrapping="Wrap" Margin="0,1"/>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Border>
+              </DockPanel>
+            </Border>
+
+            <!-- Show log button when minimized -->
+            <Border Grid.Row="2" Background="#181825" CornerRadius="4" Padding="4,2" Margin="0,2,0,0"
+                    HorizontalAlignment="Center"
+                    IsVisible="{Binding !IsLogPanelVisible}">
+              <Button Classes="toolbar" Padding="4,2" Command="{Binding ToggleLogPanelCommand}"
+                      ToolTip.Tip="Mostrar log">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <i:Icon Value="fa-solid fa-chevron-up" FontSize="9" Foreground="#a6adc8"/>
+                  <TextBlock Text="Log" FontSize="9" Foreground="#a6adc8"/>
+                </StackPanel>
+              </Button>
+            </Border>
+          </Grid>
+
+          <!-- Right: Properties panel -->
+          <Border Grid.Column="3" Background="#181825" CornerRadius="8" Padding="10">
+            <ScrollViewer>
+              <StackPanel Spacing="8">
+                <TextBlock Text="Properties" Classes="heading"/>
+
+                <!-- No map loaded -->
+                <StackPanel IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNull}}">
+                  <TextBlock Text="No map loaded" Foreground="#585b70" FontSize="11"/>
+                </StackPanel>
+
+                <!-- Map loaded -->
+                <StackPanel IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}" Spacing="6">
+                  <!-- Map info -->
+                  <TextBlock Text="Info" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                  <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Tiles:" FontSize="11" Foreground="#a6adc8"/>
+                      <TextBlock Text="{Binding MapTileCount}" FontSize="11" Foreground="#cdd6f4" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Towns:" FontSize="11" Foreground="#a6adc8"/>
+                      <TextBlock Text="{Binding MapData.Towns.Count}" FontSize="11" Foreground="#cdd6f4" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Waypoints:" FontSize="11" Foreground="#a6adc8"/>
+                      <TextBlock Text="{Binding MapData.Waypoints.Count}" FontSize="11" Foreground="#cdd6f4" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </StackPanel>
+
+                  <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                  <!-- Go To position -->
+                  <TextBlock Text="Go To" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="X:" FontSize="11" Foreground="#a6adc8"
+                               VerticalAlignment="Center" Margin="0,0,6,4"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="65535"
+                                   Value="{Binding MapGoToX}" FontSize="11" Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Y:" FontSize="11" Foreground="#a6adc8"
+                               VerticalAlignment="Center" Margin="0,0,6,4"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="65535"
+                                   Value="{Binding MapGoToY}" FontSize="11" Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Z:" FontSize="11" Foreground="#a6adc8"
+                               VerticalAlignment="Center" Margin="0,0,6,4"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="15"
+                                   Value="{Binding MapGoToZ}" FontSize="11" Margin="0,0,0,4"/>
+                    <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Classes="accent"
+                            HorizontalAlignment="Stretch" Content="Go" FontSize="11"
+                            Margin="0,2,0,0"
+                            Command="{Binding MapGoToCommand}"/>
+                  </Grid>
+
+                  <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                  <!-- Hovered tile info -->
+                  <TextBlock Text="Tile" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                  <TextBlock Text="{Binding MapHoveredTile}" FontSize="11" Foreground="#cdd6f4"
+                             TextWrapping="Wrap"/>
+
+                  <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                  <!-- Tile Inspector: item list view (shown when no item detail is open) -->
+                  <StackPanel IsVisible="{Binding InspectorSelectedItem, Converter={x:Static ObjectConverters.IsNull}}">
+                    <TextBlock Text="Inspector" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding SelectedTileHeader}" FontSize="10" Foreground="#a6adc8"
+                               TextWrapping="Wrap" Margin="0,0,0,4"
+                               IsVisible="{Binding SelectedTileHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <ItemsControl ItemsSource="{Binding SelectedTileItems}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TileItemInfo">
+                          <Button Classes="toolbar" HorizontalAlignment="Stretch" Padding="0" Margin="0,1"
+                                  Command="{Binding $parent[ScrollViewer].DataContext.SelectInspectorItemCommand}"
+                                  CommandParameter="{Binding}">
+                            <Border Background="#1e1e2e" CornerRadius="4" Padding="6,4"
+                                    BorderBrush="#313244" BorderThickness="1"
+                                    HorizontalAlignment="Stretch">
+                              <StackPanel Spacing="1">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="11" Foreground="#cdd6f4" FontWeight="Medium"/>
+                                <TextBlock Text="{Binding DetailsText}" FontSize="9.5" Foreground="#585b70"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding HasDetails}"/>
+                              </StackPanel>
+                            </Border>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Select a single tile to inspect"
+                               Foreground="#585b70" FontSize="10" FontStyle="Italic"
+                               IsVisible="{Binding SelectedTileHeader, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                  </StackPanel>
+
+                  <!-- Tile Inspector: detail view for selected item -->
+                  <StackPanel IsVisible="{Binding InspectorSelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}"
+                              Spacing="6">
+                    <!-- Back button + item header -->
+                    <DockPanel Margin="0,4,0,2">
+                      <Button Classes="toolbar" Padding="4,2" DockPanel.Dock="Left"
+                              Command="{Binding ClearInspectorDetailCommand}"
+                              ToolTip.Tip="Back to list">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <i:Icon Value="fa-solid fa-arrow-left" FontSize="9" Foreground="#89b4fa"/>
+                          <TextBlock Text="Back" FontSize="10" Foreground="#89b4fa"/>
+                        </StackPanel>
+                      </Button>
+                      <TextBlock Text="{Binding InspectorSelectedItem.DisplayName}" FontSize="12"
+                                 Foreground="#cdd6f4" FontWeight="SemiBold" VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" Margin="8,0,0,0"/>
+                    </DockPanel>
+                    <Separator Background="#313244" Height="1" Opacity="0.6"/>
+
+                    <!-- Property sections -->
+                    <ItemsControl ItemsSource="{Binding InspectorDetailSections}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:InspectorSection">
+                          <StackPanel Spacing="3" Margin="0,4,0,0">
+                            <!-- Section title -->
+                            <TextBlock Text="{Binding Title}" FontSize="10" Foreground="#89b4fa"
+                                       FontWeight="Bold" Margin="0,0,0,1"
+                                       Opacity="0.85" LetterSpacing="0.5"/>
+                            <!-- Key/Value properties -->
+                            <ItemsControl ItemsSource="{Binding Props}"
+                                          IsVisible="{Binding HasProps}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InspectorProp">
+                                  <Grid ColumnDefinitions="86,*" Margin="0,1">
+                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontSize="10"
+                                               Foreground="#6c7086" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="10"
+                                               Foreground="#cdd6f4" TextWrapping="Wrap"
+                                               FontWeight="Medium"/>
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <!-- Flag pills -->
+                            <ItemsControl ItemsSource="{Binding Flags}"
+                                          IsVisible="{Binding HasFlags}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <Border Background="#1e313244" BorderBrush="#45475a"
+                                          BorderThickness="1" CornerRadius="4"
+                                          Padding="6,2" Margin="0,0,4,4">
+                                    <TextBlock Text="{Binding}" FontSize="9.5"
+                                               Foreground="#a6e3a1" FontWeight="Medium"/>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Separator Background="#313244" Height="1" Margin="0,2,0,0"
+                                       Opacity="0.5"/>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+          </Border>
+        </Grid>
+      </DockPanel>
+
     </Grid>
   </DockPanel>
 </Window>

@@ -6,6 +6,9 @@
 
     <Application.Resources>
         <conv:MismatchBorderConverter x:Key="MismatchBorderConverter"/>
+        <conv:BoolToForegroundConverter x:Key="ActiveForegroundConverter"/>
+        <conv:ExpandIconConverter x:Key="ExpandIconConverter"/>
+        <conv:BoolToHighlightThicknessConverter x:Key="BoolToHighlightThickness"/>
     </Application.Resources>
 
     <Application.Styles>
