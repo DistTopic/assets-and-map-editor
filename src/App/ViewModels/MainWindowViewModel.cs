@@ -411,11 +411,12 @@ public partial class MainWindowViewModel : ObservableObject
 
             targetDat.Items[newId] = clone;
 
-            // Copy sprites to target session's SPR file if possible
+            // Copy sprites to target session's SPR file
             if (_sprFile != null && targetSession.SprFile != null)
-            {
-                CopySpritesBetweenSessions(sourceThing, _sprFile, targetSession.SprFile);
-            }
+                RemapSpritesToTarget(clone, _sprFile, targetSession.SprFile);
+
+            // Rebuild target session's item list so it appears immediately when switching
+            RebuildSessionClientItems(targetSession);
 
             StatusText = $"Transplanted item {sourceThing.Id} → {newId} in {targetSession.Name}";
             AddMapLog($"Transplanted: #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
@@ -446,17 +447,6 @@ public partial class MainWindowViewModel : ObservableObject
             thing.IsTopEffect = false;
             thing.IsUsable = false;
         }
-    }
-
-    private static void CopySpritesBetweenSessions(DatThingType source, SprFile sourceSpr, SprFile targetSpr)
-    {
-        // Sprites are referenced by numeric IDs in the DAT's SpriteIndex arrays.
-        // The clone retains the same IDs, which remain valid as long as:
-        // - Same SPR file is shared, OR
-        // - Target session's SPR file already contains those sprite IDs.
-        // Full sprite data injection (writing new sprites into the target SPR)
-        // would require SPR-level write support for the target version.
-        // For now, the image quality is preserved through the shared bitmap cache.
     }
 
     // ── Multi-item cross-version transplanting ──
@@ -917,13 +907,42 @@ public partial class MainWindowViewModel : ObservableObject
             entry.NewTargetId = clone.Id;
         }
 
-        // Rebuild target session's AllClientItems if we're switching to it
-        // For now, just mark it as dirty
+        // Rebuild target session's AllClientItems so new items appear when switching
         targetSession.DatData = targetDat;
+        targetSession.SprFile = targetSpr;
+        RebuildSessionClientItems(targetSession);
 
         var msg = $"Batch transplant complete: {transplanted} added, {replaced} replaced, {skipped} skipped.";
         StatusText = msg;
         AddMapLog(msg);
+    }
+
+    /// <summary>
+    /// Rebuilds AllClientItems for a target session using its own DAT+SPR data.
+    /// Call after transplanting items so they appear when the user switches to that session.
+    /// </summary>
+    private static void RebuildSessionClientItems(SessionViewModel session)
+    {
+        if (session.DatData == null || session.SprFile == null) return;
+
+        var list = new List<ClientItemViewModel>();
+
+        void Add(Dictionary<ushort, DatThingType> dict)
+        {
+            foreach (var kvp in dict.OrderBy(x => x.Key))
+            {
+                var vm = new ClientItemViewModel(kvp.Value);
+                vm.Sprite = ComposeThingBitmapStatic(kvp.Value, session.SprFile);
+                list.Add(vm);
+            }
+        }
+
+        Add(session.DatData.Items);
+        Add(session.DatData.Outfits);
+        Add(session.DatData.Effects);
+        Add(session.DatData.Missiles);
+
+        session.AllClientItems = list;
     }
 
     /// <summary>
@@ -3607,6 +3626,94 @@ public partial class MainWindowViewModel : ObservableObject
             using (var fb = bitmap.Lock())
                 Marshal.Copy(pixels, 0, fb.Address, pixels.Length);
 
+            return bitmap;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Static version of ComposeThingBitmap that takes an explicit SprFile.
+    /// Used for composing sprites in a target session context (e.g. after transplant).
+    /// </summary>
+    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile)
+    {
+        if (thing.FrameGroups.Length == 0) return null;
+
+        var fg = thing.FrameGroups[0];
+        int w = fg.Width;
+        int h = fg.Height;
+        if (w == 0 || h == 0) return null;
+
+        // Single 1×1 item
+        if (w == 1 && h == 1 && fg.Layers == 1)
+        {
+            int px = 0;
+            if (thing.Category == ThingCategory.Outfit && fg.PatternX > 2)
+                px = 2;
+            uint sprId = fg.GetSpriteId(0, 0, 0, px, 0, 0, 0);
+            var rgba = sprFile.GetSpriteRgba(sprId);
+            if (rgba == null) return null;
+            try
+            {
+                var bmp = new WriteableBitmap(new PixelSize(32, 32), new Vector(96, 96),
+                    Avalonia.Platform.PixelFormat.Rgba8888, Avalonia.Platform.AlphaFormat.Unpremul);
+                using (var fb = bmp.Lock())
+                    Marshal.Copy(rgba, 0, fb.Address, rgba.Length);
+                return bmp;
+            }
+            catch { return null; }
+        }
+
+        int bmpW = w * 32;
+        int bmpH = h * 32;
+        var pixels = new byte[bmpW * bmpH * 4];
+
+        int layers = fg.Layers;
+        int patX = 0;
+        if (thing.Category == ThingCategory.Outfit)
+        {
+            layers = 1;
+            if (fg.PatternX > 2) patX = 2;
+        }
+
+        for (int l = 0; l < layers; l++)
+        {
+            for (int tw = 0; tw < w; tw++)
+            {
+                for (int th = 0; th < h; th++)
+                {
+                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, 0);
+                    var rgba = sprFile.GetSpriteRgba(sprId);
+                    if (rgba == null) continue;
+
+                    int destX = (w - 1 - tw) * 32;
+                    int destY = (h - 1 - th) * 32;
+
+                    for (int y = 0; y < 32; y++)
+                    {
+                        for (int x = 0; x < 32; x++)
+                        {
+                            int srcIdx = (y * 32 + x) * 4;
+                            byte a = rgba[srcIdx + 3];
+                            if (a == 0) continue;
+                            int dstIdx = ((destY + y) * bmpW + destX + x) * 4;
+                            pixels[dstIdx] = rgba[srcIdx];
+                            pixels[dstIdx + 1] = rgba[srcIdx + 1];
+                            pixels[dstIdx + 2] = rgba[srcIdx + 2];
+                            pixels[dstIdx + 3] = a;
+                        }
+                    }
+                }
+            }
+        }
+
+        try
+        {
+            var bitmap = new WriteableBitmap(
+                new PixelSize(bmpW, bmpH), new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Rgba8888, Avalonia.Platform.AlphaFormat.Unpremul);
+            using (var fb = bitmap.Lock())
+                Marshal.Copy(pixels, 0, fb.Address, pixels.Length);
             return bitmap;
         }
         catch { return null; }
