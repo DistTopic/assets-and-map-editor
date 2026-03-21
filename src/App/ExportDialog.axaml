@@ -1,0 +1,199 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="POriginsItemEditor.App.ExportDialog"
+        Title="Export"
+        Width="420"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Label">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="RadioButton">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Slider">
+            <Setter Property="Foreground" Value="#89b4fa"/>
+        </Style>
+        <Style Selector="Border.groupBox">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+
+        <!-- Bottom bar: error + buttons -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="#45475a" BorderThickness="0,1,0,0"
+                Padding="0,10,0,0" Margin="0,10,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right"
+                           Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ExportButton"
+                            Content="Export"
+                            Classes="primary"
+                            MinWidth="70"
+                            IsEnabled="False"
+                            Click="ExportButton_Click"/>
+                    <Button Content="Cancel"
+                            MinWidth="70"
+                            Click="CancelButton_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="ErrorIcon" Text="⚠" Foreground="#f38ba8"
+                               IsVisible="False" FontSize="14"/>
+                    <TextBlock x:Name="ErrorLabel" Foreground="#f38ba8"
+                               IsVisible="False" FontSize="11"
+                               TextWrapping="Wrap" MaxWidth="200"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Content -->
+        <StackPanel Spacing="10">
+
+            <!-- Name -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Name:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBox x:Name="FileNameBox"
+                         Watermark="e.g. item, outfit, sprite..."
+                         TextChanged="Input_Changed"/>
+            </StackPanel>
+
+            <!-- Output Folder -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Output Folder:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Browse"
+                            MinWidth="65" Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            Click="BrowseButton_Click"/>
+                    <TextBox x:Name="OutputFolderBox"
+                             Watermark="Select output folder..."
+                             IsReadOnly="True"/>
+                </DockPanel>
+            </StackPanel>
+
+            <!-- Format -->
+            <StackPanel>
+                <TextBlock Text="Format" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <RadioButton x:Name="FormatObd" Content="OBD"
+                                     GroupName="Format" IsChecked="True"
+                                     Checked="Format_Changed"/>
+                        <RadioButton x:Name="FormatPng" Content="PNG"
+                                     GroupName="Format"
+                                     Checked="Format_Changed"/>
+                        <RadioButton x:Name="FormatBmp" Content="BMP"
+                                     GroupName="Format"
+                                     Checked="Format_Changed"/>
+                        <RadioButton x:Name="FormatJpg" Content="JPG"
+                                     GroupName="Format"
+                                     Checked="Format_Changed"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- OBD Options (visible when OBD selected) -->
+            <StackPanel x:Name="ObdOptionsPanel" IsVisible="True">
+                <TextBlock Text="OBD Options" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <StackPanel Spacing="8">
+                        <DockPanel>
+                            <TextBlock Text="OBD Version:" VerticalAlignment="Center"
+                                       Width="100"/>
+                            <ComboBox x:Name="ObdVersionCombo"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      BorderBrush="#45475a" CornerRadius="4"
+                                      HorizontalAlignment="Stretch"
+                                      SelectedIndex="1"/>
+                        </DockPanel>
+                        <DockPanel>
+                            <TextBlock Text="Client Version:" VerticalAlignment="Center"
+                                       Width="100"/>
+                            <ComboBox x:Name="ClientVersionCombo"
+                                      Background="#313244" Foreground="#cdd6f4"
+                                      BorderBrush="#45475a" CornerRadius="4"
+                                      HorizontalAlignment="Stretch"
+                                      SelectedIndex="0"/>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Image Options (changes per format) -->
+            <StackPanel x:Name="ImageOptionsPanel" IsVisible="False">
+                <TextBlock Text="Image Options" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <StackPanel Spacing="6">
+                        <!-- PNG option: transparent background -->
+                        <CheckBox x:Name="TransparentCheckBox"
+                                  Content="Transparent Background"
+                                  IsChecked="True"/>
+
+                        <!-- JPG option: quality slider -->
+                        <StackPanel x:Name="QualityPanel" IsVisible="False"
+                                    Spacing="4">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right"
+                                           x:Name="QualityLabel"
+                                           Text="100%"
+                                           Foreground="#89b4fa"
+                                           MinWidth="35"
+                                           TextAlignment="Right"/>
+                                <TextBlock Text="Quality:" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <Slider x:Name="QualitySlider"
+                                    Minimum="10" Maximum="100"
+                                    Value="100"
+                                    TickFrequency="5" IsSnapToTickEnabled="True"
+                                    PropertyChanged="QualitySlider_Changed"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        </StackPanel>
+
+    </DockPanel>
+</Window>

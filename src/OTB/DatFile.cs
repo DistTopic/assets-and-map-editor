@@ -4,22 +4,106 @@ using System.Text;
 namespace POriginsItemEditor.OTB;
 
 /// <summary>
-/// Tibia.dat parser for protocol 1098 (MetadataFlags6).
-/// Parses all thing types (items, outfits, effects, missiles) with full structure.
+/// Tibia.dat parser supporting multiple protocol versions.
+/// Supports MetadataFlags6 (1098+), and legacy protocols (854, 860).
 /// </summary>
 public static class DatFile
 {
-    public static DatData Load(string path)
+    /// <summary>Optional log callback for diagnostic messages during load.</summary>
+    public static Action<string>? DiagLog { get; set; }
+
+    public static DatData Load(string path, int protocolHint = 0)
     {
         var raw = File.ReadAllBytes(path);
-        return Parse(raw);
+        var sig = BinaryPrimitives.ReadUInt32LittleEndian(raw);
+        int detected = DetectProtocol(sig);
+
+        DiagLog?.Invoke($"[DAT] File={Path.GetFileName(path)}, size={raw.Length}, sig=0x{sig:X8}, detectedProto={detected}, hint={protocolHint}");
+
+        int primary = protocolHint > 0 ? protocolHint : detected;
+        bool primaryExtended = primary >= 960;
+
+        // Try primary protocol with default extended setting
+        try
+        {
+            var result = Parse(raw, primary, primaryExtended);
+            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={primaryExtended}, items={result.ItemCount}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={primaryExtended}: {ex.Message}");
+        }
+
+        // Try primary protocol with opposite extended setting
+        try
+        {
+            var result = Parse(raw, primary, !primaryExtended);
+            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={!primaryExtended}, items={result.ItemCount}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={!primaryExtended}: {ex.Message}");
+        }
+
+        // Fallback: try every other protocol with both extended modes
+        int[] allProtocols = [1098, 1076, 1057, 1050, 960, 860, 854, 810, 800, 790, 780, 770, 760, 750, 740];
+        foreach (var proto in allProtocols)
+        {
+            if (proto == primary) continue;
+            foreach (var ext in new[] { true, false })
+            {
+                try
+                {
+                    var result = Parse(raw, proto, ext);
+                    DiagLog?.Invoke($"[DAT] Fallback OK: proto={proto}, extended={ext}, items={result.ItemCount}");
+                    return result;
+                }
+                catch { }
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to parse {Path.GetFileName(path)} (sig=0x{sig:X8}, size={raw.Length}). No protocol/extended combination worked.");
     }
 
-    private static DatData Parse(byte[] raw)
+    /// <summary>
+    /// Detects the protocol version from the DAT signature.
+    /// Known signatures map to specific versions; unknown defaults to 1098.
+    /// </summary>
+    public static int DetectProtocol(uint signature)
+    {
+        // Well-known Tibia.dat signatures (from Object Builder / OTClient sources)
+        return signature switch
+        {
+            0x439D5A33 => 740,
+            0x41BF05F4 => 750,
+            0x41BF05F5 => 760,
+            0x4708AEF5 => 770,
+            0x4721F8A2 => 780,
+            0x4782ADE5 => 790,
+            0x47A11B85 => 800,
+            0x4865975E => 810,
+            0x49971E5E => 854,
+            0x4B1E2CAA => 854, // custom PokéOrigins 854 DAT
+            0x4A10DC35 => 860,
+            0x4C4B6B22 => 960,
+            0x4D455ADE => 1050,
+            0x4E97D9D4 => 1057,
+            0x500F744E => 1076,
+            0x50C5A941 => 1098,
+            _ => 1098,
+        };
+    }
+
+    private static DatData Parse(byte[] raw, int protocolHint, bool extended)
     {
         var r = new DatReader(raw);
 
         var signature = r.U32();
+        int protocol = protocolHint > 0 ? protocolHint : DetectProtocol(signature);
+
         var lastItemId = r.U16();     // header stores LAST ID, not count
         var lastOutfitId = r.U16();
         var lastEffectId = r.U16();
@@ -38,30 +122,52 @@ public static class DatFile
         // Items: 100..lastItemId (inclusive)
         for (int id = 100; id <= lastItemId; id++)
         {
-            var thing = ParseThing(r, (ushort)id, ThingCategory.Item);
-            items[(ushort)id] = thing;
+            try
+            {
+                var thing = ParseThing(r, (ushort)id, ThingCategory.Item, protocol, extended);
+                items[(ushort)id] = thing;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed parsing Item {id}/{lastItemId} at reader offset {r.Position} (protocol {protocol}): {ex.Message}", ex);
+            }
         }
 
         // Parse outfits/effects/missiles independently — don't let failures block items
+        bool secondaryFailed = false;
         try
         {
             for (int id = 1; id <= numOutfits; id++)
-                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit);
+                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit, protocol, extended);
 
             for (int id = 1; id <= numEffects; id++)
-                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect);
+                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect, protocol, extended);
 
             for (int id = 1; id <= numMissiles; id++)
-                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile);
+                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile, protocol, extended);
         }
         catch
         {
-            // Non-item categories may fail on certain DAT variants; items are still valid
+            secondaryFailed = true;
+        }
+
+        // If outfit/effect/missile parsing failed AND most of the file is unread,
+        // the protocol is almost certainly wrong — reject so fallback tries the next one.
+        if (secondaryFailed)
+        {
+            int remaining = raw.Length - r.Position;
+            int expectedSecondary = (numOutfits + numEffects + numMissiles) * 10; // rough minimum bytes
+            if (remaining > expectedSecondary / 2 && remaining > 1000)
+                throw new InvalidOperationException(
+                    $"Secondary categories failed with {remaining} bytes remaining (protocol {protocol}, ext={extended}) — likely wrong protocol.");
         }
 
         return new DatData
         {
             Signature = signature,
+            ProtocolVersion = protocol,
+            Extended = extended,
             ItemCount = (ushort)numItems,
             OutfitCount = (ushort)numOutfits,
             EffectCount = (ushort)numEffects,
@@ -73,22 +179,23 @@ public static class DatFile
         };
     }
 
-    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category)
+    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category, int protocol, bool extended)
     {
         var thing = new DatThingType { Id = id, Category = category };
 
-        // ── Parse flags (MetadataFlags6) ──
-        ParseFlags(r, thing);
+        // ── Parse flags ──
+        ParseFlags(r, thing, protocol);
 
         // ── Parse frame groups ──
+        // Frame groups exist for outfits in protocol >= 1050
         bool isOutfit = category == ThingCategory.Outfit;
-        int groupCount = isOutfit ? r.U8() : 1;
+        int groupCount = (isOutfit && protocol >= 1050) ? r.U8() : 1;
         var groups = new FrameGroup[groupCount];
 
         for (int g = 0; g < groupCount; g++)
         {
             var fg = new FrameGroup();
-            if (isOutfit)
+            if (isOutfit && protocol >= 1050)
                 fg.Type = (FrameGroupType)r.U8();
 
             fg.Width = r.U8();
@@ -102,8 +209,8 @@ public static class DatFile
             fg.PatternZ = r.U8();
             fg.Frames = r.U8();
 
-            // Improved animations (protocol >= 1050, active for 1098)
-            if (fg.Frames > 1)
+            // Improved animations (protocol >= 1050)
+            if (fg.Frames > 1 && protocol >= 1050)
             {
                 fg.AnimationMode = (AnimationMode)r.U8();
                 fg.LoopCount = r.S32();
@@ -119,11 +226,11 @@ public static class DatFile
                 }
             }
 
-            // Sprite index (extended = U32 for protocol >= 960)
+            // Sprite index size: U32 if extended, U16 otherwise
             int totalSprites = fg.SpriteCount;
             fg.SpriteIndex = new uint[totalSprites];
             for (int i = 0; i < totalSprites; i++)
-                fg.SpriteIndex[i] = r.U32();
+                fg.SpriteIndex[i] = extended ? r.U32() : r.U16();
 
             groups[g] = fg;
         }
@@ -132,100 +239,219 @@ public static class DatFile
         return thing;
     }
 
-    private static void ParseFlags(DatReader r, DatThingType thing)
+    private static void ParseFlags(DatReader r, DatThingType thing, int protocol)
     {
         while (true)
         {
             int flag = r.U8();
             if (flag == 0xFF) break;
 
-            switch (flag)
-            {
-                case 0x00: // Ground
-                    thing.IsGround = true;
-                    thing.GroundSpeed = r.U16();
-                    break;
-                case 0x01: thing.IsGroundBorder = true; break;
-                case 0x02: thing.IsOnBottom = true; break;
-                case 0x03: thing.IsOnTop = true; break;
-                case 0x04: thing.IsContainer = true; break;
-                case 0x05: thing.IsStackable = true; break;
-                case 0x06: thing.IsForceUse = true; break;
-                case 0x07: thing.IsMultiUse = true; break;
-                case 0x08: // Writable
-                    thing.IsWritable = true;
-                    thing.MaxTextLength = r.U16();
-                    break;
-                case 0x09: // Writable once
-                    thing.IsWritableOnce = true;
-                    thing.MaxTextLength = r.U16();
-                    break;
-                case 0x0A: thing.IsFluidContainer = true; break;
-                case 0x0B: thing.IsFluid = true; break;
-                case 0x0C: thing.IsUnpassable = true; break;
-                case 0x0D: thing.IsUnmoveable = true; break;
-                case 0x0E: thing.IsBlockMissile = true; break;
-                case 0x0F: thing.IsBlockPathfind = true; break;
-                case 0x10: thing.IsNoMoveAnimation = true; break;
-                case 0x11: thing.IsPickupable = true; break;
-                case 0x12: thing.IsHangable = true; break;
-                case 0x13: thing.IsVertical = true; break;
-                case 0x14: thing.IsHorizontal = true; break;
-                case 0x15: thing.IsRotatable = true; break;
-                case 0x16: // Has light
-                    thing.HasLight = true;
-                    thing.LightLevel = r.U16();
-                    thing.LightColor = r.U16();
-                    break;
-                case 0x17: thing.IsDontHide = true; break;
-                case 0x18: thing.IsTranslucent = true; break;
-                case 0x19: // Has offset
-                    thing.HasOffset = true;
-                    thing.OffsetX = r.S16();
-                    thing.OffsetY = r.S16();
-                    break;
-                case 0x1A: // Has elevation
-                    thing.HasElevation = true;
-                    thing.Elevation = r.U16();
-                    break;
-                case 0x1B: thing.IsLyingObject = true; break;
-                case 0x1C: thing.IsAnimateAlways = true; break;
-                case 0x1D: // Minimap
-                    thing.IsMiniMap = true;
-                    thing.MiniMapColor = r.U16();
-                    break;
-                case 0x1E: // Lens help
-                    thing.IsLensHelp = true;
-                    thing.LensHelp = r.U16();
-                    break;
-                case 0x1F: thing.IsFullGround = true; break;
-                case 0x20: thing.IsIgnoreLook = true; break;
-                case 0x21: // Cloth
-                    thing.IsCloth = true;
-                    thing.ClothSlot = r.U16();
-                    break;
-                case 0x22: // Market item
-                    thing.IsMarketItem = true;
-                    thing.MarketCategory = r.U16();
-                    thing.MarketTradeAs = r.U16();
-                    thing.MarketShowAs = r.U16();
-                    var nameLen = r.U16();
-                    if (nameLen > 512) nameLen = 512;
-                    var rawName = r.String(nameLen);
-                    // Keep only printable ASCII (valid market names are plain text)
-                    thing.MarketName = new string(rawName.Where(c => c >= 0x20 && c <= 0x7E).ToArray());
-                    thing.MarketRestrictProfession = r.U16();
-                    thing.MarketRestrictLevel = r.U16();
-                    break;
-                case 0x23: // Default action
-                    thing.HasDefaultAction = true;
-                    thing.DefaultAction = r.U16();
-                    break;
-                case 0x24: thing.IsWrappable = true; break;
-                case 0x25: thing.IsUnwrappable = true; break;
-                case 0x26: thing.IsTopEffect = true; break;
-                case 0xFE: thing.IsUsable = true; break;
-            }
+            // Dispatch to the correct flag set based on protocol version.
+            // MetadataFlags3: client 7.55-7.72  (protocol < 780)
+            // MetadataFlags4: client 7.80-8.54  (protocol 780-854)
+            // MetadataFlags5: client 8.60-9.86  (protocol 860-1009)
+            // MetadataFlags6: client 10.10+     (protocol >= 1010)
+            if (protocol < 780)
+                ParseFlagV3(r, thing, flag);
+            else if (protocol < 860)
+                ParseFlagV4(r, thing, flag);
+            else if (protocol < 1010)
+                ParseFlagV5(r, thing, flag);
+            else
+                ParseFlagV6(r, thing, flag);
+        }
+    }
+
+    /// <summary>MetadataFlags6 — client 10.10+ (protocol &gt;= 1010).</summary>
+    private static void ParseFlagV6(DatReader r, DatThingType thing, int flag)
+    {
+        switch (flag)
+        {
+            case 0x00: thing.IsGround = true; thing.GroundSpeed = r.U16(); break;
+            case 0x01: thing.IsGroundBorder = true; break;
+            case 0x02: thing.IsOnBottom = true; break;
+            case 0x03: thing.IsOnTop = true; break;
+            case 0x04: thing.IsContainer = true; break;
+            case 0x05: thing.IsStackable = true; break;
+            case 0x06: thing.IsForceUse = true; break;
+            case 0x07: thing.IsMultiUse = true; break;
+            case 0x08: thing.IsWritable = true; thing.MaxTextLength = r.U16(); break;
+            case 0x09: thing.IsWritableOnce = true; thing.MaxTextLength = r.U16(); break;
+            case 0x0A: thing.IsFluidContainer = true; break;
+            case 0x0B: thing.IsFluid = true; break;
+            case 0x0C: thing.IsUnpassable = true; break;
+            case 0x0D: thing.IsUnmoveable = true; break;
+            case 0x0E: thing.IsBlockMissile = true; break;
+            case 0x0F: thing.IsBlockPathfind = true; break;
+            case 0x10: thing.IsNoMoveAnimation = true; break;
+            case 0x11: thing.IsPickupable = true; break;
+            case 0x12: thing.IsHangable = true; break;
+            case 0x13: thing.IsVertical = true; break;
+            case 0x14: thing.IsHorizontal = true; break;
+            case 0x15: thing.IsRotatable = true; break;
+            case 0x16: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
+            case 0x17: thing.IsDontHide = true; break;
+            case 0x18: thing.IsTranslucent = true; break;
+            case 0x19: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
+            case 0x1A: thing.HasElevation = true; thing.Elevation = r.U16(); break;
+            case 0x1B: thing.IsLyingObject = true; break;
+            case 0x1C: thing.IsAnimateAlways = true; break;
+            case 0x1D: thing.IsMiniMap = true; thing.MiniMapColor = r.U16(); break;
+            case 0x1E: thing.IsLensHelp = true; thing.LensHelp = r.U16(); break;
+            case 0x1F: thing.IsFullGround = true; break;
+            case 0x20: thing.IsIgnoreLook = true; break;
+            case 0x21: thing.IsCloth = true; thing.ClothSlot = r.U16(); break;
+            case 0x22:
+                thing.IsMarketItem = true;
+                thing.MarketCategory = r.U16();
+                thing.MarketTradeAs = r.U16();
+                thing.MarketShowAs = r.U16();
+                var nameLen6 = r.U16();
+                if (nameLen6 > 512) nameLen6 = 512;
+                var rawName6 = r.String(nameLen6);
+                thing.MarketName = new string(rawName6.Where(c => c >= 0x20 && c <= 0x7E).ToArray());
+                thing.MarketRestrictProfession = r.U16();
+                thing.MarketRestrictLevel = r.U16();
+                break;
+            case 0x23: thing.HasDefaultAction = true; thing.DefaultAction = r.U16(); break;
+            case 0x24: thing.IsWrappable = true; break;
+            case 0x25: thing.IsUnwrappable = true; break;
+            case 0x26: thing.IsTopEffect = true; break;
+            case 0xFE: thing.IsUsable = true; break;
+        }
+    }
+
+    /// <summary>MetadataFlags5 — client 8.60-9.86 (protocol 860-1009). No NO_MOVE_ANIMATION; flags 0x10+ shifted by -1 vs V6.</summary>
+    private static void ParseFlagV5(DatReader r, DatThingType thing, int flag)
+    {
+        switch (flag)
+        {
+            case 0x00: thing.IsGround = true; thing.GroundSpeed = r.U16(); break;
+            case 0x01: thing.IsGroundBorder = true; break;
+            case 0x02: thing.IsOnBottom = true; break;
+            case 0x03: thing.IsOnTop = true; break;
+            case 0x04: thing.IsContainer = true; break;
+            case 0x05: thing.IsStackable = true; break;
+            case 0x06: thing.IsForceUse = true; break;
+            case 0x07: thing.IsMultiUse = true; break;
+            case 0x08: thing.IsWritable = true; thing.MaxTextLength = r.U16(); break;
+            case 0x09: thing.IsWritableOnce = true; thing.MaxTextLength = r.U16(); break;
+            case 0x0A: thing.IsFluidContainer = true; break;
+            case 0x0B: thing.IsFluid = true; break;
+            case 0x0C: thing.IsUnpassable = true; break;
+            case 0x0D: thing.IsUnmoveable = true; break;
+            case 0x0E: thing.IsBlockMissile = true; break;
+            case 0x0F: thing.IsBlockPathfind = true; break;
+            // 0x10 = Pickupable (no NoMoveAnimation in MF5)
+            case 0x10: thing.IsPickupable = true; break;
+            case 0x11: thing.IsHangable = true; break;
+            case 0x12: thing.IsVertical = true; break;
+            case 0x13: thing.IsHorizontal = true; break;
+            case 0x14: thing.IsRotatable = true; break;
+            case 0x15: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
+            case 0x16: thing.IsDontHide = true; break;
+            case 0x17: thing.IsTranslucent = true; break;
+            case 0x18: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
+            case 0x19: thing.HasElevation = true; thing.Elevation = r.U16(); break;
+            case 0x1A: thing.IsLyingObject = true; break;
+            case 0x1B: thing.IsAnimateAlways = true; break;
+            case 0x1C: thing.IsMiniMap = true; thing.MiniMapColor = r.U16(); break;
+            case 0x1D: thing.IsLensHelp = true; thing.LensHelp = r.U16(); break;
+            case 0x1E: thing.IsFullGround = true; break;
+            case 0x1F: thing.IsIgnoreLook = true; break;
+            case 0x20: thing.IsCloth = true; thing.ClothSlot = r.U16(); break;
+            case 0x21:
+                thing.IsMarketItem = true;
+                thing.MarketCategory = r.U16();
+                thing.MarketTradeAs = r.U16();
+                thing.MarketShowAs = r.U16();
+                var nameLen5 = r.U16();
+                if (nameLen5 > 512) nameLen5 = 512;
+                var rawName5 = r.String(nameLen5);
+                thing.MarketName = new string(rawName5.Where(c => c >= 0x20 && c <= 0x7E).ToArray());
+                thing.MarketRestrictProfession = r.U16();
+                thing.MarketRestrictLevel = r.U16();
+                break;
+        }
+    }
+
+    /// <summary>MetadataFlags4 — client 7.80-8.54 (protocol 780-854). HasCharges added; Writable shifted to 0x09.</summary>
+    private static void ParseFlagV4(DatReader r, DatThingType thing, int flag)
+    {
+        switch (flag)
+        {
+            case 0x00: thing.IsGround = true; thing.GroundSpeed = r.U16(); break;
+            case 0x01: thing.IsGroundBorder = true; break;
+            case 0x02: thing.IsOnBottom = true; break;
+            case 0x03: thing.IsOnTop = true; break;
+            case 0x04: thing.IsContainer = true; break;
+            case 0x05: thing.IsStackable = true; break;
+            case 0x06: thing.IsForceUse = true; break;
+            case 0x07: thing.IsMultiUse = true; break;
+            case 0x08: break; // HasCharges — boolean only, no data, no DatThingType field
+            case 0x09: thing.IsWritable = true; thing.MaxTextLength = r.U16(); break;
+            case 0x0A: thing.IsWritableOnce = true; thing.MaxTextLength = r.U16(); break;
+            case 0x0B: thing.IsFluidContainer = true; break;
+            case 0x0C: thing.IsFluid = true; break;
+            case 0x0D: thing.IsUnpassable = true; break;
+            case 0x0E: thing.IsUnmoveable = true; break;
+            case 0x0F: thing.IsBlockMissile = true; break;
+            case 0x10: thing.IsBlockPathfind = true; break;
+            case 0x11: thing.IsPickupable = true; break;
+            case 0x12: thing.IsHangable = true; break;
+            case 0x13: thing.IsVertical = true; break;
+            case 0x14: thing.IsHorizontal = true; break;
+            case 0x15: thing.IsRotatable = true; break;
+            case 0x16: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
+            case 0x17: thing.IsDontHide = true; break;
+            case 0x18: break; // FloorChange — boolean only
+            case 0x19: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
+            case 0x1A: thing.HasElevation = true; thing.Elevation = r.U16(); break;
+            case 0x1B: thing.IsLyingObject = true; break;
+            case 0x1C: thing.IsAnimateAlways = true; break;
+            case 0x1D: thing.IsMiniMap = true; thing.MiniMapColor = r.U16(); break;
+            case 0x1E: thing.IsLensHelp = true; thing.LensHelp = r.U16(); break;
+            case 0x1F: thing.IsFullGround = true; break;
+            case 0x20: thing.IsIgnoreLook = true; break;
+        }
+    }
+
+    /// <summary>MetadataFlags3 — client 7.55-7.72 (protocol &lt; 780). No HasCharges; HAS_LIGHT at 0x15.</summary>
+    private static void ParseFlagV3(DatReader r, DatThingType thing, int flag)
+    {
+        switch (flag)
+        {
+            case 0x00: thing.IsGround = true; thing.GroundSpeed = r.U16(); break;
+            case 0x01: thing.IsGroundBorder = true; break;
+            case 0x02: thing.IsOnBottom = true; break;
+            case 0x03: thing.IsOnTop = true; break;
+            case 0x04: thing.IsContainer = true; break;
+            case 0x05: thing.IsStackable = true; break;
+            case 0x06: thing.IsForceUse = true; break;
+            case 0x07: thing.IsMultiUse = true; break;
+            case 0x08: thing.IsWritable = true; thing.MaxTextLength = r.U16(); break;
+            case 0x09: thing.IsWritableOnce = true; thing.MaxTextLength = r.U16(); break;
+            case 0x0A: thing.IsFluidContainer = true; break;
+            case 0x0B: thing.IsFluid = true; break;
+            case 0x0C: thing.IsUnpassable = true; break;
+            case 0x0D: thing.IsUnmoveable = true; break;
+            case 0x0E: thing.IsBlockMissile = true; break;
+            case 0x0F: thing.IsBlockPathfind = true; break;
+            case 0x10: thing.IsPickupable = true; break;
+            case 0x11: thing.IsHangable = true; break;
+            case 0x12: thing.IsVertical = true; break;
+            case 0x13: thing.IsHorizontal = true; break;
+            case 0x14: thing.IsRotatable = true; break;
+            case 0x15: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
+            case 0x16: break; // Unknown flag in MF3
+            case 0x17: break; // FloorChange — boolean only
+            case 0x18: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
+            case 0x19: thing.HasElevation = true; thing.Elevation = r.U16(); break;
+            case 0x1A: thing.IsLyingObject = true; break;
+            case 0x1B: thing.IsAnimateAlways = true; break;
+            case 0x1C: thing.IsMiniMap = true; thing.MiniMapColor = r.U16(); break;
+            case 0x1D: thing.IsLensHelp = true; thing.LensHelp = r.U16(); break;
+            case 0x1E: thing.IsFullGround = true; break;
         }
     }
 
@@ -442,11 +668,24 @@ public static class DatFile
         private int _pos;
 
         public int Remaining => data.Length - _pos;
+        public int Position => _pos;
 
-        public byte U8() => data[_pos++];
+        private void EnsureAvailable(int bytes)
+        {
+            if (_pos + bytes > data.Length)
+                throw new InvalidOperationException(
+                    $"DAT reader overrun at offset {_pos}: need {bytes} bytes, only {data.Length - _pos} remaining (total={data.Length})");
+        }
+
+        public byte U8()
+        {
+            EnsureAvailable(1);
+            return data[_pos++];
+        }
 
         public sbyte S8()
         {
+            EnsureAvailable(1);
             var v = (sbyte)data[_pos];
             _pos++;
             return v;
@@ -454,6 +693,7 @@ public static class DatFile
 
         public ushort U16()
         {
+            EnsureAvailable(2);
             var v = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(_pos));
             _pos += 2;
             return v;
@@ -461,6 +701,7 @@ public static class DatFile
 
         public short S16()
         {
+            EnsureAvailable(2);
             var v = BinaryPrimitives.ReadInt16LittleEndian(data.AsSpan(_pos));
             _pos += 2;
             return v;
@@ -468,6 +709,7 @@ public static class DatFile
 
         public uint U32()
         {
+            EnsureAvailable(4);
             var v = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(_pos));
             _pos += 4;
             return v;
@@ -475,6 +717,7 @@ public static class DatFile
 
         public int S32()
         {
+            EnsureAvailable(4);
             var v = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(_pos));
             _pos += 4;
             return v;
@@ -482,6 +725,7 @@ public static class DatFile
 
         public string String(int length)
         {
+            EnsureAvailable(length);
             var s = Encoding.Latin1.GetString(data, _pos, length);
             _pos += length;
             return s;
@@ -494,6 +738,9 @@ public static class DatFile
 public sealed class DatData
 {
     public uint Signature { get; init; }
+    public int ProtocolVersion { get; init; }
+    /// <summary>True if sprite indices are U32 (extended). False if U16.</summary>
+    public bool Extended { get; init; }
     public ushort ItemCount { get; init; }
     public ushort OutfitCount { get; init; }
     public ushort EffectCount { get; init; }

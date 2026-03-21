@@ -206,6 +206,8 @@ public sealed class FrameGroup
     /// </summary>
     public uint GetSpriteId(int w, int h, int layer, int patternX, int patternY, int patternZ, int frame)
     {
+        if (Width == 0 || Height == 0 || Layers == 0 || PatternX == 0 || PatternY == 0 || PatternZ == 0 || Frames == 0)
+            return 0;
         int index = ((((((frame % Frames) * PatternZ + patternZ) * PatternY + patternY) * PatternX + patternX)
                      * Layers + layer) * Height + h) * Width + w;
         return index < SpriteIndex.Length ? SpriteIndex[index] : 0;

@@ -1,0 +1,192 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="POriginsItemEditor.App.ImportThingDialog"
+        Title="Import Thing"
+        Width="460"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinWidth" Value="120"/>
+        </Style>
+        <Style Selector="Border.groupBox">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+        <Style Selector="RadioButton">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+
+        <!-- Bottom bar -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="#45475a" BorderThickness="0,1,0,0"
+                Padding="0,10,0,0" Margin="0,10,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right"
+                           Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ImportButton"
+                            Content="Import"
+                            Classes="primary"
+                            MinWidth="70"
+                            IsEnabled="False"
+                            Click="ImportButton_Click"/>
+                    <Button Content="Cancel"
+                            MinWidth="70"
+                            Click="CancelButton_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="ErrorLabel" Foreground="#f38ba8"
+                               IsVisible="False" FontSize="11"
+                               TextWrapping="Wrap" MaxWidth="240"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Content -->
+        <StackPanel Spacing="10">
+
+            <!-- Import Mode -->
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton x:Name="ObdModeRadio"
+                             Content="From .obd file (Object Builder)"
+                             IsChecked="True"
+                             Click="ImportMode_Changed"/>
+                <RadioButton x:Name="FolderModeRadio"
+                             Content="From client folder"
+                             Click="ImportMode_Changed"/>
+            </StackPanel>
+
+            <!-- OBD File Panel -->
+            <StackPanel x:Name="ObdPanel" Spacing="4">
+                <TextBlock Text="OBD File(s):" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right"
+                            Content="Browse..."
+                            Margin="6,0,0,0"
+                            Click="BrowseObd_Click"/>
+                    <TextBox x:Name="ObdFileBox"
+                             Watermark="Select .obd file(s)"
+                             IsReadOnly="True"/>
+                </DockPanel>
+            </StackPanel>
+
+            <!-- Folder Panel (hidden by default) -->
+            <StackPanel x:Name="FolderPanel" Spacing="4" IsVisible="False">
+                <TextBlock Text="Source Client Folder:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right"
+                            Content="Browse..."
+                            Margin="6,0,0,0"
+                            Click="BrowseSource_Click"/>
+                    <TextBox x:Name="SourceFolderBox"
+                             Watermark="Path to folder with Tibia.dat + Tibia.spr"
+                             IsReadOnly="True"/>
+                </DockPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Category:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="CategoryBox"
+                                  SelectedIndex="0"
+                                  SelectionChanged="CategoryOrId_Changed">
+                            <ComboBoxItem Content="Item"/>
+                            <ComboBoxItem Content="Outfit"/>
+                            <ComboBoxItem Content="Effect"/>
+                            <ComboBoxItem Content="Missile"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Thing ID:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBox x:Name="ThingIdBox"
+                                 Watermark="e.g. 100"
+                                 Width="100"
+                                 TextChanged="ThingIdBox_TextChanged"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Source info label -->
+            <TextBlock x:Name="SourceInfoLabel"
+                       Text="No file selected"
+                       Foreground="#585b70" FontSize="11"/>
+
+            <!-- Preview -->
+            <Border Classes="groupBox">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Preview:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <DockPanel>
+                        <Image x:Name="PreviewImage"
+                               Width="64" Height="64"
+                               DockPanel.Dock="Left"
+                               Margin="0,0,12,0"
+                               RenderOptions.BitmapInterpolationMode="None"/>
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock x:Name="PreviewInfoLabel"
+                                       Text="Select a file or source to preview"
+                                       Foreground="#585b70" FontSize="11"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock x:Name="PreviewSpriteLabel"
+                                       Text=""
+                                       Foreground="#585b70" FontSize="11"/>
+                        </StackPanel>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Options -->
+            <Border Classes="groupBox">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Import as:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="New ID:" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="NewIdLabel"
+                                   Text="(auto — next available)"
+                                   Foreground="#a6e3a1" FontSize="11"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </DockPanel>
+</Window>

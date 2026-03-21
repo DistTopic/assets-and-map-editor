@@ -1,0 +1,180 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="POriginsItemEditor.App.OpenClientDialog"
+        Title="Open Asset Files"
+        Width="520"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Label">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Border.groupBox">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+
+        <!-- Bottom bar: error + buttons -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="#45475a" BorderThickness="0,1,0,0"
+                Padding="0,10,0,0" Margin="0,10,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right"
+                           Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="LoadButton"
+                            Content="Load"
+                            Classes="primary"
+                            MinWidth="70"
+                            IsEnabled="False"
+                            Click="LoadButton_Click"/>
+                    <Button Content="Cancel"
+                            MinWidth="70"
+                            Click="CancelButton_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="ErrorIcon" Text="⚠" Foreground="#f38ba8"
+                               IsVisible="False" FontSize="14"/>
+                    <TextBlock x:Name="ErrorLabel" Foreground="#f38ba8"
+                               IsVisible="False" FontSize="11"
+                               TextWrapping="Wrap" MaxWidth="280"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Content -->
+        <StackPanel Spacing="8">
+
+            <!-- Client Folder -->
+            <StackPanel Spacing="2">
+                <TextBlock Text="Client Folder:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Browse"
+                            MinWidth="65" Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            Click="BrowseButton_Click"/>
+                    <TextBox x:Name="FolderPathBox"
+                             Watermark="Select a client folder..."
+                             IsReadOnly="True"/>
+                </DockPanel>
+            </StackPanel>
+
+            <!-- Version -->
+            <StackPanel>
+                <TextBlock Text="Version" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <TextBlock x:Name="VersionLabel" Text="" Foreground="#89b4fa"/>
+                </Border>
+            </StackPanel>
+
+            <!-- Options -->
+            <StackPanel>
+                <TextBlock Text="Options" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <StackPanel Spacing="6">
+                        <CheckBox x:Name="ExtendedCheckBox" Content="Extended" IsEnabled="False"
+                                  Checked="Feature_Changed" Unchecked="Feature_Changed"/>
+                        <CheckBox x:Name="TransparencyCheckBox" Content="Transparency" IsEnabled="False"
+                                  Checked="Feature_Changed" Unchecked="Feature_Changed"/>
+                        <CheckBox x:Name="ImprovedAnimationsCheckBox" Content="Improved Animations" IsEnabled="False"
+                                  Checked="Feature_Changed" Unchecked="Feature_Changed"/>
+                        <CheckBox x:Name="FrameGroupsCheckBox" Content="Frame Groups" IsEnabled="False"
+                                  Checked="Feature_Changed" Unchecked="Feature_Changed"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- DAT -->
+            <StackPanel>
+                <TextBlock Text="DAT" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Signature:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="DatSignatureLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Items:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ItemsCountLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Outfits:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="OutfitsCountLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Effects:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="EffectsCountLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Missiles:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="MissilesCountLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- SPR -->
+            <StackPanel>
+                <TextBlock Text="SPR" FontWeight="SemiBold"/>
+                <Border Classes="groupBox">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Signature:"
+                                   VerticalAlignment="Center" Margin="0,0,12,4"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="SprSignatureLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Sprites:"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SpritesCountLabel"
+                                   VerticalAlignment="Center" Foreground="#89b4fa"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+        </StackPanel>
+
+    </DockPanel>
+</Window>

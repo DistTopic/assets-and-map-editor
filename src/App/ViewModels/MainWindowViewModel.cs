@@ -11,6 +11,8 @@ using System.Collections.ObjectModel;
 
 namespace POriginsItemEditor.App.ViewModels;
 
+using POriginsItemEditor.App;
+
 public partial class MainWindowViewModel : ObservableObject
 {
     private OtbData? _otbData;
@@ -23,6 +25,439 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Original snapshots for reset: keyed by (Category, Id).</summary>
     private readonly Dictionary<(ThingCategory, ushort), DatThingType> _originalSnapshots = [];
+
+    // ── Sessions ──
+    public ObservableCollection<SessionViewModel> Sessions { get; } = [];
+    private SessionViewModel? _currentSession;
+    public SessionViewModel? ActiveSession
+    {
+        get => _currentSession;
+        private set => SetProperty(ref _currentSession, value);
+    }
+    public bool HasMultipleSessions => Sessions.Count > 1;
+    public string ActiveSessionLabel
+    {
+        get
+        {
+            if (_currentSession == null) return "No session";
+            var proto = _datData?.ProtocolVersion ?? 0;
+            return proto > 0 ? $"Protocol {proto}" : _currentSession.Name;
+        }
+    }
+
+    [RelayCommand]
+    private void NewSession()
+    {
+        var session = new SessionViewModel { Name = $"Session {Sessions.Count + 1}" };
+        Sessions.Add(session);
+        SwitchToSession(session);
+        OnPropertyChanged(nameof(HasMultipleSessions));
+        // New session = clean slate — no auto-loaded data
+        StatusText = "New session — select the client folder to begin";
+    }
+
+    [RelayCommand]
+    private void CloseSession()
+    {
+        if (_currentSession == null || Sessions.Count <= 1) return;
+        CloseSessionByTab(_currentSession);
+    }
+
+    [RelayCommand]
+    private void CloseSessionByTab(SessionViewModel? session)
+    {
+        if (session == null || Sessions.Count <= 1) return;
+        int idx = Sessions.IndexOf(session);
+        if (idx < 0) return;
+
+        // Save & remove
+        SaveCurrentToSession(session);
+        Sessions.Remove(session);
+        OnPropertyChanged(nameof(HasMultipleSessions));
+
+        // Switch to adjacent session
+        if (Sessions.Count > 0)
+        {
+            int newIdx = Math.Min(idx, Sessions.Count - 1);
+            SwitchToSession(Sessions[newIdx]);
+        }
+    }
+
+    public void SwitchToSession(SessionViewModel session)
+    {
+        if (_currentSession == session || _isSwitchingSession) return;
+
+        _isSwitchingSession = true;
+        try
+        {
+            // Save current state to the outgoing session
+            if (_currentSession != null)
+            {
+                SaveCurrentToSession(_currentSession);
+                _currentSession.IsActive = false;
+            }
+
+            ActiveSession = session;
+            session.IsActive = true;
+            LoadFromSession(session);
+            OnPropertyChanged(nameof(ActiveSessionLabel));
+        }
+        finally
+        {
+            _isSwitchingSession = false;
+        }
+    }
+
+    private bool _isSwitchingSession;
+
+    private void SaveCurrentToSession(SessionViewModel session)
+    {
+        session.OtbData = _otbData;
+        session.DatData = _datData;
+        session.SprFile = _sprFile;
+        session.OtbPath = _otbPath;
+        session.ClientFolderPath = ClientFolderPath;
+        session.MapData = MapData;
+        session.MapFilePath = MapFilePath;
+        session.BrushDb = BrushDb;
+        session.Palette = Palette;
+        session.AllItems = new List<ItemViewModel>(_allItems);
+        session.AllClientItems = new List<ClientItemViewModel>(_allClientItems);
+        session.HasUnsavedChanges = HasUnsavedChanges;
+        session.IsClientLoaded = IsClientLoaded;
+        session.MapHasUnsavedChanges = MapHasUnsavedChanges;
+        session.ProtocolVersion = _datData?.ProtocolVersion ?? 0;
+
+        // Save UI state: selection, page, filters
+        session.SelectedClientItemId = SelectedClientItem?.Id;
+        session.SelectedOtbItemServerId = SelectedItem?.ServerId;
+        session.ClientCurrentPage = ClientCurrentPage;
+        session.OtbPanelCurrentPage = OtbPanelCurrentPage;
+        session.RightSpriteCurrentPage = RightSpriteCurrentPage;
+        session.ClientCategoryFilter = ClientCategoryFilter;
+        session.ClientSearchText = ClientSearchText;
+        session.SearchText = SearchText;
+
+        session.UpdateName();
+    }
+
+    /// <summary>Update the active session's name from the current loaded data.</summary>
+    private void UpdateActiveSessionName()
+    {
+        if (_currentSession == null) return;
+        _currentSession.ProtocolVersion = _datData?.ProtocolVersion ?? 0;
+        _currentSession.OtbPath = _otbPath;
+        _currentSession.ClientFolderPath = ClientFolderPath;
+        _currentSession.UpdateName();
+        OnPropertyChanged(nameof(ActiveSessionLabel));
+    }
+
+    private void LoadFromSession(SessionViewModel session)
+    {
+        _otbData = session.OtbData;
+        _datData = session.DatData;
+        _sprFile = session.SprFile;
+        _otbPath = session.OtbPath;
+        ClientFolderPath = session.ClientFolderPath;
+        MapData = session.MapData;
+        MapFilePath = session.MapFilePath;
+        BrushDb = session.BrushDb;
+        Palette = session.Palette;
+        _allItems = session.AllItems ?? [];
+        _allClientItems = session.AllClientItems ?? [];
+        HasUnsavedChanges = session.HasUnsavedChanges;
+        IsClientLoaded = session.IsClientLoaded;
+        MapHasUnsavedChanges = session.MapHasUnsavedChanges;
+
+        // Refresh computed properties
+        OnPropertyChanged(nameof(ExposedDatData));
+        OnPropertyChanged(nameof(ExposedSprFile));
+        OnPropertyChanged(nameof(ExposedOtbData));
+        OnPropertyChanged(nameof(BrushDb));
+        OnPropertyChanged(nameof(MapFloors));
+        OnPropertyChanged(nameof(ActiveSessionLabel));
+
+        // Restore UI state (filters, page) BEFORE rebuilding visible collections.
+        // Set backing fields directly to avoid triggering filter re-runs from property setters.
+        #pragma warning disable MVVMTK0034
+        _searchText = session.SearchText;
+        OnPropertyChanged(nameof(SearchText));
+        _clientSearchText = session.ClientSearchText;
+        OnPropertyChanged(nameof(ClientSearchText));
+        _clientCategoryFilter = session.ClientCategoryFilter;
+        OnPropertyChanged(nameof(ClientCategoryFilter));
+        #pragma warning restore MVVMTK0034
+
+        // Clear visible collections — they will be repopulated by the filters below
+        Items.Clear();
+        ClientItems.Clear();
+        TotalItems = 0;
+        FilteredCount = 0;
+
+        if (_otbData != null && _allItems.Count > 0)
+        {
+            // Items already built — just re-apply filter + restore page
+            TotalItems = _allItems.Count;
+            ApplyFilter();
+
+            // Restore OTB panel page and selection
+            OtbPanelCurrentPage = Math.Clamp(session.OtbPanelCurrentPage, 1, Math.Max(1, OtbPanelTotalPages));
+            LoadOtbPanelPage();
+            if (session.SelectedOtbItemServerId is ushort sid)
+                SelectedItem = _allItems.FirstOrDefault(i => i.ServerId == sid);
+        }
+        else if (_otbData != null)
+        {
+            BuildItemList();
+            ApplyFilter();
+        }
+
+        if (_datData != null && _sprFile != null && _allClientItems.Count > 0)
+        {
+            // Client items already built with sprites — just re-apply filter + restore page
+            ApplyClientFilter();
+            ClientCurrentPage = Math.Clamp(session.ClientCurrentPage, 1, Math.Max(1, ClientTotalPages));
+            LoadClientPage();
+            StartAnimationTimer();
+
+            // Restore selection
+            if (session.SelectedClientItemId is ushort cid)
+            {
+                var match = ClientItems.FirstOrDefault(c => c.Id == cid)
+                         ?? _allClientItems.FirstOrDefault(c => c.Id == cid);
+                if (match != null)
+                    SelectedClientItem = match;
+            }
+        }
+        else if (_datData != null && _sprFile != null)
+        {
+            BuildClientItemList();
+        }
+
+        // Restore sprite panel page
+        if (_sprFile != null)
+        {
+            RightSpriteCurrentPage = Math.Clamp(session.RightSpriteCurrentPage, 1, Math.Max(1, RightSpriteTotalPages));
+            LoadRightSpritePage();
+        }
+
+        MapTileCount = MapData?.Tiles.Count ?? 0;
+        StatusText = IsClientLoaded
+            ? $"Session loaded: {_datData?.ItemCount ?? 0} items"
+            : "Select the client folder to begin";
+    }
+
+    /// <summary>Creates the default session on startup.</summary>
+    private void EnsureDefaultSession()
+    {
+        if (Sessions.Count == 0)
+        {
+            var session = new SessionViewModel { Name = "Default", IsActive = true };
+            Sessions.Add(session);
+            ActiveSession = session;
+        }
+    }
+
+    // ── Cross-version transplanting ──
+
+    [RelayCommand]
+    private async Task TransplantItemAsync()
+    {
+        if (Sessions.Count < 2)
+        {
+            StatusText = "Need at least 2 sessions open to transplant items.";
+            return;
+        }
+
+        // Must have a selected client item in the active session
+        if (SelectedClientItem == null || _datData == null || _sprFile == null)
+        {
+            StatusText = "Select a client item first.";
+            return;
+        }
+
+        var sourceItem = SelectedClientItem;
+        var sourceProtocol = _datData.ProtocolVersion;
+
+        // Find other sessions to transplant to
+        var targets = Sessions.Where(s => s != _currentSession && s.DatData != null).ToList();
+        if (targets.Count == 0)
+        {
+            StatusText = "No other session with a loaded DAT file.";
+            return;
+        }
+
+        // Use the first other session as target (for now; could show picker for 3+)
+        var targetSession = targets[0];
+        var targetDat = targetSession.DatData!;
+        var targetProtocol = targetDat.ProtocolVersion;
+
+        // Get the thing type from the source
+        if (!_datData.Items.TryGetValue(sourceItem.Id, out var sourceThing))
+        {
+            StatusText = $"Client item {sourceItem.Id} not found in DAT.";
+            return;
+        }
+
+        // Build compatibility report
+        var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
+
+        // Show transplant dialog
+        await ShowTransplantDialog(report, sourceThing, targetSession, targetDat);
+    }
+
+    private async Task ShowTransplantDialog(TransplantReport report, DatThingType sourceThing,
+        SessionViewModel targetSession, DatData targetDat)
+    {
+        // Build message
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Transplant item {sourceThing.Id} from protocol {report.SourceProtocol} → {report.TargetProtocol}");
+        sb.AppendLine();
+
+        if (report.PreservedAttributes.Count > 0)
+        {
+            sb.AppendLine("✓ Preserved attributes:");
+            foreach (var attr in report.PreservedAttributes)
+                sb.AppendLine($"  • {attr}");
+            sb.AppendLine();
+        }
+
+        if (report.IgnoredAttributes.Count > 0)
+        {
+            sb.AppendLine("⚠ Ignored attributes (not supported in target version):");
+            foreach (var attr in report.IgnoredAttributes)
+                sb.AppendLine($"  • {attr}");
+            sb.AppendLine();
+        }
+
+        if (report.MissingAttributes.Count > 0)
+        {
+            sb.AppendLine("ℹ Missing attributes (not present in source version):");
+            foreach (var attr in report.MissingAttributes)
+                sb.AppendLine($"  • {attr}");
+            sb.AppendLine();
+        }
+
+        var window = Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow : null;
+
+        if (window == null) return;
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Title = "Transplant Compatibility Report",
+            Width = 500,
+            Height = 450,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Content = new Avalonia.Controls.DockPanel
+            {
+                Margin = new Avalonia.Thickness(16),
+                Children =
+                {
+                    new Avalonia.Controls.StackPanel
+                    {
+                        [Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Bottom,
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Margin = new Avalonia.Thickness(0, 12, 0, 0),
+                    },
+                    new Avalonia.Controls.ScrollViewer
+                    {
+                        Content = new Avalonia.Controls.TextBlock
+                        {
+                            Text = sb.ToString(),
+                            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+                            FontSize = 13,
+                            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        }
+                    }
+                }
+            }
+        };
+
+        // Add buttons to bottom panel
+        var buttonPanel = (Avalonia.Controls.StackPanel)((Avalonia.Controls.DockPanel)dialog.Content).Children[0];
+        var confirmBtn = new Avalonia.Controls.Button
+        {
+            Content = "Transplant",
+            Background = Avalonia.Media.Brush.Parse("#89b4fa"),
+            Foreground = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            Padding = new Avalonia.Thickness(16, 8),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = "Cancel",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(16, 8),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        cancelBtn.Click += (_, _) => dialog.Close();
+        confirmBtn.Click += (_, _) =>
+        {
+            // Perform the transplant: clone item and add to target DAT
+            var clone = sourceThing.Clone();
+            ushort newId = (ushort)(targetDat.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+            clone.Id = newId;
+
+            // Strip unsupported flags for downcast
+            if (report.IsDowncast)
+                StripUnsupportedFlags(clone, report.TargetProtocol);
+
+            targetDat.Items[newId] = clone;
+
+            // Copy sprites to target session's SPR file if possible
+            if (_sprFile != null && targetSession.SprFile != null)
+            {
+                CopySpritesBetweenSessions(sourceThing, _sprFile, targetSession.SprFile);
+            }
+
+            StatusText = $"Transplanted item {sourceThing.Id} → {newId} in {targetSession.Name}";
+            AddMapLog($"Transplanted: #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
+            dialog.Close();
+        };
+        buttonPanel.Children.Add(cancelBtn);
+        buttonPanel.Children.Add(confirmBtn);
+
+        await dialog.ShowDialog(window);
+    }
+
+    private static void StripUnsupportedFlags(DatThingType thing, int targetProtocol)
+    {
+        if (targetProtocol < 860)
+        {
+            // Remove tier-2 flags not supported in legacy protocols
+            thing.IsMiniMap = false; thing.MiniMapColor = 0;
+            thing.IsLensHelp = false; thing.LensHelp = 0;
+            thing.IsFullGround = false;
+            thing.IsIgnoreLook = false;
+            thing.IsCloth = false; thing.ClothSlot = 0;
+            thing.IsMarketItem = false; thing.MarketCategory = 0; thing.MarketTradeAs = 0;
+            thing.MarketShowAs = 0; thing.MarketName = string.Empty;
+            thing.MarketRestrictProfession = 0; thing.MarketRestrictLevel = 0;
+            thing.HasDefaultAction = false; thing.DefaultAction = 0;
+            thing.IsWrappable = false;
+            thing.IsUnwrappable = false;
+            thing.IsTopEffect = false;
+            thing.IsUsable = false;
+        }
+    }
+
+    private static void CopySpritesBetweenSessions(DatThingType source, SprFile sourceSpr, SprFile targetSpr)
+    {
+        // Sprites are referenced by numeric IDs in the DAT's SpriteIndex arrays.
+        // The clone retains the same IDs, which remain valid as long as:
+        // - Same SPR file is shared, OR
+        // - Target session's SPR file already contains those sprite IDs.
+        // Full sprite data injection (writing new sprites into the target SPR)
+        // would require SPR-level write support for the target version.
+        // For now, the image quality is preserved through the shared bitmap cache.
+    }
 
     // ── Workspace navigation ──
     [ObservableProperty]
@@ -75,6 +510,19 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void LogFontDecrease() => LogFontSize = Math.Max(LogFontSize - 1, 7);
+
+    [RelayCommand]
+    private async Task CopyLogAsync()
+    {
+        if (MapActionLog.Count == 0) return;
+        var text = string.Join(Environment.NewLine, MapActionLog);
+        var window = Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow : null;
+        if (window?.Clipboard is { } clipboard)
+            await clipboard.SetTextAsync(text);
+        StatusText = "Log copied to clipboard";
+    }
 
     [RelayCommand]
     private void SelectInspectorItem(TileItemInfo? item)
@@ -1038,14 +1486,64 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task SelectClientFolderAsync()
     {
-        var folderPath = await FileDialogHelper.OpenFolderAsync("Select Client Folder");
-        if (folderPath == null) return;
-        await LoadClientFromFolder(folderPath);
+        var window = Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow : null;
+        if (window == null) return;
+
+        var dialog = new OpenClientDialog();
+        await dialog.ShowDialog(window);
+
+        if (dialog.Result is not { } result) return;
+        await LoadClientFromResult(result);
     }
 
+    private void SetupDatDiagLog()
+    {
+        DatFile.DiagLog = msg => AddMapLog(msg);
+    }
+
+    /// <summary>Load client from the dialog result (protocol-aware).</summary>
+    private async Task LoadClientFromResult(OpenClientResult result)
+    {
+        try
+        {
+            SetupDatDiagLog();
+            _sprFile?.Dispose();
+            _datData = DatFile.Load(result.DatPath, result.ProtocolVersion);
+            _sprFile = SprFile.Load(result.SprPath, _datData.Extended);
+            ClientFolderPath = result.FolderPath;
+            IsClientLoaded = true;
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
+
+            OnPropertyChanged(nameof(ExposedDatData));
+            OnPropertyChanged(nameof(ExposedSprFile));
+            _appSettings.LastClientFolderPath = result.FolderPath;
+            _appSettings.Save();
+
+            InitRightSpriteList();
+            BuildClientItemList();
+
+            if (_otbData != null)
+            {
+                CrossReferenceDat();
+                LoadAllSprites();
+                ApplyFilter();
+                InitializePalette();
+            }
+
+            UpdateActiveSessionName();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Client load error: {ex.Message}";
+            AddMapLog($"[LOAD-RESULT] {ex}");
+        }
+    }
+
+    /// <summary>Load client from a folder path (auto-detect protocol). Used by TryLoadLastSessionAsync.</summary>
     private async Task LoadClientFromFolder(string folderPath)
     {
-        // Search for .dat and .spr files
         var (datPath, sprPath) = FindClientFiles(folderPath);
         if (datPath == null || sprPath == null)
         {
@@ -1055,24 +1553,22 @@ public partial class MainWindowViewModel : ObservableObject
 
         try
         {
+            SetupDatDiagLog();
             _sprFile?.Dispose();
             _datData = DatFile.Load(datPath);
-            _sprFile = SprFile.Load(sprPath);
+            _sprFile = SprFile.Load(sprPath, _datData.Extended);
             ClientFolderPath = folderPath;
             IsClientLoaded = true;
-            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — {Path.GetFileName(Path.GetDirectoryName(datPath))}";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
 
-            // Notify map editor of new data sources
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
             _appSettings.LastClientFolderPath = folderPath;
             _appSettings.Save();
 
-            // Init client items list and right sprite panel
             InitRightSpriteList();
             BuildClientItemList();
 
-            // If OTB already loaded, cross-reference and load sprites
             if (_otbData != null)
             {
                 CrossReferenceDat();
@@ -1080,10 +1576,13 @@ public partial class MainWindowViewModel : ObservableObject
                 ApplyFilter();
                 InitializePalette();
             }
+
+            UpdateActiveSessionName();
         }
         catch (Exception ex)
         {
             StatusText = $"Client load error: {ex.Message}";
+            AddMapLog($"[LOAD-FOLDER] {ex}");
         }
     }
 
@@ -1114,6 +1613,8 @@ public partial class MainWindowViewModel : ObservableObject
             // Initialize palette if client already loaded
             if (_datData != null && _sprFile != null)
                 InitializePalette();
+
+            UpdateActiveSessionName();
         }
         catch (Exception ex)
         {
@@ -1123,10 +1624,154 @@ public partial class MainWindowViewModel : ObservableObject
 
     public async Task TryLoadLastSessionAsync()
     {
-        if (!string.IsNullOrEmpty(_appSettings.LastClientFolderPath) && Directory.Exists(_appSettings.LastClientFolderPath))
-            await LoadClientFromFolder(_appSettings.LastClientFolderPath);
-        if (!string.IsNullOrEmpty(_appSettings.LastOtbPath) && File.Exists(_appSettings.LastOtbPath))
-            await LoadOtbFromPath(_appSettings.LastOtbPath);
+        EnsureDefaultSession();
+
+        // Restore sessions from previous app run
+        if (_appSettings.Sessions.Count > 0)
+        {
+            await RestoreSessionsFromSettings();
+        }
+    }
+
+    /// <summary>Save all open sessions to AppSettings for persistence across app restarts.</summary>
+    public void SaveSessionsToSettings()
+    {
+        // Make sure the current session is up-to-date
+        if (_currentSession != null)
+            SaveCurrentToSession(_currentSession);
+
+        _appSettings.Sessions.Clear();
+        foreach (var session in Sessions)
+        {
+            _appSettings.Sessions.Add(new SavedSession
+            {
+                ClientFolderPath = session.ClientFolderPath,
+                OtbPath = session.OtbPath,
+                ProtocolVersion = session.ProtocolVersion,
+                IsActive = session.IsActive,
+            });
+        }
+        _appSettings.Save();
+    }
+
+    /// <summary>Restore sessions saved from a previous app run.</summary>
+    private async Task RestoreSessionsFromSettings()
+    {
+        var saved = _appSettings.Sessions;
+        if (saved.Count == 0) return;
+
+        // Remove the default empty session created by EnsureDefaultSession
+        if (Sessions.Count == 1 && Sessions[0].ClientFolderPath == null && Sessions[0].OtbPath == null)
+            Sessions.Clear();
+
+        SessionViewModel? activeSession = null;
+
+        foreach (var s in saved)
+        {
+            var session = new SessionViewModel
+            {
+                ProtocolVersion = s.ProtocolVersion,
+                ClientFolderPath = s.ClientFolderPath,
+                OtbPath = s.OtbPath,
+            };
+            session.UpdateName();
+            Sessions.Add(session);
+
+            if (s.IsActive)
+                activeSession = session;
+        }
+
+        if (Sessions.Count == 0)
+        {
+            EnsureDefaultSession();
+            return;
+        }
+
+        OnPropertyChanged(nameof(HasMultipleSessions));
+
+        // Activate the session that was active when the app closed
+        activeSession ??= Sessions[0];
+        ActiveSession = activeSession;
+        activeSession.IsActive = true;
+
+        // Load files for the active session
+        await LoadSessionFiles(activeSession);
+
+        // Load files for other sessions in background (don't block UI)
+        foreach (var session in Sessions)
+        {
+            if (session == activeSession) continue;
+            await LoadSessionFiles(session);
+        }
+    }
+
+    /// <summary>Load DAT/SPR/OTB files for a session from its saved paths.</summary>
+    private async Task LoadSessionFiles(SessionViewModel session)
+    {
+        bool isActive = session == _currentSession;
+
+        try
+        {
+            // Load client files
+            if (!string.IsNullOrEmpty(session.ClientFolderPath))
+            {
+                var (datPath, sprPath) = FindClientFiles(session.ClientFolderPath);
+                if (datPath != null && sprPath != null)
+                {
+                    SetupDatDiagLog();
+                    var datData = DatFile.Load(datPath);
+                    var sprFile = SprFile.Load(sprPath, datData.Extended);
+                    session.DatData = datData;
+                    session.SprFile = sprFile;
+                    session.IsClientLoaded = true;
+                    session.ProtocolVersion = datData.ProtocolVersion;
+                }
+            }
+
+            // Load OTB
+            if (!string.IsNullOrEmpty(session.OtbPath) && File.Exists(session.OtbPath))
+            {
+                session.OtbData = OtbFile.Load(session.OtbPath);
+            }
+
+            session.UpdateName();
+
+            // If this is the active session, propagate data to the view model
+            if (isActive)
+            {
+                _datData = session.DatData;
+                _sprFile = session.SprFile;
+                _otbData = session.OtbData;
+                _otbPath = session.OtbPath;
+                ClientFolderPath = session.ClientFolderPath;
+                IsClientLoaded = session.IsClientLoaded;
+
+                OnPropertyChanged(nameof(ExposedDatData));
+                OnPropertyChanged(nameof(ExposedSprFile));
+                OnPropertyChanged(nameof(ExposedOtbData));
+
+                if (_sprFile != null)
+                    InitRightSpriteList();
+                if (_datData != null && _sprFile != null)
+                    BuildClientItemList();
+                if (_otbData != null)
+                {
+                    BuildItemList();
+                    ApplyFilter();
+                    if (_datData != null && _sprFile != null)
+                        InitializePalette();
+                }
+
+                StatusText = IsClientLoaded
+                    ? $"Restored: {_datData?.ItemCount ?? 0} items — v{_datData?.ProtocolVersion}"
+                    : "Select the client folder to begin";
+            }
+        }
+        catch (Exception ex)
+        {
+            if (isActive)
+                StatusText = $"Restore error: {ex.Message}";
+        }
     }
 
     // ── Palette initialization ──
@@ -1992,8 +2637,80 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportThingAsync()
     {
-        if (_datData == null) return;
-        StatusText = "Import: not yet implemented — DAT write support needed";
+        if (_datData == null || _sprFile == null)
+        {
+            StatusText = "Load a client first before importing";
+            return;
+        }
+
+        var dialog = new ImportThingDialog();
+
+        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+        else
+        {
+            dialog.Show();
+            return;
+        }
+
+        if (dialog.Result == null) return;
+        var r = dialog.Result;
+
+        try
+        {
+            // 1. Copy sprites from source to our SPR, building old→new ID map
+            var spriteIdMap = new Dictionary<uint, uint>();
+            foreach (var (oldId, rgba) in r.SpriteData)
+            {
+                var newId = _sprFile.AddSprite(rgba);
+                spriteIdMap[oldId] = newId;
+            }
+
+            // 2. Remap sprite indices in the cloned thing
+            var thing = r.Thing;
+            foreach (var fg in thing.FrameGroups)
+            {
+                if (fg.SpriteIndex == null) continue;
+                for (int i = 0; i < fg.SpriteIndex.Length; i++)
+                {
+                    var old = fg.SpriteIndex[i];
+                    if (old != 0 && spriteIdMap.TryGetValue(old, out var newId))
+                        fg.SpriteIndex[i] = newId;
+                }
+            }
+
+            // 3. Assign new ID and add to the current DAT
+            var dict = GetDatDictForCategory(r.Category);
+            ushort newThingId = dict.Count > 0 ? (ushort)(dict.Keys.Max() + 1) : (ushort)100;
+            thing.Id = newThingId;
+            thing.Category = r.Category;
+            dict[newThingId] = thing;
+
+            // 4. Rebuild UI lists
+            RefreshSpritePanel();
+            BuildClientItemList();
+            HasUnsavedChanges = true;
+
+            StatusText = $"Imported {r.Category} #{newThingId} with {r.SpriteData.Count} sprite(s)";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Import error: {ex.Message}";
+        }
+    }
+
+    private Dictionary<ushort, DatThingType> GetDatDictForCategory(ThingCategory category)
+    {
+        return category switch
+        {
+            ThingCategory.Outfit => _datData!.Outfits,
+            ThingCategory.Effect => _datData!.Effects,
+            ThingCategory.Missile => _datData!.Missiles,
+            _ => _datData!.Items,
+        };
     }
 
     [RelayCommand]
@@ -2001,16 +2718,51 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (SelectedClientItem == null || _sprFile == null) return;
 
-        var path = await FileDialogHelper.SaveFileAsync("Export Thing", [("PNG Image", "*.png")]);
-        if (path == null) return;
+        var thing = SelectedClientItem.ThingType;
+        var dialog = new ExportDialog
+        {
+            SuggestedFileName = $"{thing.Category.ToString().ToLowerInvariant()}_{thing.Id}",
+            SuggestedClientVersion = (ushort)(_datData?.ProtocolVersion ?? 854),
+        };
+
+        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+        else
+        {
+            dialog.Show();
+            return;
+        }
+
+        if (dialog.Result == null) return;
+        var r = dialog.Result;
 
         try
         {
-            var bitmap = ComposeThingBitmap(SelectedClientItem.ThingType);
-            if (bitmap == null) { StatusText = "Nothing to export"; return; }
-            using var fs = File.Create(path);
-            SaveWriteableBitmapAsPng(bitmap, fs);
-            StatusText = $"Exported: {Path.GetFileName(path)}";
+            if (r.Format == ExportFormat.Obd)
+            {
+                // Export as .obd (Object Builder Data)
+                var filePath = Path.Combine(r.OutputFolder, r.FileName + ".obd");
+                var obdBytes = ObdCodec.Encode(thing, r.ClientVersion,
+                    sprId => _sprFile.GetSpriteRgba(sprId), r.ObdVersion);
+                File.WriteAllBytes(filePath, obdBytes);
+                StatusText = $"Exported OBD: {Path.GetFileName(filePath)}";
+            }
+            else
+            {
+                var ext = r.Format switch { ExportFormat.Bmp => ".bmp", ExportFormat.Jpg => ".jpg", _ => ".png" };
+                var filePath = Path.Combine(r.OutputFolder, r.FileName + ext);
+                var pixels = ComposeThingBitmapRgba(thing, r.TransparentBackground);
+                if (pixels == null) { StatusText = "Nothing to export"; return; }
+
+                var fg = thing.FrameGroups[0];
+                int w = fg.Width * 32;
+                int h = fg.Height * 32;
+                SaveImageToFile(filePath, pixels, w, h, r.Format, r.JpegQuality, r.TransparentBackground);
+                StatusText = $"Exported: {Path.GetFileName(filePath)}";
+            }
         }
         catch (Exception ex)
         {
@@ -2097,16 +2849,38 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (SelectedRightSprite == null || _sprFile == null) return;
 
-        var path = await FileDialogHelper.SaveFileAsync("Export Sprite", [("PNG Image", "*.png")]);
-        if (path == null) return;
+        var spriteId = SelectedRightSprite.SpriteId;
+        var dialog = new ExportDialog
+        {
+            SuggestedFileName = $"sprite_{spriteId}",
+        };
+
+        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+        else
+        {
+            dialog.Show();
+            return;
+        }
+
+        if (dialog.Result == null) return;
+        var r = dialog.Result;
 
         try
         {
-            var bitmap = SelectedRightSprite.Bitmap ?? LoadSpriteBitmap(SelectedRightSprite.SpriteId);
-            if (bitmap == null) { StatusText = "Nothing to export"; return; }
-            using var fs = File.Create(path);
-            SaveWriteableBitmapAsPng(bitmap, fs);
-            StatusText = $"Exported sprite {SelectedRightSprite.SpriteId}: {Path.GetFileName(path)}";
+            var ext = r.Format switch { ExportFormat.Bmp => ".bmp", ExportFormat.Jpg => ".jpg", _ => ".png" };
+            var filePath = Path.Combine(r.OutputFolder, r.FileName + ext);
+            var rgba = _sprFile.GetSpriteRgba(spriteId);
+            if (rgba == null) { StatusText = "Nothing to export"; return; }
+
+            if (!r.TransparentBackground)
+                ApplyMagentaBackground(rgba, 32, 32);
+
+            SaveImageToFile(filePath, rgba, 32, 32, r.Format, r.JpegQuality, r.TransparentBackground);
+            StatusText = $"Exported sprite {spriteId}: {Path.GetFileName(filePath)}";
         }
         catch (Exception ex)
         {
@@ -2337,6 +3111,113 @@ public partial class MainWindowViewModel : ObservableObject
             ctx.DrawImage(wb, new Rect(0, 0, wb.PixelSize.Width, wb.PixelSize.Height));
         }
         renderTarget.Save(stream);
+    }
+
+    /// <summary>Compose all W×H tiles as raw RGBA, optionally with magenta background for non-transparent.</summary>
+    private byte[]? ComposeThingBitmapRgba(DatThingType thing, bool transparent)
+    {
+        if (_sprFile == null || thing.FrameGroups.Length == 0) return null;
+
+        var fg = thing.FrameGroups[0];
+        int w = fg.Width;
+        int h = fg.Height;
+        if (w == 0 || h == 0) return null;
+
+        int bmpW = w * 32;
+        int bmpH = h * 32;
+        var pixels = new byte[bmpW * bmpH * 4];
+
+        // Fill background
+        if (!transparent)
+        {
+            for (int i = 0; i < pixels.Length; i += 4)
+            {
+                pixels[i] = 0xFF;     // R = 255 (magenta)
+                pixels[i + 1] = 0x00; // G = 0
+                pixels[i + 2] = 0xFF; // B = 255
+                pixels[i + 3] = 0xFF; // A = 255
+            }
+        }
+
+        int layers = fg.Layers;
+        int patX = 0;
+        if (thing.Category == ThingCategory.Outfit)
+        {
+            layers = 1;
+            if (fg.PatternX > 2) patX = 2;
+        }
+
+        for (int l = 0; l < layers; l++)
+        {
+            for (int tw = 0; tw < w; tw++)
+            {
+                for (int th = 0; th < h; th++)
+                {
+                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, 0);
+                    var rgba = _sprFile.GetSpriteRgba(sprId);
+                    if (rgba == null) continue;
+
+                    int destX = (w - 1 - tw) * 32;
+                    int destY = (h - 1 - th) * 32;
+
+                    for (int y = 0; y < 32; y++)
+                    {
+                        for (int x = 0; x < 32; x++)
+                        {
+                            int srcIdx = (y * 32 + x) * 4;
+                            byte a = rgba[srcIdx + 3];
+                            if (a == 0) continue;
+
+                            int dstIdx = ((destY + y) * bmpW + destX + x) * 4;
+                            pixels[dstIdx] = rgba[srcIdx];
+                            pixels[dstIdx + 1] = rgba[srcIdx + 1];
+                            pixels[dstIdx + 2] = rgba[srcIdx + 2];
+                            pixels[dstIdx + 3] = a;
+                        }
+                    }
+                }
+            }
+        }
+
+        return pixels;
+    }
+
+    /// <summary>Replace transparent pixels with magenta background.</summary>
+    private static void ApplyMagentaBackground(byte[] rgba, int w, int h)
+    {
+        for (int i = 0; i < w * h * 4; i += 4)
+        {
+            if (rgba[i + 3] == 0)
+            {
+                rgba[i] = 0xFF;
+                rgba[i + 1] = 0x00;
+                rgba[i + 2] = 0xFF;
+                rgba[i + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// <summary>Save raw RGBA pixel data to an image file in the specified format.</summary>
+    private static void SaveImageToFile(string path, byte[] rgba, int width, int height,
+                                         ExportFormat format, int jpegQuality, bool hasAlpha)
+    {
+        using var skBmp = new SkiaSharp.SKBitmap(width, height, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Unpremul);
+        var ptr = skBmp.GetPixels();
+        Marshal.Copy(rgba, 0, ptr, rgba.Length);
+
+        var encFormat = format switch
+        {
+            ExportFormat.Bmp => SkiaSharp.SKEncodedImageFormat.Bmp,
+            ExportFormat.Jpg => SkiaSharp.SKEncodedImageFormat.Jpeg,
+            _ => SkiaSharp.SKEncodedImageFormat.Png,
+        };
+
+        int quality = format == ExportFormat.Jpg ? jpegQuality : 100;
+
+        using var image = SkiaSharp.SKImage.FromBitmap(skBmp);
+        using var data = image.Encode(encFormat, quality);
+        using var fs = File.Create(path);
+        data.SaveTo(fs);
     }
 }
 

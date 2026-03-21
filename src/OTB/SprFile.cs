@@ -3,8 +3,9 @@ using System.Buffers.Binary;
 namespace POriginsItemEditor.OTB;
 
 /// <summary>
-/// Tibia .spr file parser for protocol 1098.
-/// Decodes individual 32×32 RGBA sprites on demand.
+/// Tibia .spr file parser supporting multiple protocol versions.
+/// Protocol &lt; 960: 6-byte header (U32 sig + U16 count), no alpha.
+/// Protocol &gt;= 960: 8-byte header (U32 sig + U32 count), RGBA.
 /// </summary>
 public sealed class SprFile : IDisposable
 {
@@ -17,6 +18,7 @@ public sealed class SprFile : IDisposable
     private readonly long _offsetTableStart;
     private readonly bool _useAlpha;
     private readonly uint _signature;
+    private readonly bool _extended; // true = U32 count (protocol >= 960)
 
     // In-memory overrides for modified sprites (null value = blank/transparent)
     private Dictionary<uint, byte[]?>? _overrides;
@@ -25,7 +27,7 @@ public sealed class SprFile : IDisposable
     public bool HasChanges => _overrides is { Count: > 0 } || _spriteCount != _originalCount;
     private readonly uint _originalCount;
 
-    private SprFile(FileStream stream, uint signature, uint spriteCount, long offsetTableStart, bool useAlpha)
+    private SprFile(FileStream stream, uint signature, uint spriteCount, long offsetTableStart, bool useAlpha, bool extended)
     {
         _stream = stream;
         _signature = signature;
@@ -33,24 +35,40 @@ public sealed class SprFile : IDisposable
         _originalCount = spriteCount;
         _offsetTableStart = offsetTableStart;
         _useAlpha = useAlpha;
+        _extended = extended;
     }
 
     public uint SpriteCount => _spriteCount;
 
     /// <summary>
-    /// Open an .spr file. For protocol 1098, uses U32 sprite count and RGBA pixels.
+    /// Open an .spr file with protocol-aware header parsing.
     /// </summary>
-    public static SprFile Load(string path, bool useAlpha = true)
+    /// <param name="path">Path to Tibia.spr</param>
+    /// <param name="extended">True for protocol &gt;= 960 (U32 sprite count, RGBA). False for legacy (U16 count, RGB).</param>
+    public static SprFile Load(string path, bool extended = true)
     {
         var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var header = new byte[8];
-        stream.ReadExactly(header);
 
-        var signature = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(0));
-        var count = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4));
-        var offsetStart = stream.Position;
-
-        return new SprFile(stream, signature, count, offsetStart, useAlpha);
+        if (extended)
+        {
+            // Protocol >= 960: 4 sig + 4 count = 8 bytes header
+            var header = new byte[8];
+            stream.ReadExactly(header);
+            var signature = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(0));
+            var count = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4));
+            var offsetStart = stream.Position;
+            return new SprFile(stream, signature, count, offsetStart, useAlpha: true, extended: true);
+        }
+        else
+        {
+            // Protocol < 960: 4 sig + 2 count = 6 bytes header
+            var header = new byte[6];
+            stream.ReadExactly(header);
+            var signature = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(0));
+            var count = (uint)BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(4));
+            var offsetStart = stream.Position;
+            return new SprFile(stream, signature, count, offsetStart, useAlpha: false, extended: false);
+        }
     }
 
     /// <summary>
@@ -123,11 +141,21 @@ public sealed class SprFile : IDisposable
     {
         using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
 
-        // Header: signature + sprite count
-        Span<byte> header = stackalloc byte[8];
-        BinaryPrimitives.WriteUInt32LittleEndian(header, _signature);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[4..], _spriteCount);
-        output.Write(header);
+        // Header: signature + sprite count (size depends on extended flag)
+        if (_extended)
+        {
+            Span<byte> header = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, _signature);
+            BinaryPrimitives.WriteUInt32LittleEndian(header[4..], _spriteCount);
+            output.Write(header);
+        }
+        else
+        {
+            Span<byte> header = stackalloc byte[6];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, _signature);
+            BinaryPrimitives.WriteUInt16LittleEndian(header[4..], (ushort)_spriteCount);
+            output.Write(header);
+        }
 
         // We'll write offset table (4 bytes × spriteCount) as a placeholder, then sprite data.
         // After writing all sprites, we'll seek back and fill in offsets.

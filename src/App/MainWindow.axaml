@@ -202,101 +202,164 @@
     <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#1e1e2e"/>
     </Style>
+
+    <!-- Menu bar dark theme -->
+    <Style Selector="Menu">
+      <Setter Property="Background" Value="#11111b"/>
+    </Style>
+    <Style Selector="MenuItem">
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="#313244"/>
+    </Style>
+    <Style Selector="MenuItem:selected /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="#313244"/>
+    </Style>
   </Window.Styles>
 
   <DockPanel>
-    <!-- ═══ Top Toolbar ═══ -->
-    <Border DockPanel.Dock="Top" Background="#11111b" Padding="16,10">
+    <!-- ═══ Menu Bar ═══ -->
+    <Menu DockPanel.Dock="Top" Background="#11111b" Foreground="#cdd6f4" FontSize="13" Padding="4,2">
+      <MenuItem Header="_File">
+        <MenuItem Header="Select Client Folder" Command="{Binding SelectClientFolderCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-folder-open" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Open OTB..." Command="{Binding OpenOtbCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-database" FontSize="14" Foreground="#cdd6f4"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Open Map..." Command="{Binding OpenMapCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-map" FontSize="14" Foreground="#cdd6f4"/></MenuItem.Icon>
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="Save" Command="{Binding SaveOtbCommand}" InputGesture="Ctrl+S">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-floppy-disk" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Save As..." Command="{Binding SaveOtbAsCommand}" InputGesture="Ctrl+Shift+S"/>
+        <MenuItem Header="Save SPR" Command="{Binding SaveSprCommand}"/>
+        <MenuItem Header="Save Map" Command="{Binding SaveMapCommand}"/>
+        <Separator/>
+        <MenuItem Header="Export Selected..." Command="{Binding ExportThingCommand}" InputGesture="Ctrl+E">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-file-export" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+      </MenuItem>
+      <MenuItem Header="_View" IsVisible="{Binding IsMapEditorActive}">
+        <MenuItem Header="Show All Floors" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors}"/>
+        <MenuItem Header="Show as Minimap" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap}"/>
+        <Separator/>
+        <MenuItem Header="Show Tooltips" ToggleType="CheckBox" IsChecked="{Binding ViewShowTooltips}"/>
+        <MenuItem Header="Show Grid" ToggleType="CheckBox" IsChecked="{Binding ViewShowGrid}"/>
+        <MenuItem Header="Show Client Box" ToggleType="CheckBox" IsChecked="{Binding ViewShowIngameBox}"/>
+        <Separator/>
+        <MenuItem Header="Ghost Loose Items" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems}"/>
+        <MenuItem Header="Ghost Higher Floors" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors}"/>
+        <MenuItem Header="Show Shade" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade}"/>
+        <Separator/>
+        <MenuItem Header="Show Animation" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation}"/>
+        <MenuItem Header="Show Lights" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights}"/>
+        <Separator/>
+        <MenuItem Header="Show Special" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial}"/>
+        <MenuItem Header="Show Houses" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses}"/>
+        <MenuItem Header="Show Pathing" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing}"/>
+        <Separator/>
+        <MenuItem Header="Show Waypoints" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints}"/>
+        <MenuItem Header="Show Towns" ToggleType="CheckBox" IsChecked="{Binding ViewShowTowns}"/>
+        <Separator/>
+        <MenuItem Header="Highlight Items" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems}"/>
+      </MenuItem>
+      <MenuItem Header="_Session">
+        <MenuItem Header="New Session" Command="{Binding NewSessionCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-plus" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Close Session" Command="{Binding CloseSessionCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-xmark" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="Transplant Item..." Command="{Binding TransplantItemCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-arrow-right-arrow-left" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
+        </MenuItem>
+      </MenuItem>
+    </Menu>
+
+    <!-- ═══ Session Tabs ═══ -->
+    <Border DockPanel.Dock="Top" Background="#181825" Padding="4,2"
+            BorderBrush="#313244" BorderThickness="0,0,0,1"
+            IsVisible="{Binding HasMultipleSessions}">
       <DockPanel>
-        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
-          <TextBlock Text="⚙" FontSize="22" VerticalAlignment="Center" Foreground="#89b4fa" Margin="0,0,6,0"/>
-          <TextBlock Text="POrigins Editor" FontSize="16" FontWeight="Bold"
-                     Foreground="#cdd6f4" VerticalAlignment="Center"/>
-        </StackPanel>
+        <Button DockPanel.Dock="Right" Content="+" FontSize="14" FontWeight="Bold"
+                Background="Transparent" Foreground="#585b70" Padding="8,2"
+                CornerRadius="4" Cursor="Hand" Margin="4,0,0,0"
+                Command="{Binding NewSessionCommand}" ToolTip.Tip="New Session"/>
+        <ItemsControl ItemsSource="{Binding Sessions}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2"/></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:SessionViewModel">
+              <Border CornerRadius="6,6,0,0" Padding="10,4" Cursor="Hand"
+                      Background="{Binding IsActive, Converter={StaticResource ActiveTabBackgroundConverter}}"
+                      PointerPressed="OnSessionTabPressed">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                             Foreground="{Binding IsActive, Converter={StaticResource ActiveForegroundConverter}}"/>
+                  <Button Content="✕" FontSize="9" Padding="2" MinWidth="16" MinHeight="16"
+                          Background="Transparent" Foreground="#585b70" Cursor="Hand"
+                          Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).CloseSessionByTabCommand}"
+                          CommandParameter="{Binding}"/>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+    </Border>
 
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-          <!-- Item editor actions -->
-          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsItemEditorActive}">
-            <Button Classes="client" Command="{Binding SelectClientFolderCommand}" Content="Select Client"/>
-            <Button Classes="toolbar" Command="{Binding OpenOtbCommand}" Content="Open OTB"/>
-            <Button Classes="accent" Command="{Binding SaveOtbCommand}" Content="Save"/>
-            <Button Classes="toolbar" Command="{Binding SaveOtbAsCommand}" Content="Save As..."/>
-            <Button Classes="toolbar" Command="{Binding SaveSprCommand}" Content="Save SPR"/>
+    <!-- ═══ Info Bar ═══ -->
+    <Border DockPanel.Dock="Top" Background="#11111b" Padding="10,3"
+            BorderBrush="#313244" BorderThickness="0,0,0,1">
+      <DockPanel>
+        <!-- Left: Active session info -->
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding ActiveSessionLabel}" Foreground="#585b70" FontSize="11"
+                     VerticalAlignment="Center"/>
+          <TextBlock IsVisible="{Binding MapHasUnsavedChanges}" Text="● Unsaved" Foreground="#fab387"
+                     FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        </StackPanel>
+        <!-- Right: Context stats -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12">
+          <!-- Item Editor stats -->
+          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsItemEditorActive}">
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="Total:" Classes="label" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding TotalItems}" Foreground="#89b4fa" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="Filtered:" Classes="label" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding FilteredCount}" Foreground="#a6e3a1" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="Mismatches:" Classes="label" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding MismatchCount}" Foreground="#f38ba8" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock IsVisible="{Binding IsClientLoaded}" Text="✓ Client" Foreground="#a6e3a1"
+                       FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
           </StackPanel>
-          <!-- Map editor actions -->
-          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsMapEditorActive}">
-            <Button Classes="toolbar" Command="{Binding OpenMapCommand}" Content="Open Map"/>
-            <Button Classes="accent" Command="{Binding SaveMapCommand}" Content="Save Map"
-                    IsEnabled="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-            <TextBlock Text="● Unsaved" Foreground="#fab387" FontSize="11" FontWeight="SemiBold"
-                       VerticalAlignment="Center" Margin="4,0,0,0"
-                       IsVisible="{Binding MapHasUnsavedChanges}"/>
-            <!-- View menu dropdown -->
-            <Button Classes="toolbar" Content="View ▾">
-              <Button.Flyout>
-                <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                  <MenuItem Header="View">
-                    <MenuItem Header="Show All Floors                ⌘W" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors}"/>
-                    <MenuItem Header="Show as Minimap              ⇧E" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap}"/>
-                    <Separator/>
-                    <MenuItem Header="Show Tooltips                    Y" ToggleType="CheckBox" IsChecked="{Binding ViewShowTooltips}"/>
-                    <MenuItem Header="Show Grid                        ⇧G" ToggleType="CheckBox" IsChecked="{Binding ViewShowGrid}"/>
-                    <MenuItem Header="Show Client Box                ⇧I" ToggleType="CheckBox" IsChecked="{Binding ViewShowIngameBox}"/>
-                    <Separator/>
-                    <MenuItem Header="Ghost Loose Items              G" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems}"/>
-                    <MenuItem Header="Ghost Higher Floors          ⌘L" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors}"/>
-                    <MenuItem Header="Show Shade                       Q" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade}"/>
-                  </MenuItem>
-                  <MenuItem Header="Show">
-                    <MenuItem Header="Show Animation                  L" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation}"/>
-                    <MenuItem Header="Show Lights                      ⇧L" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights}"/>
-                    <Separator/>
-                    <MenuItem Header="Show Special                      E" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial}"/>
-                    <MenuItem Header="Show Houses                    ⌘H" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses}"/>
-                    <MenuItem Header="Show Pathing                     O" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing}"/>
-                    <Separator/>
-                    <MenuItem Header="Show Waypoints               ⇧W" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints}"/>
-                    <MenuItem Header="Show Towns" ToggleType="CheckBox" IsChecked="{Binding ViewShowTowns}"/>
-                    <Separator/>
-                    <MenuItem Header="Highlight Items                    V" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems}"/>
-                  </MenuItem>
-                </MenuFlyout>
-              </Button.Flyout>
-            </Button>
+          <!-- Map Editor stats -->
+          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsMapEditorActive}">
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="Tiles:" Classes="label" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding MapTileCount}" Foreground="#89b4fa" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="Floor:" Classes="label" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding MapCurrentFloor}" Foreground="#a6e3a1" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Text="{Binding MapHoveredTile}" Foreground="#585b70" FontSize="11" VerticalAlignment="Center"/>
           </StackPanel>
         </StackPanel>
-
-        <!-- Stats (Item Editor) -->
-        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    IsVisible="{Binding IsItemEditorActive}">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Total:" Classes="label" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding TotalItems}" Foreground="#89b4fa" FontWeight="Bold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Filtrados:" Classes="label" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding FilteredCount}" Foreground="#a6e3a1" FontWeight="Bold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Mismatches:" Classes="label" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MismatchCount}" Foreground="#f38ba8" FontWeight="Bold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <TextBlock IsVisible="{Binding IsClientLoaded}" Text="✓ Client" Foreground="#a6e3a1"
-                     FontWeight="Bold" VerticalAlignment="Center" FontSize="12"/>
-        </StackPanel>
-        <!-- Stats (Map Editor) -->
-        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    IsVisible="{Binding IsMapEditorActive}">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Tiles:" Classes="label" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MapTileCount}" Foreground="#89b4fa" FontWeight="Bold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Floor:" Classes="label" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MapCurrentFloor}" Foreground="#a6e3a1" FontWeight="Bold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <TextBlock Text="{Binding MapHoveredTile}" Foreground="#585b70" FontSize="12" VerticalAlignment="Center"/>
-        </StackPanel>
+        <!-- Center spacer -->
+        <Panel/>
       </DockPanel>
     </Border>
 
@@ -1761,6 +1824,10 @@
                     <Button Classes="toolbar" Padding="3" ToolTip.Tip="Aumentar fonte"
                             Command="{Binding LogFontIncreaseCommand}">
                       <TextBlock Text="A+" FontSize="9" Foreground="#a6adc8"/>
+                    </Button>
+                    <Button Classes="toolbar" Padding="3" ToolTip.Tip="Copy log"
+                            Command="{Binding CopyLogCommand}">
+                      <i:Icon Value="fa-solid fa-copy" FontSize="9" Foreground="#a6adc8"/>
                     </Button>
                     <Button Classes="toolbar" Padding="3" ToolTip.Tip="Minimizar log"
                             Command="{Binding ToggleLogPanelCommand}">

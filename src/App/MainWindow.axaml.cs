@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Closing += OnWindowClosing;
         Loaded += async (_, _) =>
         {
             if (DataContext is MainWindowViewModel vm)
@@ -57,10 +58,30 @@ public partial class MainWindow : Window
         };
     }
 
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.SaveSessionsToSettings();
+    }
+
     private void OnMinimapSwatchClicked(object? sender, PointerPressedEventArgs e)
     {
         if (sender is Control control)
             FlyoutBase.ShowAttachedFlyout(control);
+    }
+
+    private void OnSessionTabPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: SessionViewModel session }
+            && DataContext is MainWindowViewModel vm)
+        {
+            vm.SwitchToSession(session);
+
+            // Re-wire map canvas for the new session
+            var mapCanvas = this.FindControl<MapCanvasControl>("MapCanvas");
+            if (mapCanvas != null && vm.BrushDb != null)
+                mapCanvas.BrushDb = vm.BrushDb;
+        }
     }
 
     private void OnMinimapColorPicked(object? sender, PointerPressedEventArgs e)
