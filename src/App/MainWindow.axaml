@@ -481,12 +481,19 @@
               </Border>
 
               <!-- Item list -->
-              <ListBox ItemsSource="{Binding ClientItems}"
+              <ListBox x:Name="ClientItemListBox"
+                       ItemsSource="{Binding ClientItems}"
                        SelectedItem="{Binding SelectedClientItem}"
-                       SelectionMode="Single"
+                       SelectionMode="Multiple"
                        Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                       DoubleTapped="OnClientItemDoubleTapped">
+                       DoubleTapped="OnClientItemDoubleTapped"
+                       SelectionChanged="OnClientItemSelectionChanged">
+                <ListBox.ContextMenu>
+                  <ContextMenu x:Name="ClientItemContextMenu" Opening="OnClientItemContextMenuOpening">
+                    <MenuItem Header="Transplant to..." x:Name="TransplantToMenuItem"/>
+                  </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:ClientItemViewModel">
                     <Grid ColumnDefinitions="38,*" Height="38" Margin="2,1">

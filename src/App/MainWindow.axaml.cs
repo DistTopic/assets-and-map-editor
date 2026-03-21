@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -251,6 +252,56 @@ public partial class MainWindow : Window
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
             palette.RemoveSubCollectionCommand.Execute(sub);
+        }
+    }
+
+    private void OnClientItemSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox lb && DataContext is MainWindowViewModel vm)
+        {
+            vm.SelectedClientItemsList = lb.SelectedItems?
+                .OfType<ClientItemViewModel>()
+                .ToList() ?? [];
+        }
+    }
+
+    private void OnClientItemContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        var menuItem = this.FindControl<MenuItem>("TransplantToMenuItem");
+        if (menuItem == null) return;
+
+        // Build sub-items: one per other session with loaded DAT
+        menuItem.Items.Clear();
+        var targets = vm.Sessions
+            .Where(s => s != vm.ActiveSession && s.DatData != null)
+            .ToList();
+
+        if (targets.Count == 0 || vm.SelectedClientItemsList.Count == 0)
+        {
+            menuItem.IsEnabled = false;
+            menuItem.Header = vm.SelectedClientItemsList.Count == 0
+                ? "Select items first"
+                : "No other sessions available";
+            return;
+        }
+
+        menuItem.IsEnabled = true;
+        menuItem.Header = $"Transplant {vm.SelectedClientItemsList.Count} item(s) to...";
+
+        foreach (var target in targets)
+        {
+            var mi = new MenuItem
+            {
+                Header = target.Name,
+                Tag = target,
+            };
+            mi.Click += async (_, _) =>
+            {
+                await vm.TransplantMultipleItemsAsync(target);
+            };
+            menuItem.Items.Add(mi);
         }
     }
 }
