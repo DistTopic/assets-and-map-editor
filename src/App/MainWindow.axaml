@@ -1677,16 +1677,30 @@
                       </ScrollViewer>
                     </Border>
                     <DockPanel Grid.Row="2" Margin="0,4,0,0">
-                      <Button DockPanel.Dock="Left" Classes="toolbar" Padding="4,2"
-                              Command="{Binding CatalogPreviousPageCommand}"
-                              ToolTip.Tip="Previous page">
-                        <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
-                      </Button>
-                      <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2"
-                              Command="{Binding CatalogNextPageCommand}"
-                              ToolTip.Tip="Next page">
-                        <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
-                      </Button>
+                      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogFirstPageCommand}"
+                                ToolTip.Tip="First page">
+                          <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogPreviousPageCommand}"
+                                ToolTip.Tip="Previous page">
+                          <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogNextPageCommand}"
+                                ToolTip.Tip="Next page">
+                          <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogLastPageCommand}"
+                                ToolTip.Tip="Last page">
+                          <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
                       <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </DockPanel>

@@ -289,6 +289,27 @@ public partial class PaletteViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void CatalogFirstPage()
+    {
+        if (CatalogPage != 0)
+        {
+            CatalogPage = 0;
+            FillCatalogPage();
+        }
+    }
+
+    [RelayCommand]
+    private void CatalogLastPage()
+    {
+        int last = CatalogTotalPages - 1;
+        if (CatalogPage != last && last >= 0)
+        {
+            CatalogPage = last;
+            FillCatalogPage();
+        }
+    }
+
     private void SearchCatalog()
     {
         if (_serverToClientMap.Count == 0) { CatalogResults.Clear(); CatalogStatusText = "No items — load OTB + Client"; return; }
