@@ -2345,7 +2345,7 @@ public partial class MainWindowViewModel : ObservableObject
                 vm.ApplyToModel();
 
             OtbFile.Save(_otbPath, _otbData);
-            SaveDatIfLoaded();
+            SaveClientFilesIfLoaded();
             HasUnsavedChanges = false;
             StatusText = $"Saved: {Path.GetFileName(_otbPath)}";
         }
@@ -2369,7 +2369,7 @@ public partial class MainWindowViewModel : ObservableObject
                 vm.ApplyToModel();
 
             OtbFile.Save(path, _otbData);
-            SaveDatIfLoaded();
+            SaveClientFilesIfLoaded();
             _otbPath = path;
             HasUnsavedChanges = false;
             StatusText = $"Saved as: {Path.GetFileName(path)}";
@@ -2380,12 +2380,25 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    private void SaveDatIfLoaded()
+    private void SaveClientFilesIfLoaded()
     {
         if (_datData == null || ClientFolderPath == null) return;
-        var (datPath, _) = FindClientFiles(ClientFolderPath);
+        var (datPath, sprPath) = FindClientFiles(ClientFolderPath);
         if (datPath == null) return;
         DatFile.Save(datPath, _datData);
+
+        // Save SPR if it has new/modified sprites (transplants, edits, etc.)
+        if (_sprFile != null && sprPath != null && _sprFile.HasChanges)
+        {
+            var tempPath = sprPath + ".tmp";
+            _sprFile.Save(tempPath);
+            _sprFile.Dispose();
+            File.Move(tempPath, sprPath, overwrite: true);
+            _sprFile = SprFile.Load(sprPath, _datData.Extended);
+
+            if (_currentSession != null)
+                _currentSession.SprFile = _sprFile;
+        }
     }
 
     [RelayCommand]
