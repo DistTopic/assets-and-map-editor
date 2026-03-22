@@ -1322,7 +1322,7 @@
                       <Border Background="#11111b" CornerRadius="4" Width="30" Height="30"
                               VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
                         <Image Source="{Binding Sprite}" Width="30" Height="30"
-                               RenderOptions.BitmapInterpolationMode="None" Stretch="None"/>
+                               RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
                       </Border>
                       <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0,0,0" Width="55">
                         <TextBlock Text="{Binding ServerId}" Foreground="#89b4fa" FontWeight="Bold" FontSize="12"/>

@@ -128,6 +128,7 @@ public partial class ItemViewModel : ObservableObject
 
     /// <summary>Full DAT thing type (set during cross-reference).</summary>
     public DatThingType? DatThingType { get; set; }
+    public int AnimFrame { get; set; }
 
     public string MismatchDetail
     {

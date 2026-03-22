@@ -1483,11 +1483,11 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (_sprFile == null) return;
         _animTickCounter++;
+
+        // Animate client item list
         foreach (var item in ClientItems)
         {
             if (item.Frames <= 1) continue;
-            // Category-based tick divisors: effects/missiles every tick (100ms),
-            // outfits every 3 ticks (300ms), items every 5 ticks (500ms)
             int divisor = item.Category switch
             {
                 ThingCategory.Effect => 1,
@@ -1498,6 +1498,34 @@ public partial class MainWindowViewModel : ObservableObject
             if (_animTickCounter % divisor != 0) continue;
             item.AnimFrame = (item.AnimFrame + 1) % item.Frames;
             item.Sprite = ComposeThingBitmap(item.ThingType, item.AnimFrame);
+        }
+
+        // Animate OTB panel items (every 5 ticks = 500ms like items)
+        if (_animTickCounter % 5 == 0)
+        {
+            foreach (var vm in OtbPanelItems)
+            {
+                if (vm.DatThingType == null) continue;
+                var fg = vm.DatThingType.FrameGroups;
+                if (fg.Length == 0 || fg[0].Frames <= 1) continue;
+                vm.AnimFrame = (vm.AnimFrame + 1) % fg[0].Frames;
+                vm.Sprite = ComposeThingBitmap(vm.DatThingType, vm.AnimFrame);
+            }
+        }
+
+        // Animate catalog items (every 5 ticks = 500ms)
+        if (_animTickCounter % 5 == 0 && Palette != null)
+        {
+            var items = Palette.IsViewingSubCollection ? Palette.DisplayedItems : Palette.CatalogResults;
+            foreach (var pvm in items)
+            {
+                var thing = Palette.GetThingForPaletteItem(pvm);
+                if (thing == null) continue;
+                var fg = thing.FrameGroups;
+                if (fg.Length == 0 || fg[0].Frames <= 1) continue;
+                pvm.AnimFrame = (pvm.AnimFrame + 1) % fg[0].Frames;
+                pvm.Sprite = ComposeThingBitmap(thing, pvm.AnimFrame);
+            }
         }
     }
 
@@ -2597,6 +2625,11 @@ public partial class MainWindowViewModel : ObservableObject
 
         foreach (var vm in _allItems)
         {
+            if (vm.DatThingType != null)
+            {
+                vm.Sprite = ComposeThingBitmap(vm.DatThingType);
+                continue;
+            }
             if (vm.FirstSpriteId == 0)
             {
                 vm.Sprite = null;

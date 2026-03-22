@@ -18,6 +18,7 @@ public partial class PaletteItemViewModel : ObservableObject
 
     [ObservableProperty] private WriteableBitmap? _sprite;
     [ObservableProperty] private bool _isHighlighted;
+    public int AnimFrame { get; set; }
 
     public string DisplayName => string.IsNullOrEmpty(Article) ? Name : $"{Article} {Name}";
     public string Tooltip => $"[{ServerId}] {DisplayName}";
@@ -167,7 +168,7 @@ public partial class PaletteViewModel : ObservableObject
         SearchCatalog();
     }
 
-    /// <summary>Get a 32×32 sprite thumbnail for a server ID.</summary>
+    /// <summary>Get a composed sprite thumbnail for a server ID (full width×height).</summary>
     private WriteableBitmap? GetSprite(ushort serverId)
     {
         if (_spriteCache.TryGetValue(serverId, out var cached))
@@ -177,21 +178,22 @@ public partial class PaletteViewModel : ObservableObject
         if (_serverToClientMap.TryGetValue(serverId, out var clientId) && clientId > 0)
         {
             var datData = _parent.ExposedDatData;
-            var sprFile = _parent.ExposedSprFile;
-            if (datData != null && sprFile != null &&
-                datData.Items.TryGetValue(clientId, out var thing) &&
-                thing.FrameGroups.Length > 0)
-            {
-                var fg = thing.FrameGroups[0];
-                // Get default sprite: first tile, layer 0, no patterns, frame 0
-                uint sprId = fg.GetSpriteId(0, 0, 0, 0, 0, 0, 0);
-                if (sprId > 0)
-                    bmp = _parent.LoadSpriteBitmap(sprId);
-            }
+            if (datData != null && datData.Items.TryGetValue(clientId, out var thing))
+                bmp = _parent.ComposeThingBitmap(thing);
         }
 
         _spriteCache[serverId] = bmp;
         return bmp;
+    }
+
+    /// <summary>Look up the DatThingType for a palette item (used by animation timer).</summary>
+    public DatThingType? GetThingForPaletteItem(PaletteItemViewModel pvm)
+    {
+        if (pvm.ClientId == 0) return null;
+        var datData = _parent.ExposedDatData;
+        if (datData != null && datData.Items.TryGetValue(pvm.ClientId, out var thing))
+            return thing;
+        return null;
     }
 
     /// <summary>Build a PaletteItemViewModel for a server ID.</summary>
