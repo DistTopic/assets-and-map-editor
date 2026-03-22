@@ -1306,10 +1306,16 @@
               <!-- OTB items list -->
               <ListBox ItemsSource="{Binding OtbPanelItems}"
                        SelectedItem="{Binding SelectedItem}"
-                       SelectionMode="Single"
+                       SelectionMode="Multiple"
                        Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                       DoubleTapped="OnOtbItemDoubleTapped">
+                       DoubleTapped="OnOtbItemDoubleTapped"
+                       SelectionChanged="OnOtbItemSelectionChanged">
+                <ListBox.ContextMenu>
+                  <ContextMenu x:Name="OtbItemContextMenu" Opening="OnOtbItemContextMenuOpening">
+                    <MenuItem Header="Remove Selected" x:Name="RemoveOtbSelectedMenuItem" Foreground="#f38ba8"/>
+                  </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:ItemViewModel">
                     <Grid ColumnDefinitions="38,Auto,*" Height="36" Margin="3,1">

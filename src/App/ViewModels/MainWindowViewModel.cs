@@ -1524,6 +1524,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Multi-selection list, bridged from code-behind.</summary>
     public List<ClientItemViewModel> SelectedClientItemsList { get; set; } = [];
 
+    /// <summary>Multi-selection list for OTB items, bridged from code-behind.</summary>
+    public List<ItemViewModel> SelectedOtbItemsList { get; set; } = [];
+
     // ── Client item view options ──
     [ObservableProperty] private bool _showCropSize;
     [ObservableProperty] private bool _showGrid;
@@ -2723,6 +2726,66 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand] private void OtbPanelPrevPage() { if (OtbPanelCurrentPage > 1) { OtbPanelCurrentPage--; LoadOtbPanelPage(); } }
     [RelayCommand] private void OtbPanelNextPage() { if (OtbPanelCurrentPage < OtbPanelTotalPages) { OtbPanelCurrentPage++; LoadOtbPanelPage(); } }
     [RelayCommand] private void OtbPanelLastPage() { OtbPanelCurrentPage = OtbPanelTotalPages; LoadOtbPanelPage(); }
+
+    [RelayCommand]
+    private void RemoveOtbItems()
+    {
+        if (_otbData == null) return;
+
+        var toRemove = SelectedOtbItemsList.Count > 0
+            ? SelectedOtbItemsList.ToList()
+            : (SelectedItem != null ? new List<ItemViewModel> { SelectedItem } : []);
+
+        if (toRemove.Count == 0) { StatusText = "No OTB items selected."; return; }
+
+        // Find the index of the earliest selected item to select the one before it
+        int earliestIdx = int.MaxValue;
+        foreach (var item in toRemove)
+        {
+            int idx = _allItems.IndexOf(item);
+            if (idx >= 0 && idx < earliestIdx) earliestIdx = idx;
+        }
+
+        int removed = 0;
+        foreach (var item in toRemove)
+        {
+            if (_otbData.Items.Remove(item.Model))
+            {
+                _allItems.Remove(item);
+                removed++;
+            }
+        }
+
+        if (removed == 0) { StatusText = "No OTB items were removed."; return; }
+
+        TotalItems = _allItems.Count;
+
+        // Select nearest item before the deleted ones
+        int selectIdx = Math.Max(0, earliestIdx - 1);
+        var nextSelection = selectIdx < _allItems.Count ? _allItems[selectIdx] : null;
+
+        SelectedItem = null;
+        IsOtbItemEditing = false;
+        ApplyOtbPanelFilter();
+        ApplyFilter();
+
+        if (nextSelection != null)
+        {
+            int filteredIdx = _otbPanelFilteredItems.IndexOf(nextSelection);
+            if (filteredIdx >= 0)
+            {
+                int page = filteredIdx / OtbPanelItemsPerPage + 1;
+                OtbPanelCurrentPage = Math.Clamp(page, 1, OtbPanelTotalPages);
+                LoadOtbPanelPage();
+                SelectedItem = nextSelection;
+            }
+        }
+
+        HasUnsavedChanges = true;
+        var label = removed == 1 ? "Removed 1 OTB item" : $"Removed {removed} OTB items";
+        StatusText = label;
+        AddMapLog(label);
+    }
 
     /// <summary>Find and select the OTB item matching a clientId, navigating to the correct page.</summary>
     private void SelectOtbItemByClientId(ushort clientId)

@@ -265,6 +265,41 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnOtbItemSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox lb && DataContext is MainWindowViewModel vm)
+        {
+            vm.SelectedOtbItemsList = lb.SelectedItems?
+                .OfType<ItemViewModel>()
+                .ToList() ?? [];
+        }
+    }
+
+    private void OnOtbItemContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        var selCount = vm.SelectedOtbItemsList.Count;
+
+        var removeMi = this.FindControl<MenuItem>("RemoveOtbSelectedMenuItem");
+        if (removeMi != null)
+        {
+            removeMi.IsEnabled = selCount > 0;
+            removeMi.Header = selCount > 1
+                ? $"Remove {selCount} OTB Items"
+                : "Remove Selected";
+
+            removeMi.Click -= OnRemoveOtbSelectedFromContext;
+            removeMi.Click += OnRemoveOtbSelectedFromContext;
+        }
+    }
+
+    private void OnRemoveOtbSelectedFromContext(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.RemoveOtbItemsCommand.Execute(null);
+    }
+
     private void OnClientItemContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm) return;

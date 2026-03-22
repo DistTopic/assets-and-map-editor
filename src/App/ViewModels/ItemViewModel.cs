@@ -11,6 +11,8 @@ public partial class ItemViewModel : ObservableObject
     private readonly OtbItem _model;
     private readonly MainWindowViewModel _parent;
 
+    public OtbItem Model => _model;
+
 #pragma warning disable MVVMTK0034
     public ItemViewModel(OtbItem model, MainWindowViewModel parent)
     {
