@@ -430,10 +430,14 @@
                 <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
                   <Button Classes="toolbar" Content="🔄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
                           Command="{Binding ReplaceThingCommand}" ToolTip.Tip="Replace"/>
-                  <Button Classes="toolbar" Content="📥" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
-                          Command="{Binding ImportThingCommand}" ToolTip.Tip="Import"/>
-                  <Button Classes="toolbar" Content="📤" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
-                          Command="{Binding ExportThingCommand}" ToolTip.Tip="Export"/>
+                  <Button Classes="toolbar" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding ImportThingCommand}" ToolTip.Tip="Import">
+                    <i:Icon Value="fa-solid fa-arrow-right-to-bracket" FontSize="14"/>
+                  </Button>
+                  <Button Classes="toolbar" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding ExportThingCommand}" ToolTip.Tip="Export">
+                    <i:Icon Value="fa-solid fa-arrow-right-from-bracket" FontSize="14"/>
+                  </Button>
                   <Button Classes="toolbar" Content="✏️" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
                           Command="{Binding EditThingCommand}" ToolTip.Tip="Edit"/>
                   <Button Classes="toolbar" Content="📄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"

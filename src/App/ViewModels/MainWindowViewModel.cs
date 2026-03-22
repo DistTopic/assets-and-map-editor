@@ -416,6 +416,7 @@ public partial class MainWindowViewModel : ObservableObject
                 RemapSpritesToTarget(clone, _sprFile, targetSession.SprFile);
 
             // Rebuild target session's item list so it appears immediately when switching
+            targetSession.HasUnsavedChanges = true;
             RebuildSessionClientItems(targetSession);
 
             StatusText = $"Transplanted item {sourceThing.Id} → {newId} in {targetSession.Name}";
@@ -910,6 +911,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Rebuild target session's AllClientItems so new items appear when switching
         targetSession.DatData = targetDat;
         targetSession.SprFile = targetSpr;
+        targetSession.HasUnsavedChanges = true;
         RebuildSessionClientItems(targetSession);
 
         var msg = $"Batch transplant complete: {transplanted} added, {replaced} replaced, {skipped} skipped.";
@@ -3323,7 +3325,25 @@ public partial class MainWindowViewModel : ObservableObject
     private void RemoveThing()
     {
         if (SelectedClientItem == null || _datData == null) return;
-        StatusText = "Remove: not yet implemented — DAT write support needed";
+
+        var thing = SelectedClientItem.ThingType;
+        var dict = GetDatDictForCategory(thing.Category);
+
+        if (!dict.Remove(thing.Id))
+        {
+            StatusText = $"Item {thing.Id} not found in {thing.Category} dictionary.";
+            return;
+        }
+
+        // Remove from allClientItems and rebuild UI
+        _allClientItems.RemoveAll(c => c.Id == thing.Id && c.Category == thing.Category);
+        SelectedClientItem = null;
+        IsClientItemEditing = false;
+        ApplyClientFilter();
+        HasUnsavedChanges = true;
+
+        StatusText = $"Removed {thing.Category} #{thing.Id}";
+        AddMapLog($"Removed: {thing.Category} #{thing.Id}");
     }
 
     // ══════════════════════════════════════════════════════════════════════
