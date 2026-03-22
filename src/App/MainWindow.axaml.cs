@@ -126,7 +126,7 @@ public partial class MainWindow : Window
     private void OnClientItemDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm)
-            vm.OpenClientItemEditor();
+            vm.NavigateToClientItem();
     }
 
     private void OnOtbItemDoubleTapped(object? sender, TappedEventArgs e)
@@ -269,39 +269,78 @@ public partial class MainWindow : Window
     {
         if (DataContext is not MainWindowViewModel vm) return;
 
+        var selCount = vm.SelectedClientItemsList.Count;
+
+        // ── Transplant sub-menu ──
         var menuItem = this.FindControl<MenuItem>("TransplantToMenuItem");
-        if (menuItem == null) return;
-
-        // Build sub-items: one per other session with loaded DAT
-        menuItem.Items.Clear();
-        var targets = vm.Sessions
-            .Where(s => s != vm.ActiveSession && s.DatData != null)
-            .ToList();
-
-        if (targets.Count == 0 || vm.SelectedClientItemsList.Count == 0)
+        if (menuItem != null)
         {
-            menuItem.IsEnabled = false;
-            menuItem.Header = vm.SelectedClientItemsList.Count == 0
-                ? "Select items first"
-                : "No other sessions available";
-            return;
+            menuItem.Items.Clear();
+            var targets = vm.Sessions
+                .Where(s => s != vm.ActiveSession && s.DatData != null)
+                .ToList();
+
+            if (targets.Count == 0 || selCount == 0)
+            {
+                menuItem.IsEnabled = false;
+                menuItem.Header = selCount == 0
+                    ? "Select items first"
+                    : "No other sessions available";
+            }
+            else
+            {
+                menuItem.IsEnabled = true;
+                menuItem.Header = $"Transplant {selCount} item(s) to...";
+
+                foreach (var target in targets)
+                {
+                    var mi = new MenuItem { Header = target.Name, Tag = target };
+                    mi.Click += async (_, _) =>
+                    {
+                        await vm.TransplantMultipleItemsAsync(target);
+                    };
+                    menuItem.Items.Add(mi);
+                }
+            }
         }
 
-        menuItem.IsEnabled = true;
-        menuItem.Header = $"Transplant {vm.SelectedClientItemsList.Count} item(s) to...";
-
-        foreach (var target in targets)
+        // ── Create OTB Item ──
+        var createOtbMi = this.FindControl<MenuItem>("CreateOtbItemMenuItem");
+        if (createOtbMi != null)
         {
-            var mi = new MenuItem
-            {
-                Header = target.Name,
-                Tag = target,
-            };
-            mi.Click += async (_, _) =>
-            {
-                await vm.TransplantMultipleItemsAsync(target);
-            };
-            menuItem.Items.Add(mi);
+            createOtbMi.IsEnabled = selCount > 0;
+            createOtbMi.Header = selCount > 1
+                ? $"Create {selCount} OTB Items"
+                : "Create OTB Item";
+
+            // Rewire click handler (detach old, attach new)
+            createOtbMi.Click -= OnCreateOtbItemFromContext;
+            createOtbMi.Click += OnCreateOtbItemFromContext;
         }
+
+        // ── Remove Selected ──
+        var removeMi = this.FindControl<MenuItem>("RemoveSelectedMenuItem");
+        if (removeMi != null)
+        {
+            removeMi.IsEnabled = selCount > 0;
+            removeMi.Header = selCount > 1
+                ? $"Remove {selCount} Items"
+                : "Remove Selected";
+
+            removeMi.Click -= OnRemoveSelectedFromContext;
+            removeMi.Click += OnRemoveSelectedFromContext;
+        }
+    }
+
+    private void OnCreateOtbItemFromContext(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.CreateServerItemsFromSelection();
+    }
+
+    private void OnRemoveSelectedFromContext(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.RemoveThingCommand.Execute(null);
     }
 }

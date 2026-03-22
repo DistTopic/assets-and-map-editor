@@ -2490,6 +2490,40 @@ public partial class MainWindowViewModel : ObservableObject
         StatusText = $"Created server item {nextServerId} from client {dat.Id} (group: {group})";
     }
 
+    /// <summary>
+    /// Creates OTB items from the current multi-selection (or single selection).
+    /// Called from the context menu.
+    /// </summary>
+    public void CreateServerItemsFromSelection()
+    {
+        if (_otbData == null) return;
+
+        var items = SelectedClientItemsList.Count > 0
+            ? SelectedClientItemsList.ToList()
+            : (SelectedClientItem != null ? new List<ClientItemViewModel> { SelectedClientItem } : []);
+
+        if (items.Count == 0)
+        {
+            StatusText = "No items selected.";
+            return;
+        }
+
+        int created = 0;
+        foreach (var cvm in items)
+        {
+            // Temporarily set SelectedClientItem so CreateServerItemFromClient works
+            SelectedClientItem = cvm;
+            if (cvm.Category != ThingCategory.Item) continue;
+            CreateServerItemFromClient();
+            created++;
+        }
+
+        if (created == 0)
+            StatusText = "No Item-category things in selection (only Items can become OTB items).";
+        else
+            StatusText = $"Created {created} OTB item(s) from selection.";
+    }
+
     private void BuildItemList()
     {
         _allItems.Clear();
@@ -2828,6 +2862,38 @@ public partial class MainWindowViewModel : ObservableObject
         IsClientItemEditing = true;
         // Also show the linked OTB detail panel if an OTB item is linked
         IsOtbItemEditing = SelectedItem != null;
+    }
+
+    /// <summary>
+    /// Navigate to the selected client item's page, resetting filters so all items are visible.
+    /// Then open the item editor.
+    /// </summary>
+    public void NavigateToClientItem()
+    {
+        if (SelectedClientItem == null) return;
+        var targetId = SelectedClientItem.Id;
+
+        // Reset filters to show all items
+        _suppressNavigateSync = true;
+        ClientSearchText = string.Empty;
+        ClientCategoryFilter = "All";
+        _suppressNavigateSync = false;
+
+        // Rebuild filtered list with no filters
+        ApplyClientFilter();
+
+        // Find the item in the full list and navigate to its page
+        int idx = _clientFilteredItems.FindIndex(c => c.Id == targetId);
+        if (idx >= 0)
+        {
+            int page = idx / ClientItemsPerPage + 1;
+            ClientCurrentPage = Math.Clamp(page, 1, ClientTotalPages);
+            LoadClientPage();
+            SelectedClientItem = _clientFilteredItems[idx];
+        }
+
+        // Open the editor for this item
+        OpenClientItemEditor();
     }
 
     private bool _suppressNavigateSync;
@@ -3324,26 +3390,72 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void RemoveThing()
     {
-        if (SelectedClientItem == null || _datData == null) return;
+        if (_datData == null) return;
 
-        var thing = SelectedClientItem.ThingType;
-        var dict = GetDatDictForCategory(thing.Category);
+        // Use multi-selection if available, otherwise fall back to single selection
+        var toRemove = SelectedClientItemsList.Count > 0
+            ? SelectedClientItemsList.ToList()
+            : (SelectedClientItem != null ? [SelectedClientItem] : []);
 
-        if (!dict.Remove(thing.Id))
+        if (toRemove.Count == 0)
         {
-            StatusText = $"Item {thing.Id} not found in {thing.Category} dictionary.";
+            StatusText = "No items selected for removal.";
             return;
         }
 
-        // Remove from allClientItems and rebuild UI
-        _allClientItems.RemoveAll(c => c.Id == thing.Id && c.Category == thing.Category);
+        // Find the index of the earliest selected item to select the one before it after deletion
+        int earliestIdx = int.MaxValue;
+        foreach (var item in toRemove)
+        {
+            int idx = _allClientItems.FindIndex(c => c.Id == item.Id && c.Category == item.Category);
+            if (idx >= 0 && idx < earliestIdx)
+                earliestIdx = idx;
+        }
+
+        // Remove all selected items
+        int removed = 0;
+        foreach (var item in toRemove)
+        {
+            var thing = item.ThingType;
+            var dict = GetDatDictForCategory(thing.Category);
+            if (dict.Remove(thing.Id))
+            {
+                _allClientItems.RemoveAll(c => c.Id == thing.Id && c.Category == thing.Category);
+                removed++;
+            }
+        }
+
+        if (removed == 0)
+        {
+            StatusText = "No items were removed.";
+            return;
+        }
+
+        // Select the item just before the earliest deleted one
+        int selectIdx = Math.Max(0, earliestIdx - 1);
+        var nextSelection = selectIdx < _allClientItems.Count ? _allClientItems[selectIdx] : null;
+
         SelectedClientItem = null;
         IsClientItemEditing = false;
         ApplyClientFilter();
-        HasUnsavedChanges = true;
 
-        StatusText = $"Removed {thing.Category} #{thing.Id}";
-        AddMapLog($"Removed: {thing.Category} #{thing.Id}");
+        // Navigate to the page containing the selection target
+        if (nextSelection != null)
+        {
+            int filteredIdx = _clientFilteredItems.IndexOf(nextSelection);
+            if (filteredIdx >= 0)
+            {
+                int page = filteredIdx / ClientItemsPerPage + 1;
+                ClientCurrentPage = Math.Clamp(page, 1, ClientTotalPages);
+                LoadClientPage();
+                SelectedClientItem = nextSelection;
+            }
+        }
+
+        HasUnsavedChanges = true;
+        var label = removed == 1 ? $"Removed 1 item" : $"Removed {removed} items";
+        StatusText = label;
+        AddMapLog(label);
     }
 
     // ══════════════════════════════════════════════════════════════════════

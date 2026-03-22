@@ -442,10 +442,14 @@
                           Command="{Binding EditThingCommand}" ToolTip.Tip="Edit"/>
                   <Button Classes="toolbar" Content="📄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
                           Command="{Binding DuplicateThingCommand}" ToolTip.Tip="Duplicate"/>
-                  <Button Classes="toolbar" Content="➕" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
-                          Command="{Binding NewThingCommand}" ToolTip.Tip="New"/>
-                  <Button Classes="toolbar" Content="➖" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#f38ba8"
-                          Command="{Binding RemoveThingCommand}" ToolTip.Tip="Remove"/>
+                  <Button Classes="toolbar" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
+                          Command="{Binding NewThingCommand}" ToolTip.Tip="New">
+                    <i:Icon Value="fa-solid fa-plus" FontSize="14"/>
+                  </Button>
+                  <Button Classes="toolbar" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#f38ba8"
+                          Command="{Binding RemoveThingCommand}" ToolTip.Tip="Remove">
+                    <i:Icon Value="fa-solid fa-minus" FontSize="14"/>
+                  </Button>
                   <Button Classes="toolbar" Content="↩" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26" Foreground="#fab387"
                           Command="{Binding ResetThingCommand}" ToolTip.Tip="Reset"/>
                   <Rectangle Width="1" Height="18" Fill="#313244" Margin="4,0"/>
@@ -496,6 +500,10 @@
                 <ListBox.ContextMenu>
                   <ContextMenu x:Name="ClientItemContextMenu" Opening="OnClientItemContextMenuOpening">
                     <MenuItem Header="Transplant to..." x:Name="TransplantToMenuItem"/>
+                    <Separator/>
+                    <MenuItem Header="Create OTB Item" x:Name="CreateOtbItemMenuItem"/>
+                    <Separator/>
+                    <MenuItem Header="Remove Selected" x:Name="RemoveSelectedMenuItem" Foreground="#f38ba8"/>
                   </ContextMenu>
                 </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
