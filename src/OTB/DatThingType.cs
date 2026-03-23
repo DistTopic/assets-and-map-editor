@@ -213,6 +213,23 @@ public sealed class FrameGroup
         return index < SpriteIndex.Length ? SpriteIndex[index] : 0;
     }
 
+    /// <summary>Compute the flat index for a given position (same formula as GetSpriteId).</summary>
+    public int GetFlatIndex(int w, int h, int layer, int patternX, int patternY, int patternZ, int frame)
+    {
+        if (Width == 0 || Height == 0 || Layers == 0 || PatternX == 0 || PatternY == 0 || PatternZ == 0 || Frames == 0)
+            return -1;
+        int index = ((((((frame % Frames) * PatternZ + patternZ) * PatternY + patternY) * PatternX + patternX)
+                     * Layers + layer) * Height + h) * Width + w;
+        return index < SpriteIndex.Length ? index : -1;
+    }
+
+    /// <summary>Set sprite ID at a flat index position.</summary>
+    public void SetSpriteId(int flatIndex, uint spriteId)
+    {
+        if (flatIndex >= 0 && flatIndex < SpriteIndex.Length)
+            SpriteIndex[flatIndex] = spriteId;
+    }
+
     /// <summary>Creates a deep copy of this frame group.</summary>
     public FrameGroup Clone()
     {

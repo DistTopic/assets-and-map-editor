@@ -578,7 +578,7 @@
                                 Height="{Binding CompositionPreviewHeight}"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Border Background="{Binding CompositionGridBrush}">
-                              <ItemsControl ItemsSource="{Binding CompositionSprites}">
+                              <ItemsControl x:Name="CompositionGrid" ItemsSource="{Binding CompositionSprites}">
                                 <ItemsControl.ItemsPanel>
                                   <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
@@ -1420,7 +1420,10 @@
                   <DataTemplate x:DataType="vm:SpriteViewModel">
                     <Border Width="38" Height="46" Margin="1" Background="#11111b"
                             CornerRadius="3" BorderBrush="#313244" BorderThickness="1"
-                            ToolTip.Tip="{Binding SpriteId}">
+                            ToolTip.Tip="{Binding SpriteId}"
+                            PointerPressed="OnRightSpritePointerPressed"
+                            PointerMoved="OnRightSpritePointerMoved"
+                            PointerReleased="OnRightSpritePointerReleased">
                       <Border.ContextMenu>
                         <ContextMenu>
                           <MenuItem Header="Replace" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ReplaceSpriteCommand}"/>

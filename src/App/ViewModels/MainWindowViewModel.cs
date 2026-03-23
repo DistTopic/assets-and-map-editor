@@ -3355,8 +3355,9 @@ public partial class MainWindowViewModel : ObservableObject
                     {
                         int px = pxStart + patX;
                         int py = pyStart + patY;
-                        uint spriteId = fg.GetSpriteId(fg.Width - 1 - col, fg.Height - 1 - row, layer, px, py, pz, frame);
-                        var svm = new SpriteViewModel { SpriteId = spriteId };
+                        int flatIdx = fg.GetFlatIndex(fg.Width - 1 - col, fg.Height - 1 - row, layer, px, py, pz, frame);
+                        uint spriteId = flatIdx >= 0 ? fg.SpriteIndex[flatIdx] : 0;
+                        var svm = new SpriteViewModel { SpriteId = spriteId, SlotIndex = flatIdx };
                         svm.Bitmap = LoadSpriteBitmap(spriteId);
                         CompositionSprites.Add(svm);
                     }
@@ -3378,6 +3379,25 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         SelectedRightSprite = RightSprites.FirstOrDefault(s => s.SpriteId == spriteId);
+    }
+
+    /// <summary>Assign a sprite to a composition slot (used by drag-drop from sprite list).</summary>
+    public void AssignSpriteToSlot(SpriteViewModel targetSlot, uint newSpriteId)
+    {
+        if (targetSlot.SlotIndex < 0) return;
+        var thing = _currentCompositionThing;
+        if (thing == null || thing.FrameGroups.Length == 0) return;
+
+        int fgIdx = Math.Clamp(CompositionFrameGroupIndex, 0, Math.Max(0, thing.FrameGroups.Length - 1));
+        var fg = thing.FrameGroups[fgIdx];
+
+        fg.SetSpriteId(targetSlot.SlotIndex, newSpriteId);
+
+        // Update the cell in-place
+        targetSlot.SpriteId = newSpriteId;
+        targetSlot.Bitmap = LoadSpriteBitmap(newSpriteId);
+
+        StatusText = $"Set slot {targetSlot.SlotIndex} → sprite {newSpriteId}";
     }
 
     // ══════════════════════════════════════════════════════════════════════

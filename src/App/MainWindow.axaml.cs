@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Closing += OnWindowClosing;
+
         Loaded += async (_, _) =>
         {
             if (DataContext is MainWindowViewModel vm)
@@ -292,6 +293,105 @@ public partial class MainWindow : Window
         {
             vm.NavigateRightSpriteToIdCommand.Execute(svm.SpriteId);
         }
+    }
+
+    // ── Sprite drag-drop: drag from sprite list → drop on composition cell ──
+
+    private SpriteViewModel? _dragSprite;
+    private Popup? _dragAdorner;
+    private bool _spriteDragActive;
+
+    private void OnRightSpritePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border border || border.DataContext is not SpriteViewModel svm)
+            return;
+
+        var props = e.GetCurrentPoint(border).Properties;
+        if (!props.IsLeftButtonPressed) return;
+
+        _dragSprite = svm;
+        _spriteDragActive = false;
+        e.Pointer.Capture(border);
+        e.Handled = true;
+    }
+
+    private void OnRightSpritePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragSprite == null) return;
+
+        if (!_spriteDragActive)
+        {
+            _spriteDragActive = true;
+            // Create floating adorner showing the sprite image
+            var img = new Image
+            {
+                Source = _dragSprite.Bitmap,
+                Width = 32,
+                Height = 32,
+                Stretch = Stretch.None
+            };
+            RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+            _dragAdorner = new Popup
+            {
+                IsLightDismissEnabled = false,
+                Placement = PlacementMode.Pointer,
+                PlacementTarget = this,
+                Child = new Border
+                {
+                    Background = Brushes.Transparent,
+                    Opacity = 0.85,
+                    IsHitTestVisible = false,
+                    Child = img
+                }
+            };
+            ((Panel)this.Content!).Children.Add(_dragAdorner);
+            _dragAdorner.Open();
+        }
+
+        // Reposition by re-opening at pointer
+        if (_dragAdorner != null)
+        {
+            _dragAdorner.Close();
+            _dragAdorner.Open();
+        }
+    }
+
+    private void OnRightSpritePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_dragSprite == null) return;
+
+        var draggedSprite = _dragSprite;
+        _dragSprite = null;
+        _spriteDragActive = false;
+
+        // Close and remove adorner
+        if (_dragAdorner != null)
+        {
+            _dragAdorner.Close();
+            if (this.Content is Panel panel)
+                panel.Children.Remove(_dragAdorner);
+            _dragAdorner = null;
+        }
+
+        e.Pointer.Capture(null);
+
+        // Hit-test: find the composition cell under the pointer
+        var pos = e.GetPosition(this);
+        var hit = this.InputHitTest(pos);
+        var visual = hit as Control;
+        SpriteViewModel? targetSlot = null;
+        while (visual != null)
+        {
+            if (visual.DataContext is SpriteViewModel svm && svm.SlotIndex >= 0)
+            {
+                targetSlot = svm;
+                break;
+            }
+            visual = visual.Parent as Control;
+        }
+
+        if (targetSlot != null && DataContext is MainWindowViewModel vm)
+            vm.AssignSpriteToSlot(targetSlot, draggedSprite.SpriteId);
     }
 
     private void OnClientItemDoubleTapped(object? sender, TappedEventArgs e)

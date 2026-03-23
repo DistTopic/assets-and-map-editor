@@ -11,4 +11,7 @@ public partial class SpriteViewModel : ObservableObject
 {
     [ObservableProperty] private uint _spriteId;
     [ObservableProperty] private WriteableBitmap? _bitmap;
+
+    /// <summary>Flat index into FrameGroup.SpriteIndex[] (set only for composition cells).</summary>
+    public int SlotIndex { get; set; } = -1;
 }
