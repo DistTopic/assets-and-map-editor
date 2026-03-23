@@ -233,12 +233,10 @@
           <MenuItem.Icon><i:Icon Value="fa-solid fa-map" FontSize="14" Foreground="#cdd6f4"/></MenuItem.Icon>
         </MenuItem>
         <Separator/>
-        <MenuItem Header="Save" Command="{Binding SaveOtbCommand}" InputGesture="Ctrl+S">
+        <MenuItem Header="Salvar Tudo" Command="{Binding SaveAllCommand}" InputGesture="Ctrl+S">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-floppy-disk" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
         </MenuItem>
         <MenuItem Header="Save As..." Command="{Binding SaveOtbAsCommand}" InputGesture="Ctrl+Shift+S"/>
-        <MenuItem Header="Save SPR" Command="{Binding SaveSprCommand}"/>
-        <MenuItem Header="Save Map" Command="{Binding SaveMapCommand}"/>
         <Separator/>
         <MenuItem Header="Export Selected..." Command="{Binding ExportThingCommand}" InputGesture="Ctrl+E">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-file-export" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>

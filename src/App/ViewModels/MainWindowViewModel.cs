@@ -2487,6 +2487,46 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task SaveAllAsync()
+    {
+        var saved = new List<string>();
+
+        try
+        {
+            // 1. OTB + DAT + SPR
+            if (_otbData != null && _otbPath != null)
+            {
+                foreach (var vm in _allItems)
+                    vm.ApplyToModel();
+
+                OtbFile.Save(_otbPath, _otbData);
+                SaveClientFilesIfLoaded();
+                HasUnsavedChanges = false;
+                saved.Add("OTB");
+                if (_datData != null) saved.Add("DAT");
+                if (_sprFile != null) saved.Add("SPR");
+            }
+
+            // 2. Map
+            if (MapData != null && !string.IsNullOrEmpty(MapFilePath))
+            {
+                OtbmFile.Save(MapFilePath, MapData);
+                MapTileCount = MapData.Tiles.Count;
+                MapHasUnsavedChanges = false;
+                saved.Add("Map");
+            }
+
+            StatusText = saved.Count > 0
+                ? $"Saved: {string.Join(", ", saved)}"
+                : "Nothing to save";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private async Task SaveOtbAsync()
     {
         if (_otbData == null || _otbPath == null) return;
