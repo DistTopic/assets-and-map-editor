@@ -245,29 +245,29 @@
         </MenuItem>
       </MenuItem>
       <MenuItem Header="_View" IsVisible="{Binding IsMapEditorActive}">
-        <MenuItem Header="Show All Floors" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors}"/>
-        <MenuItem Header="Show as Minimap" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap}"/>
+        <MenuItem Header="Show All Floors" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors, Mode=TwoWay}"/>
+        <MenuItem Header="Show as Minimap" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Show Tooltips" ToggleType="CheckBox" IsChecked="{Binding ViewShowTooltips}"/>
-        <MenuItem Header="Show Grid" ToggleType="CheckBox" IsChecked="{Binding ViewShowGrid}"/>
-        <MenuItem Header="Show Client Box" ToggleType="CheckBox" IsChecked="{Binding ViewShowIngameBox}"/>
+        <MenuItem Header="Show Tooltips" ToggleType="CheckBox" IsChecked="{Binding ViewShowTooltips, Mode=TwoWay}"/>
+        <MenuItem Header="Show Grid" ToggleType="CheckBox" IsChecked="{Binding ViewShowGrid, Mode=TwoWay}"/>
+        <MenuItem Header="Show Client Box" ToggleType="CheckBox" IsChecked="{Binding ViewShowIngameBox, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Ghost Loose Items" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems}"/>
-        <MenuItem Header="Ghost Higher Floors" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors}"/>
-        <MenuItem Header="Show Shade" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade}"/>
+        <MenuItem Header="Ghost Loose Items" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems, Mode=TwoWay}"/>
+        <MenuItem Header="Ghost Higher Floors" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors, Mode=TwoWay}"/>
+        <MenuItem Header="Show Shade" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Show Animation" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation}"/>
-        <MenuItem Header="Show Lights" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights}"/>
+        <MenuItem Header="Show Animation" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation, Mode=TwoWay}"/>
+        <MenuItem Header="Show Lights" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Show Special" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial}"/>
-        <MenuItem Header="Show Zones" ToggleType="CheckBox" IsChecked="{Binding ViewShowZones}"/>
-        <MenuItem Header="Show Houses" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses}"/>
-        <MenuItem Header="Show Pathing" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing}"/>
+        <MenuItem Header="Show Special" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial, Mode=TwoWay}"/>
+        <MenuItem Header="Show Zones" ToggleType="CheckBox" IsChecked="{Binding ViewShowZones, Mode=TwoWay}"/>
+        <MenuItem Header="Show Houses" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses, Mode=TwoWay}"/>
+        <MenuItem Header="Show Pathing" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Show Waypoints" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints}"/>
-        <MenuItem Header="Show Towns" ToggleType="CheckBox" IsChecked="{Binding ViewShowTowns}"/>
+        <MenuItem Header="Show Waypoints" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints, Mode=TwoWay}"/>
+        <MenuItem Header="Show Towns" ToggleType="CheckBox" IsChecked="{Binding ViewShowTowns, Mode=TwoWay}"/>
         <Separator/>
-        <MenuItem Header="Highlight Items" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems}"/>
+        <MenuItem Header="Highlight Items" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems, Mode=TwoWay}"/>
       </MenuItem>
       <MenuItem Header="_Session">
         <MenuItem Header="New Session" Command="{Binding NewSessionCommand}">
