@@ -1154,7 +1154,8 @@ public sealed class MapCanvasControl : Control
 
         if (!_spriteRgbaCache.TryGetValue(spriteId, out var rgba))
         {
-            rgba = _sprFile!.GetSpriteRgba(spriteId);
+            try { rgba = _sprFile!.GetSpriteRgba(spriteId); }
+            catch (ObjectDisposedException) { return null; }
             _spriteRgbaCache[spriteId] = rgba;
         }
 

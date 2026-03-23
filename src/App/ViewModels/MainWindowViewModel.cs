@@ -2524,6 +2524,8 @@ public partial class MainWindowViewModel : ObservableObject
 
             if (_currentSession != null)
                 _currentSession.SprFile = _sprFile;
+
+            OnPropertyChanged(nameof(ExposedSprFile));
         }
     }
 
