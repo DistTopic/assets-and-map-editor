@@ -3894,6 +3894,7 @@ public partial class MainWindowViewModel : ObservableObject
         var dialog = new ExportDialog
         {
             SuggestedFileName = $"sprite_{spriteId}",
+            SpriteOnly = true,
         };
 
         if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop

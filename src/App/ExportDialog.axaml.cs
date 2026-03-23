@@ -49,6 +49,19 @@ public partial class ExportDialog : Window
         1100,
     ];
 
+    /// <summary>When true, hides the OBD format option (sprites are images only).</summary>
+    public bool SpriteOnly
+    {
+        set
+        {
+            if (!value) return;
+            FormatObd.IsVisible = false;
+            FormatPng.IsChecked = true;
+            // Trigger format change to show image options
+            Format_Changed(null, null!);
+        }
+    }
+
     /// <summary>Pre-fill the filename (e.g. "item_100", "sprite_1234").</summary>
     public string SuggestedFileName
     {
