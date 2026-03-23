@@ -1426,6 +1426,8 @@
                             PointerReleased="OnRightSpritePointerReleased">
                       <Border.ContextMenu>
                         <ContextMenu>
+                          <MenuItem Header="Copy" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CopySpriteToClipboardCommand}"/>
+                          <Separator/>
                           <MenuItem Header="Replace" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ReplaceSpriteCommand}"/>
                           <MenuItem Header="Remove" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveSpriteCommand}"/>
                           <MenuItem Header="Duplicate" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).DuplicateSpriteCommand}"/>
