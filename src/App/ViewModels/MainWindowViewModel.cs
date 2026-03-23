@@ -3989,25 +3989,30 @@ public partial class MainWindowViewModel : ObservableObject
         var rgba = _sprFile.GetSpriteRgba(SelectedRightSprite.SpriteId);
         if (rgba == null) { StatusText = "Sprite has no data"; return; }
 
-        // Build a 32×32 RGBA WriteableBitmap (same as we do for rendering)
-        var bitmap = new WriteableBitmap(
-            new PixelSize(32, 32),
-            new Vector(96, 96),
-            Avalonia.Platform.PixelFormat.Rgba8888,
-            Avalonia.Platform.AlphaFormat.Unpremul);
-
-        using (var fb = bitmap.Lock())
-            Marshal.Copy(rgba, 0, fb.Address, rgba.Length);
-
-        var clipboard = (Avalonia.Application.Current?.ApplicationLifetime
-            as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
-            ?.MainWindow?.Clipboard;
-
-        if (clipboard == null) { StatusText = "Clipboard not available"; return; }
-
-        await Avalonia.Input.Platform.ClipboardExtensions.SetBitmapAsync(clipboard, bitmap);
+        // Store internally first so Paste always works even if system clipboard fails
         _copiedSpriteId = SelectedRightSprite.SpriteId;
-        StatusText = $"Sprite {SelectedRightSprite.SpriteId} copied to clipboard (RGBA)";
+        StatusText = $"Sprite {_copiedSpriteId} copied";
+
+        // Best-effort: also copy to system clipboard as image
+        try
+        {
+            var bitmap = new WriteableBitmap(
+                new PixelSize(32, 32),
+                new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Rgba8888,
+                Avalonia.Platform.AlphaFormat.Unpremul);
+
+            using (var fb = bitmap.Lock())
+                Marshal.Copy(rgba, 0, fb.Address, rgba.Length);
+
+            var clipboard = (Avalonia.Application.Current?.ApplicationLifetime
+                as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
+                ?.MainWindow?.Clipboard;
+
+            if (clipboard != null)
+                await Avalonia.Input.Platform.ClipboardExtensions.SetBitmapAsync(clipboard, bitmap);
+        }
+        catch { /* system clipboard is optional */ }
     }
 
     [RelayCommand]
