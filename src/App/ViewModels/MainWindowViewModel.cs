@@ -3898,9 +3898,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         _sprFile.SetSpriteRgba(SelectedRightSprite.SpriteId, (byte[])_copiedSpriteRgba.Clone());
         SelectedRightSprite.Bitmap = LoadSpriteBitmap(SelectedRightSprite.SpriteId);
-        InvalidateSpriteCache();
-        Palette?.RefreshSprites();
-        LoadAllSprites();
+        RefreshAfterSpriteEdit(SelectedRightSprite.SpriteId);
         StatusText = $"Pasted sprite → {SelectedRightSprite.SpriteId}";
     }
 
@@ -4046,7 +4044,7 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile.SetSpriteRgba(target.SpriteId, (byte[])_copiedSpriteRgba.Clone());
             target.Bitmap = LoadSpriteBitmap(target.SpriteId);
         }
-        InvalidateSpriteCache();
+        RefreshAfterSpriteEdit(target.SpriteId);
         StatusText = $"Pasted sprite → slot {target.SlotIndex}";
     }
 
@@ -4146,6 +4144,34 @@ public partial class MainWindowViewModel : ObservableObject
         _mapSpriteCacheInvalidated?.Invoke();
 
         // Reload the OTB items preview if something is selected
+        if (SelectedItem != null)
+            OnPropertyChanged(nameof(SelectedItem));
+    }
+
+    /// <summary>Lightweight refresh after editing a single sprite — only updates items that reference it.</summary>
+    private void RefreshAfterSpriteEdit(uint spriteId)
+    {
+        Palette?.ClearSpriteCache();
+
+        // Only recompose client items whose frame groups reference this sprite
+        if (_sprFile != null)
+        {
+            foreach (var vm in _allClientItems)
+            {
+                foreach (var fg in vm.ThingType.FrameGroups)
+                {
+                    if (Array.IndexOf(fg.SpriteIndex, spriteId) >= 0)
+                    {
+                        vm.Sprite = ComposeThingBitmap(vm.ThingType);
+                        break;
+                    }
+                }
+            }
+        }
+
+        ReloadComposition();
+        _mapSpriteCacheInvalidated?.Invoke();
+
         if (SelectedItem != null)
             OnPropertyChanged(nameof(SelectedItem));
     }
