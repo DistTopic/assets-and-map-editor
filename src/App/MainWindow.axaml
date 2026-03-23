@@ -538,10 +538,19 @@
                     <MenuItem Header="Remove Selected" x:Name="RemoveSelectedMenuItem" Foreground="#f38ba8"/>
                   </ContextMenu>
                 </ListBox.ContextMenu>
+                <ListBox.Styles>
+                  <Style Selector="Border.clientSprBox">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected Border.clientSprBox">
+                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                  </Style>
+                </ListBox.Styles>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:ClientItemViewModel">
                     <Grid ColumnDefinitions="38,*" Height="38" Margin="2,1">
-                      <Border Background="#11111b" CornerRadius="4" Width="32" Height="32"
+                      <Border Classes="clientSprBox" Background="#11111b" CornerRadius="4" Width="32" Height="32"
+                              BorderThickness="2"
                               VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
                         <Image Source="{Binding Sprite}" Width="32" Height="32"
                                RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
@@ -578,28 +587,58 @@
                                 Height="{Binding CompositionPreviewHeight}"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Border Background="{Binding CompositionGridBrush}">
-                              <ItemsControl x:Name="CompositionGrid" ItemsSource="{Binding CompositionSprites}">
-                                <ItemsControl.ItemsPanel>
+                              <ListBox x:Name="CompositionGrid" ItemsSource="{Binding CompositionSprites}"
+                                       SelectedItem="{Binding SelectedCompositionSprite}"
+                                       SelectionMode="Single"
+                                       Background="Transparent" BorderThickness="0" Padding="0">
+                                <ListBox.ItemsPanel>
                                   <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.Styles>
+                                  <Style Selector="ListBoxItem">
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0"/>
+                                    <Setter Property="MinWidth" Value="0"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="Border.compCell">
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="ListBoxItem:selected">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="ListBoxItem:pointerover">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                  <Style Selector="ListBoxItem:selected Border.compCell">
+                                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                                  </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
                                   <DataTemplate x:DataType="vm:SpriteViewModel">
-                                    <Border Width="64" Height="64" Margin="1" Background="#11111b"
-                                            ToolTip.Tip="{Binding SpriteId}"
-                                            DoubleTapped="OnCompositionSpriteDoubleTapped">
+                                    <Border Classes="compCell" Width="64" Height="64" Margin="1"
+                                            Background="#11111b" BorderThickness="2"
+                                            ToolTip.Tip="{Binding SpriteId}">
                                       <Border.ContextMenu>
                                         <ContextMenu>
                                           <MenuItem Header="Paste"
-                                                    Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).PasteSpriteToSlotCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).PasteSpriteToSlotCommand}"
                                                     CommandParameter="{Binding}"/>
                                         </ContextMenu>
                                       </Border.ContextMenu>
-                                      <Image Source="{Binding Bitmap}" Width="64" Height="64"
+                                      <Image Source="{Binding Bitmap}" Width="60" Height="60"
                                              RenderOptions.BitmapInterpolationMode="None" Stretch="Fill"/>
                                     </Border>
                                   </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                              </ItemsControl>
+                                </ListBox.ItemTemplate>
+                              </ListBox>
                             </Border>
                             <Rectangle IsVisible="{Binding ShowCropSize}"
                                        Width="{Binding CropOverlaySize}" Height="{Binding CropOverlaySize}"
@@ -1350,6 +1389,14 @@
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                        DoubleTapped="OnOtbItemDoubleTapped"
                        SelectionChanged="OnOtbItemSelectionChanged">
+                <ListBox.Styles>
+                  <Style Selector="Border.otbSprBox">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected Border.otbSprBox">
+                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                  </Style>
+                </ListBox.Styles>
                 <ListBox.ContextMenu>
                   <ContextMenu x:Name="OtbItemContextMenu" Opening="OnOtbItemContextMenuOpening">
                     <MenuItem Header="Remove Selected" x:Name="RemoveOtbSelectedMenuItem" Foreground="#f38ba8"/>
@@ -1358,7 +1405,8 @@
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:ItemViewModel">
                     <Grid ColumnDefinitions="38,Auto,*" Height="36" Margin="3,1">
-                      <Border Background="#11111b" CornerRadius="4" Width="30" Height="30"
+                      <Border Classes="otbSprBox" Background="#11111b" CornerRadius="4" Width="30" Height="30"
+                              BorderThickness="2"
                               VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
                         <Image Source="{Binding Sprite}" Width="30" Height="30"
                                RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
@@ -1423,10 +1471,37 @@
                     <StackPanel Orientation="Horizontal" Spacing="2"/>
                   </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="MinWidth" Value="0"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="Border.sprCell">
+                    <Setter Property="BorderBrush" Value="#313244"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected">
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:pointerover">
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected Border.sprCell">
+                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                  </Style>
+                </ListBox.Styles>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:SpriteViewModel">
-                    <Border Width="38" Height="46" Margin="1" Background="#11111b"
-                            CornerRadius="3" BorderBrush="#313244" BorderThickness="1"
+                    <Border Classes="sprCell" Width="38" Height="46" Margin="1" Background="#11111b"
+                            CornerRadius="3" BorderThickness="2"
                             ToolTip.Tip="{Binding SpriteId}"
                             PointerPressed="OnRightSpritePointerPressed"
                             PointerMoved="OnRightSpritePointerMoved"

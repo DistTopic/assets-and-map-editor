@@ -286,16 +286,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnCompositionSpriteDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (sender is Border border
-            && border.DataContext is SpriteViewModel svm
-            && DataContext is MainWindowViewModel vm)
-        {
-            vm.NavigateRightSpriteToIdCommand.Execute(svm.SpriteId);
-        }
-    }
-
     // ── Sprite drag-drop: drag from sprite list → drop on composition cell ──
 
     private SpriteViewModel? _dragSprite;

@@ -1153,7 +1153,20 @@ public partial class MainWindowViewModel : ObservableObject
         InspectorDetailSections.Clear();
         if (item == null) return;
 
+        // Auto-select the corresponding OTB item in the items list
         ushort serverId = item.ServerId;
+        var otbIdx = _otbPanelFilteredItems.FindIndex(v => v.ServerId == serverId);
+        if (otbIdx >= 0)
+        {
+            int page = otbIdx / OtbPanelItemsPerPage + 1;
+            if (page != OtbPanelCurrentPage)
+            {
+                OtbPanelCurrentPage = page;
+                LoadOtbPanelPage();
+            }
+            SelectedItem = _otbPanelFilteredItems[otbIdx];
+        }
+
         var otbItem = _otbData?.Items.FirstOrDefault(o => o.ServerId == serverId);
         ushort clientId = otbItem?.ClientId ?? 0;
         DatThingType? datType = null;
@@ -1879,6 +1892,13 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private int _compositionPatternY;
     [ObservableProperty] private int _compositionPatternZ;
     public ObservableCollection<SpriteViewModel> CompositionSprites { get; } = [];
+    [ObservableProperty] private SpriteViewModel? _selectedCompositionSprite;
+
+    partial void OnSelectedCompositionSpriteChanged(SpriteViewModel? value)
+    {
+        if (value != null && value.SpriteId > 0)
+            NavigateRightSpriteToId(value.SpriteId);
+    }
 
     // ── Category visibility helpers (for conditional controls like OB) ──
     public bool IsItemSelected => SelectedClientItem?.ThingType.Category == ThingCategory.Item;
