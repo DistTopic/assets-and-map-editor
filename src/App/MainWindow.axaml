@@ -254,6 +254,7 @@
         <Separator/>
         <MenuItem Header="Ghost Loose Items" ToggleType="CheckBox" IsChecked="{Binding ViewGhostItems, Mode=TwoWay}"/>
         <MenuItem Header="Ghost Higher Floors" ToggleType="CheckBox" IsChecked="{Binding ViewGhostHigherFloors, Mode=TwoWay}"/>
+        <MenuItem Header="Ghost Lower Floors" ToggleType="CheckBox" IsChecked="{Binding ViewGhostLowerFloors, Mode=TwoWay}"/>
         <MenuItem Header="Show Shade" ToggleType="CheckBox" IsChecked="{Binding ViewShowShade, Mode=TwoWay}"/>
         <Separator/>
         <MenuItem Header="Show Animation" ToggleType="CheckBox" IsChecked="{Binding ViewShowAnimation, Mode=TwoWay}"/>
@@ -1949,6 +1950,7 @@
                                        ShowAsMinimap="{Binding ViewShowAsMinimap, Mode=TwoWay}"
                                        GhostItems="{Binding ViewGhostItems, Mode=TwoWay}"
                                        GhostHigherFloors="{Binding ViewGhostHigherFloors, Mode=TwoWay}"
+                                       GhostLowerFloors="{Binding ViewGhostLowerFloors, Mode=TwoWay}"
                                        ShowSpecial="{Binding ViewShowSpecial, Mode=TwoWay}"
                                        ShowZones="{Binding ViewShowZones, Mode=TwoWay}"
                                        ShowHouses="{Binding ViewShowHouses, Mode=TwoWay}"

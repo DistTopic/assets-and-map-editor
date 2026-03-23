@@ -143,6 +143,9 @@ public sealed class MapCanvasControl : Control
     public static readonly StyledProperty<bool> GhostHigherFloorsProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(GhostHigherFloors), false);
 
+    public static readonly StyledProperty<bool> GhostLowerFloorsProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(GhostLowerFloors), false);
+
     public static readonly StyledProperty<bool> ShowSpecialProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowSpecial), true);
     public static readonly StyledProperty<bool> ShowZonesProperty =
@@ -246,6 +249,7 @@ public sealed class MapCanvasControl : Control
     public bool ShowAsMinimap { get => GetValue(ShowAsMinimapProperty); set => SetValue(ShowAsMinimapProperty, value); }
     public bool GhostItems { get => GetValue(GhostItemsProperty); set => SetValue(GhostItemsProperty, value); }
     public bool GhostHigherFloors { get => GetValue(GhostHigherFloorsProperty); set => SetValue(GhostHigherFloorsProperty, value); }
+    public bool GhostLowerFloors { get => GetValue(GhostLowerFloorsProperty); set => SetValue(GhostLowerFloorsProperty, value); }
     public bool ShowSpecial { get => GetValue(ShowSpecialProperty); set => SetValue(ShowSpecialProperty, value); }
     public bool ShowZones { get => GetValue(ShowZonesProperty); set => SetValue(ShowZonesProperty, value); }
     public bool ShowHouses { get => GetValue(ShowHousesProperty); set => SetValue(ShowHousesProperty, value); }
@@ -337,6 +341,7 @@ public sealed class MapCanvasControl : Control
               || change.Property == ShowAsMinimapProperty
               || change.Property == GhostItemsProperty
               || change.Property == GhostHigherFloorsProperty
+              || change.Property == GhostLowerFloorsProperty
               || change.Property == ShowSpecialProperty
               || change.Property == ShowZonesProperty
               || change.Property == ShowHousesProperty
@@ -384,6 +389,7 @@ public sealed class MapCanvasControl : Control
         bool showAsMinimap = ShowAsMinimap;
         bool ghostItems = GhostItems;
         bool ghostHigherFloors = GhostHigherFloors;
+        bool ghostLowerFloors = GhostLowerFloors;
         bool showShade = ShowShade;
         bool showAllFloors = ShowAllFloors;
         bool showSpecial = ShowSpecial;
@@ -453,23 +459,54 @@ public sealed class MapCanvasControl : Control
             superEndZ = floor;
         }
 
-        // ── Ghost higher floors: draw ONE floor above current with alpha=96 (~37%) ──
-        if (ghostHigherFloors && floor > 0 && floor != 8)
+        // ── Ghost higher floors: draw ONE floor above current with alpha (~37%) ──
+        if (ghostHigherFloors && floor > 0)
         {
             byte upperFloor = (byte)(floor - 1);
-            int ghostOffset;
+            double ghostOffset;
             if (upperFloor <= 7)
-                ghostOffset = (int)((7 - upperFloor) * TileSize * zoom);
+                ghostOffset = (7 - upperFloor) * TileSize * zoom;
             else
-                ghostOffset = (int)((floor - upperFloor) * TileSize * zoom);
+                ghostOffset = (floor - upperFloor) * TileSize * zoom;
 
-            using (context.PushOpacity(0.375)) // alpha=96/255 ≈ 0.375
+            using (context.PushOpacity(0.375))
             {
                 for (int ty = startTileY; ty <= endTileY; ty++)
                 {
                     for (int tx = startTileX; tx <= endTileX; tx++)
                     {
                         var pos = new MapPosition((ushort)tx, (ushort)ty, upperFloor);
+                        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+                        double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
+                        double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
+                        if (showAsMinimap)
+                            DrawMinimapTile(context, tile, baseScreenX, baseScreenY, tilePixelSize);
+                        else
+                            foreach (var item in tile.Items)
+                                DrawItem(context, ResolveClientId(item.Id), pos,
+                                         baseScreenX, baseScreenY, zoom, 0, 1.0);
+                    }
+                }
+            }
+        }
+
+        // ── Ghost lower floors: draw ONE floor below current with alpha (~37%) ──
+        if (ghostLowerFloors && floor < 15)
+        {
+            byte lowerFloor = (byte)(floor + 1);
+            double ghostOffset;
+            if (lowerFloor <= 7)
+                ghostOffset = (7 - lowerFloor) * TileSize * zoom;
+            else
+                ghostOffset = (floor - lowerFloor) * TileSize * zoom;
+
+            using (context.PushOpacity(0.375))
+            {
+                for (int ty = startTileY; ty <= endTileY; ty++)
+                {
+                    for (int tx = startTileX; tx <= endTileX; tx++)
+                    {
+                        var pos = new MapPosition((ushort)tx, (ushort)ty, lowerFloor);
                         if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
                         double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
                         double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
