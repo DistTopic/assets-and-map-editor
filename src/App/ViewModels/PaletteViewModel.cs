@@ -873,91 +873,70 @@ public partial class PaletteViewModel : ObservableObject
     {
         Catalog = catalog;
 
+        // Group tilesets into logical parent collections.
+        // Each tileset becomes a sub-collection; its entries become items.
+        var groupMap = new Dictionary<string, List<TilesetDef>>();
         foreach (var tileset in catalog.Tilesets)
         {
-            // Check if a collection with this name already exists (user-created)
-            if (Collections.Any(c => c.Name == tileset.Name)) continue;
+            var group = GetTilesetGroup(tileset.Name);
+            if (!groupMap.TryGetValue(group, out var list))
+            {
+                list = [];
+                groupMap[group] = list;
+            }
+            list.Add(tileset);
+        }
+
+        // Ordered group keys for stable display
+        string[] groupOrder = ["Terrain", "Doodad", "Items", "Creature", "Other"];
+
+        foreach (var groupName in groupOrder)
+        {
+            if (!groupMap.TryGetValue(groupName, out var tilesets)) continue;
+            if (Collections.Any(c => c.Name == groupName)) continue;
 
             var colVm = new PaletteCollectionViewModel
             {
-                Name = tileset.Name,
-                Icon = GetTilesetIcon(tileset.Name),
+                Name = groupName,
+                Icon = GetGroupIcon(groupName),
                 IsBuiltIn = true,
             };
 
-            foreach (var cat in tileset.Categories)
+            foreach (var tileset in tilesets)
             {
-                var subName = cat.Type switch
-                {
-                    "terrain" => "Terrains",
-                    "doodad" => "Doodads",
-                    "raw" => "Items",
-                    "items_and_raw" => "Items",
-                    "terrain_and_raw" => "Terrains",
-                    _ => cat.Type,
-                };
-
                 var subVm = new PaletteSubCollectionViewModel
                 {
-                    Name = subName,
+                    Name = tileset.Name,
                     Parent = colVm,
                     IsBuiltIn = true,
                 };
 
-                foreach (var entry in cat.Entries)
+                // Flatten all categories of this tileset into one sub-collection.
+                // If multiple category sections exist, use sub-sub-collections.
+                if (tileset.Categories.Count <= 1)
                 {
-                    if (entry.Type == "brush" && entry.BrushName != null)
+                    // Single category → items go directly into sub-collection
+                    foreach (var cat in tileset.Categories)
+                        AddCategoryEntries(catalog, cat, subVm, null);
+                }
+                else
+                {
+                    // Multiple categories → each becomes a sub-sub-collection
+                    foreach (var cat in tileset.Categories)
                     {
-                        // Resolve brush name → server_lookid
-                        var lookId = catalog.GetBrushLookId(entry.BrushName);
-                        if (lookId > 0)
+                        var subSubName = GetCategoryLabel(cat.Type);
+                        var subSubVm = new PaletteSubSubCollectionViewModel
                         {
-                            var vm = CreatePaletteItem(lookId);
-                            if (vm != null)
-                            {
-                                // Override name with brush name
-                                subVm.Items.Add(new PaletteItemViewModel
-                                {
-                                    ServerId = vm.ServerId,
-                                    ClientId = vm.ClientId,
-                                    Name = entry.BrushName,
-                                    Article = null,
-                                    Sprite = vm.Sprite,
-                                });
-                            }
-                        }
-                    }
-                    else if (entry.Type == "raw")
-                    {
-                        // Expand ranges
-                        ushort start = entry.ItemId;
-                        ushort end = entry.ItemIdEnd > 0 ? entry.ItemIdEnd : start;
-                        for (ushort id = start; id <= end; id++)
-                        {
-                            var vm = CreatePaletteItem(id);
-                            if (vm != null)
-                            {
-                                if (entry.DisplayName != null)
-                                {
-                                    subVm.Items.Add(new PaletteItemViewModel
-                                    {
-                                        ServerId = vm.ServerId,
-                                        ClientId = vm.ClientId,
-                                        Name = entry.DisplayName,
-                                        Article = null,
-                                        Sprite = vm.Sprite,
-                                    });
-                                }
-                                else
-                                {
-                                    subVm.Items.Add(vm);
-                                }
-                            }
-                        }
+                            Name = subSubName,
+                            Parent = subVm,
+                        };
+                        AddCategoryEntries(catalog, cat, null, subSubVm);
+                        if (subSubVm.Items.Count > 0)
+                            subVm.SubSubCollections.Add(subSubVm);
                     }
                 }
 
-                if (subVm.Items.Count > 0)
+                if (subVm.Items.Count > 0 || subVm.SubSubCollections.Count > 0)
                     colVm.SubCollections.Add(subVm);
             }
 
@@ -966,43 +945,107 @@ public partial class PaletteViewModel : ObservableObject
         }
     }
 
-    private static string GetTilesetIcon(string name) => name switch
+    /// <summary>Add entries from a tileset category to either a sub- or sub-sub-collection.</summary>
+    private void AddCategoryEntries(BrushCatalog catalog, TilesetCategory cat,
+        PaletteSubCollectionViewModel? sub, PaletteSubSubCollectionViewModel? subSub)
     {
-        "Grounds" => "fa-solid fa-map",
-        "Nature" => "fa-solid fa-tree",
-        "Cave" => "fa-solid fa-mountain",
-        "Snow" => "fa-solid fa-snowflake",
-        "Town" => "fa-solid fa-city",
-        "Roofs" => "fa-solid fa-house",
-        "Stairs" or "Stairs / Ramps / Ladders" => "fa-solid fa-stairs",
-        "Boats" or "Sea" => "fa-solid fa-ship",
-        "Hangables" => "fa-solid fa-image",
-        "Devices" => "fa-solid fa-cog",
-        "Interior" => "fa-solid fa-couch",
-        "Beds" => "fa-solid fa-bed",
-        "Statues" => "fa-solid fa-chess-king",
-        "Exterior" => "fa-solid fa-door-open",
-        "Signs" => "fa-solid fa-sign-hanging",
-        "Splash" => "fa-solid fa-droplet",
-        "Equipment" => "fa-solid fa-shield-halved",
-        "Ornaments" => "fa-solid fa-gem",
-        "Tools" => "fa-solid fa-wrench",
-        "Weapons" or "Weapons (Magic)" => "fa-solid fa-wand-sparkles",
-        "Shields" => "fa-solid fa-shield",
-        "Trinkets" or "Jewelry" => "fa-solid fa-ring",
-        "Food" => "fa-solid fa-utensils",
-        "Containers" or "Lockers" => "fa-solid fa-box",
-        "Trash" => "fa-solid fa-trash",
-        "Runes" => "fa-solid fa-scroll",
-        "Corpses" => "fa-solid fa-skull",
-        "Walls" => "fa-solid fa-border-all",
-        "Borders" => "fa-solid fa-border-none",
-        "Pillars" => "fa-solid fa-building-columns",
-        "Architecture" => "fa-solid fa-archway",
-        "Fluid Containers" => "fa-solid fa-flask",
-        "Magic Fields" => "fa-solid fa-hat-wizard",
-        "Writeables" => "fa-solid fa-pen",
+        foreach (var entry in cat.Entries)
+        {
+            PaletteItemViewModel? itemVm = null;
+
+            if (entry.Type == "brush" && entry.BrushName != null)
+            {
+                var lookId = catalog.GetBrushLookId(entry.BrushName);
+                if (lookId > 0)
+                {
+                    var vm = CreatePaletteItem(lookId);
+                    if (vm != null)
+                    {
+                        itemVm = new PaletteItemViewModel
+                        {
+                            ServerId = vm.ServerId,
+                            ClientId = vm.ClientId,
+                            Name = entry.BrushName,
+                            Article = null,
+                            Sprite = vm.Sprite,
+                        };
+                    }
+                }
+            }
+            else if (entry.Type == "raw")
+            {
+                ushort start = entry.ItemId;
+                ushort end = entry.ItemIdEnd > 0 ? entry.ItemIdEnd : start;
+                for (ushort id = start; id <= end; id++)
+                {
+                    var vm = CreatePaletteItem(id);
+                    if (vm != null)
+                    {
+                        var item = entry.DisplayName != null
+                            ? new PaletteItemViewModel
+                            {
+                                ServerId = vm.ServerId,
+                                ClientId = vm.ClientId,
+                                Name = entry.DisplayName,
+                                Article = null,
+                                Sprite = vm.Sprite,
+                            }
+                            : vm;
+
+                        if (subSub != null) subSub.Items.Add(item);
+                        else sub?.Items.Add(item);
+                    }
+                }
+                continue; // ranges already added inline
+            }
+
+            if (itemVm != null)
+            {
+                if (subSub != null) subSub.Items.Add(itemVm);
+                else sub?.Items.Add(itemVm);
+            }
+        }
+    }
+
+    /// <summary>Maps tileset names to logical parent collection groups.</summary>
+    private static string GetTilesetGroup(string name) => name switch
+    {
+        "Grounds" or "Cave" or "Snow" or "Town" or "Roofs"
+            or "Stairs" or "Walls" or "Borders" or "Blank"
+            or "Stairs / Ramps / Ladders" => "Terrain",
+
+        "Nature" or "Interior" or "Beds" or "Statues" or "Exterior"
+            or "Signs" or "Hangables" or "Splash" or "Architecture"
+            or "Magic Fields" or "Trash" or "Boats" or "Sea"
+            or "Devices" or "Corpses" or "Pillars" => "Doodad",
+
+        "Equipment" or "Ornaments" or "Tools" or "Weapons"
+            or "Weapons (Magic)" or "Shields" or "Trinkets"
+            or "Jewelry" or "Containers" or "Lockers" or "Writeables"
+            or "Food" or "Runes" or "Fluid Containers"
+            or "Addon and Quest Items" => "Items",
+
+        _ => "Other",
+    };
+
+    private static string GetGroupIcon(string group) => group switch
+    {
+        "Terrain" => "fa-solid fa-mountain-sun",
+        "Doodad" => "fa-solid fa-tree",
+        "Items" => "fa-solid fa-box-open",
+        "Creature" => "fa-solid fa-dragon",
+        "Other" => "fa-solid fa-layer-group",
         _ => "fa-solid fa-layer-group",
+    };
+
+    private static string GetCategoryLabel(string type) => type switch
+    {
+        "terrain" => "Terrains",
+        "doodad" => "Doodads",
+        "raw" => "Items",
+        "items_and_raw" => "Items",
+        "terrain_and_raw" => "Terrains",
+        _ => type,
     };
 
     /// <summary>Reload sprite thumbnails after client data changes.</summary>

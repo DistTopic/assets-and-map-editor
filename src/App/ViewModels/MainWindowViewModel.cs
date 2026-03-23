@@ -1359,10 +1359,26 @@ public partial class MainWindowViewModel : ObservableObject
             AddMapLog("No brush catalog loaded. Load a client first.");
             return;
         }
-        var vm = new BrushEditorViewModel(this);
-        vm.Initialize(BrushCatalog);
-        var win = new BrushEditorWindow(vm);
-        win.Show();
+        try
+        {
+            var vm = new BrushEditorViewModel(this);
+            vm.Initialize(BrushCatalog);
+            var win = new BrushEditorWindow(vm);
+            if (Application.Current?.ApplicationLifetime
+                is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+                && desktop.MainWindow is not null)
+            {
+                win.Show(desktop.MainWindow);
+            }
+            else
+            {
+                win.Show();
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMapLog($"Brush editor error: {ex.Message}");
+        }
     }
 
     public byte[] MapFloors => MapData?.GetFloors() ?? [7];

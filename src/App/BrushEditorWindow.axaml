@@ -198,8 +198,8 @@
                         <TextBlock Classes="label" Text="Align:"/>
                         <ComboBox SelectedItem="{Binding Align}" FontSize="10" Padding="4,2" MinHeight="0"
                                   Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244" CornerRadius="3">
-                          <ComboBoxItem Content="outer"/>
-                          <ComboBoxItem Content="inner"/>
+                          <x:String>outer</x:String>
+                          <x:String>inner</x:String>
                         </ComboBox>
                         <TextBlock Classes="label" Text="Border ID:"/>
                         <TextBox Text="{Binding BorderId}" Width="50" FontSize="10"
@@ -243,10 +243,10 @@
                           <TextBlock Classes="label" Text="Type:" FontWeight="SemiBold"/>
                           <ComboBox SelectedItem="{Binding SegmentType}" FontSize="10" Padding="4,2" MinHeight="0"
                                     Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244" CornerRadius="3">
-                            <ComboBoxItem Content="horizontal"/>
-                            <ComboBoxItem Content="vertical"/>
-                            <ComboBoxItem Content="corner"/>
-                            <ComboBoxItem Content="pole"/>
+                            <x:String>horizontal</x:String>
+                            <x:String>vertical</x:String>
+                            <x:String>corner</x:String>
+                            <x:String>pole</x:String>
                           </ComboBox>
                         </StackPanel>
                         <TextBlock Classes="label" Text="Items:"/>
