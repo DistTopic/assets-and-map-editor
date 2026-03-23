@@ -268,6 +268,11 @@
         <Separator/>
         <MenuItem Header="Highlight Items" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems, Mode=TwoWay}"/>
       </MenuItem>
+      <MenuItem Header="_Tools">
+        <MenuItem Header="Brush Editor" Command="{Binding OpenBrushEditorCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-paintbrush" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
+        </MenuItem>
+      </MenuItem>
       <MenuItem Header="_Session">
         <MenuItem Header="New Session" Command="{Binding NewSessionCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-plus" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>

@@ -1349,6 +1349,21 @@ public partial class MainWindowViewModel : ObservableObject
     public SprFile? ExposedSprFile => _sprFile;
     public OtbData? ExposedOtbData => _otbData;
     public BrushDatabase? BrushDb { get; private set; }
+    public BrushCatalog? BrushCatalog { get; private set; }
+
+    [RelayCommand]
+    private void OpenBrushEditor()
+    {
+        if (BrushCatalog == null)
+        {
+            AddMapLog("No brush catalog loaded. Load a client first.");
+            return;
+        }
+        var vm = new BrushEditorViewModel(this);
+        vm.Initialize(BrushCatalog);
+        var win = new BrushEditorWindow(vm);
+        win.Show();
+    }
 
     public byte[] MapFloors => MapData?.GetFloors() ?? [7];
 
@@ -2523,13 +2538,23 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var bordersPath = Path.Combine(baseDir, "data", "brushes", "borders.xml");
-            var groundsPath = Path.Combine(baseDir, "data", "brushes", "grounds.xml");
+            var brushDir = Path.Combine(baseDir, "data", "brushes");
+            var bordersPath = Path.Combine(brushDir, "borders.xml");
+            var groundsPath = Path.Combine(brushDir, "grounds.xml");
             if (File.Exists(bordersPath) && File.Exists(groundsPath))
             {
                 BrushDb = BrushDatabase.Load(bordersPath, groundsPath);
                 OnPropertyChanged(nameof(BrushDb));
                 AddMapLog($"Brush system loaded: {BrushDb.GroundBrushes.Count} ground brushes, {BrushDb.AutoBorders.Count} borders");
+            }
+
+            // Load full catalog (all brush types + tilesets)
+            if (Directory.Exists(brushDir))
+            {
+                BrushCatalog = BrushXmlLoader.LoadFromDirectory(brushDir);
+                OnPropertyChanged(nameof(BrushCatalog));
+                AddMapLog($"Brush catalog: {BrushCatalog.Grounds.Count} grounds, {BrushCatalog.Walls.Count} walls, {BrushCatalog.Doodads.Count} doodads, {BrushCatalog.Creatures.Count} creatures, {BrushCatalog.Tilesets.Count} tilesets");
+                Palette?.LoadFromBrushCatalog(BrushCatalog);
             }
         }
         catch (Exception ex)

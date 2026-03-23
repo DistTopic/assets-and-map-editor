@@ -8,6 +8,36 @@
 		<item id="100" chance="10"/>
 	</brush>
 
+	<!-- POrigins -->
+
+	<brush name="tifgrand grass" type="ground" server_lookid="26382" z-order="3500">
+		<item id="26382" chance="2500"/>
+
+		<border align="outer" id="226"/>
+		<border align="inner" to="none" id="1"/>
+	</brush>
+
+	<brush name="tifdwarf grass" type="ground" server_lookid="26406" z-order="3500">
+		<item id="26406" chance="2500"/>
+
+		<border align="outer" id="227"/>
+		<border align="inner" to="none" id="1"/>
+	</brush>
+	
+	<brush name="fitted stone" type="ground" server_lookid="26404" z-order="1300">
+		<item id="26404" chance="1"/>
+
+		<border align="inner" to="none" id="1"/>
+	</brush>
+
+	<brush name="marble bricks" type="ground" server_lookid="2878" z-order="1300">
+		<item id="2878" chance="1"/>
+
+		<border align="outer" id="14"/>
+		<border align="inner" to="none" id="1"/>
+	</brush>
+	<!-- End POrigins -->
+
 	<brush name="grass" type="ground" server_lookid="4526" z-order="3500">
 		<item id="4526" chance="2500"/>
 		<item id="4527" chance="10"/>
@@ -30,7 +60,7 @@
 		<border align="outer" id="2"/>
 		<border align="inner" to="none" id="1"/>
 	</brush>
-
+	
 	<brush name="grass (alternate border)" type="ground" server_lookid="9044" z-order="5100">
 		<item id="9043" chance="2500"/>
 		<item id="9044" chance="10"/>

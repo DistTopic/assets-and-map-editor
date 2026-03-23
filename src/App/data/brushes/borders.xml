@@ -2215,4 +2215,52 @@
 		<borderitem edge="dsw" item="12181"/>
 		<borderitem edge="dse" item="12180"/>
 	</border>
+
+		<!-- POrigins -->
+
+	<border id="226" group="1"> <!-- grass border -->
+		<borderitem edge="n"   item="26383"/>
+		<borderitem edge="e"   item="26384"/>
+		<borderitem edge="s"   item="26385"/>
+		<borderitem edge="w"   item="26386"/>
+		<borderitem edge="cnw" item="26387"/>
+		<borderitem edge="cne" item="26388"/>
+		<borderitem edge="csw" item="26389"/>
+		<borderitem edge="cse" item="26390"/>
+		<borderitem edge="dnw" item="26391"/>
+		<borderitem edge="dne" item="26392"/>
+		<borderitem edge="dsw" item="26393"/>
+		<borderitem edge="dse" item="26394"/>
+	</border>
+
+	<border id="227" group="1"> <!-- grass border -->
+		<borderitem edge="n"   item="26407"/>
+		<borderitem edge="e"   item="26408"/>
+		<borderitem edge="s"   item="26409"/>
+		<borderitem edge="w"   item="26410"/>
+		<borderitem edge="cnw" item="26411"/>
+		<borderitem edge="cne" item="26412"/>
+		<borderitem edge="csw" item="26413"/>
+		<borderitem edge="cse" item="26414"/>
+		<borderitem edge="dnw" item="26415"/>
+		<borderitem edge="dne" item="26416"/>
+		<borderitem edge="dsw" item="26417"/>
+		<borderitem edge="dse" item="26418"/>
+	</border>
+
+	<border id="228" group="1"> <!-- fitted stone border (dark) -->
+		<borderitem edge="n"   item="26420"/>
+		<borderitem edge="e"   item="26421"/>
+		<borderitem edge="s"   item="26422"/>
+		<borderitem edge="w"   item="26423"/>
+		<borderitem edge="cnw" item="26424"/>
+		<borderitem edge="cne" item="26425"/>
+		<borderitem edge="csw" item="26426"/>
+		<borderitem edge="cse" item="26427"/>
+		<borderitem edge="dnw" item="26428"/>
+		<borderitem edge="dne" item="26429"/>
+		<borderitem edge="dsw" item="26430"/>
+		<borderitem edge="dse" item="26431"/>
+	</border>
+	<!-- End POrigins -->
 </materials>

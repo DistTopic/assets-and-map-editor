@@ -861,6 +861,150 @@ public partial class PaletteViewModel : ObservableObject
     /// <summary>Clear the sprite bitmap cache (call after sprite mutation).</summary>
     public void ClearSpriteCache() => _spriteCache.Clear();
 
+    /// <summary>The loaded brush catalog (all brush types + tilesets).</summary>
+    public BrushCatalog? Catalog { get; private set; }
+
+    /// <summary>
+    /// Populate palette collections from the brush catalog tilesets.
+    /// Each tileset becomes a top-level collection. Sections (terrain, doodad, raw)
+    /// become sub-collections. Brush references are resolved to server_lookid.
+    /// </summary>
+    public void LoadFromBrushCatalog(BrushCatalog catalog)
+    {
+        Catalog = catalog;
+
+        foreach (var tileset in catalog.Tilesets)
+        {
+            // Check if a collection with this name already exists (user-created)
+            if (Collections.Any(c => c.Name == tileset.Name)) continue;
+
+            var colVm = new PaletteCollectionViewModel
+            {
+                Name = tileset.Name,
+                Icon = GetTilesetIcon(tileset.Name),
+                IsBuiltIn = true,
+            };
+
+            foreach (var cat in tileset.Categories)
+            {
+                var subName = cat.Type switch
+                {
+                    "terrain" => "Terrains",
+                    "doodad" => "Doodads",
+                    "raw" => "Items",
+                    "items_and_raw" => "Items",
+                    "terrain_and_raw" => "Terrains",
+                    _ => cat.Type,
+                };
+
+                var subVm = new PaletteSubCollectionViewModel
+                {
+                    Name = subName,
+                    Parent = colVm,
+                    IsBuiltIn = true,
+                };
+
+                foreach (var entry in cat.Entries)
+                {
+                    if (entry.Type == "brush" && entry.BrushName != null)
+                    {
+                        // Resolve brush name → server_lookid
+                        var lookId = catalog.GetBrushLookId(entry.BrushName);
+                        if (lookId > 0)
+                        {
+                            var vm = CreatePaletteItem(lookId);
+                            if (vm != null)
+                            {
+                                // Override name with brush name
+                                subVm.Items.Add(new PaletteItemViewModel
+                                {
+                                    ServerId = vm.ServerId,
+                                    ClientId = vm.ClientId,
+                                    Name = entry.BrushName,
+                                    Article = null,
+                                    Sprite = vm.Sprite,
+                                });
+                            }
+                        }
+                    }
+                    else if (entry.Type == "raw")
+                    {
+                        // Expand ranges
+                        ushort start = entry.ItemId;
+                        ushort end = entry.ItemIdEnd > 0 ? entry.ItemIdEnd : start;
+                        for (ushort id = start; id <= end; id++)
+                        {
+                            var vm = CreatePaletteItem(id);
+                            if (vm != null)
+                            {
+                                if (entry.DisplayName != null)
+                                {
+                                    subVm.Items.Add(new PaletteItemViewModel
+                                    {
+                                        ServerId = vm.ServerId,
+                                        ClientId = vm.ClientId,
+                                        Name = entry.DisplayName,
+                                        Article = null,
+                                        Sprite = vm.Sprite,
+                                    });
+                                }
+                                else
+                                {
+                                    subVm.Items.Add(vm);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (subVm.Items.Count > 0)
+                    colVm.SubCollections.Add(subVm);
+            }
+
+            if (colVm.SubCollections.Count > 0)
+                Collections.Add(colVm);
+        }
+    }
+
+    private static string GetTilesetIcon(string name) => name switch
+    {
+        "Grounds" => "fa-solid fa-map",
+        "Nature" => "fa-solid fa-tree",
+        "Cave" => "fa-solid fa-mountain",
+        "Snow" => "fa-solid fa-snowflake",
+        "Town" => "fa-solid fa-city",
+        "Roofs" => "fa-solid fa-house",
+        "Stairs" or "Stairs / Ramps / Ladders" => "fa-solid fa-stairs",
+        "Boats" or "Sea" => "fa-solid fa-ship",
+        "Hangables" => "fa-solid fa-image",
+        "Devices" => "fa-solid fa-cog",
+        "Interior" => "fa-solid fa-couch",
+        "Beds" => "fa-solid fa-bed",
+        "Statues" => "fa-solid fa-chess-king",
+        "Exterior" => "fa-solid fa-door-open",
+        "Signs" => "fa-solid fa-sign-hanging",
+        "Splash" => "fa-solid fa-droplet",
+        "Equipment" => "fa-solid fa-shield-halved",
+        "Ornaments" => "fa-solid fa-gem",
+        "Tools" => "fa-solid fa-wrench",
+        "Weapons" or "Weapons (Magic)" => "fa-solid fa-wand-sparkles",
+        "Shields" => "fa-solid fa-shield",
+        "Trinkets" or "Jewelry" => "fa-solid fa-ring",
+        "Food" => "fa-solid fa-utensils",
+        "Containers" or "Lockers" => "fa-solid fa-box",
+        "Trash" => "fa-solid fa-trash",
+        "Runes" => "fa-solid fa-scroll",
+        "Corpses" => "fa-solid fa-skull",
+        "Walls" => "fa-solid fa-border-all",
+        "Borders" => "fa-solid fa-border-none",
+        "Pillars" => "fa-solid fa-building-columns",
+        "Architecture" => "fa-solid fa-archway",
+        "Fluid Containers" => "fa-solid fa-flask",
+        "Magic Fields" => "fa-solid fa-hat-wizard",
+        "Writeables" => "fa-solid fa-pen",
+        _ => "fa-solid fa-layer-group",
+    };
+
     /// <summary>Reload sprite thumbnails after client data changes.</summary>
     public void RefreshSprites()
     {

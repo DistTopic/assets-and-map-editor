@@ -28,7 +28,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="data\brushes\borders.xml" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="data\brushes\grounds.xml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="data\brushes\*.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
