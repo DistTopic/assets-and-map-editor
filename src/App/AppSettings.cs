@@ -15,6 +15,7 @@ public class AppSettings
     public string? LastOtbPath { get; set; }
     public string? LastClientFolderPath { get; set; }
     public List<SavedSession> Sessions { get; set; } = [];
+    public Dictionary<string, bool> ViewSettings { get; set; } = [];
 
     private static string SettingsFilePath =>
         Path.Combine(

@@ -2307,6 +2307,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     public async Task TryLoadLastSessionAsync()
     {
+        // Restore View menu toggles
+        RestoreViewSettings();
+
         EnsureDefaultSession();
 
         // Restore sessions from previous app run
@@ -2314,6 +2317,31 @@ public partial class MainWindowViewModel : ObservableObject
         {
             await RestoreSessionsFromSettings();
         }
+    }
+
+    private void RestoreViewSettings()
+    {
+        var vs = _appSettings.ViewSettings;
+        if (vs.Count == 0) return;
+
+        if (vs.TryGetValue(nameof(ViewShowAllFloors), out var v)) ViewShowAllFloors = v;
+        if (vs.TryGetValue(nameof(ViewShowAnimation), out v)) ViewShowAnimation = v;
+        if (vs.TryGetValue(nameof(ViewShowLights), out v)) ViewShowLights = v;
+        if (vs.TryGetValue(nameof(ViewShowGrid), out v)) ViewShowGrid = v;
+        if (vs.TryGetValue(nameof(ViewShowShade), out v)) ViewShowShade = v;
+        if (vs.TryGetValue(nameof(ViewShowAsMinimap), out v)) ViewShowAsMinimap = v;
+        if (vs.TryGetValue(nameof(ViewGhostItems), out v)) ViewGhostItems = v;
+        if (vs.TryGetValue(nameof(ViewGhostHigherFloors), out v)) ViewGhostHigherFloors = v;
+        if (vs.TryGetValue(nameof(ViewGhostLowerFloors), out v)) ViewGhostLowerFloors = v;
+        if (vs.TryGetValue(nameof(ViewShowSpecial), out v)) ViewShowSpecial = v;
+        if (vs.TryGetValue(nameof(ViewShowZones), out v)) ViewShowZones = v;
+        if (vs.TryGetValue(nameof(ViewShowHouses), out v)) ViewShowHouses = v;
+        if (vs.TryGetValue(nameof(ViewShowWaypoints), out v)) ViewShowWaypoints = v;
+        if (vs.TryGetValue(nameof(ViewShowTowns), out v)) ViewShowTowns = v;
+        if (vs.TryGetValue(nameof(ViewShowPathing), out v)) ViewShowPathing = v;
+        if (vs.TryGetValue(nameof(ViewHighlightItems), out v)) ViewHighlightItems = v;
+        if (vs.TryGetValue(nameof(ViewShowTooltips), out v)) ViewShowTooltips = v;
+        if (vs.TryGetValue(nameof(ViewShowIngameBox), out v)) ViewShowIngameBox = v;
     }
 
     /// <summary>Save all open sessions to AppSettings for persistence across app restarts.</summary>
@@ -2334,6 +2362,30 @@ public partial class MainWindowViewModel : ObservableObject
                 IsActive = session.IsActive,
             });
         }
+
+        // Persist View menu toggles
+        _appSettings.ViewSettings = new Dictionary<string, bool>
+        {
+            [nameof(ViewShowAllFloors)] = ViewShowAllFloors,
+            [nameof(ViewShowAnimation)] = ViewShowAnimation,
+            [nameof(ViewShowLights)] = ViewShowLights,
+            [nameof(ViewShowGrid)] = ViewShowGrid,
+            [nameof(ViewShowShade)] = ViewShowShade,
+            [nameof(ViewShowAsMinimap)] = ViewShowAsMinimap,
+            [nameof(ViewGhostItems)] = ViewGhostItems,
+            [nameof(ViewGhostHigherFloors)] = ViewGhostHigherFloors,
+            [nameof(ViewGhostLowerFloors)] = ViewGhostLowerFloors,
+            [nameof(ViewShowSpecial)] = ViewShowSpecial,
+            [nameof(ViewShowZones)] = ViewShowZones,
+            [nameof(ViewShowHouses)] = ViewShowHouses,
+            [nameof(ViewShowWaypoints)] = ViewShowWaypoints,
+            [nameof(ViewShowTowns)] = ViewShowTowns,
+            [nameof(ViewShowPathing)] = ViewShowPathing,
+            [nameof(ViewHighlightItems)] = ViewHighlightItems,
+            [nameof(ViewShowTooltips)] = ViewShowTooltips,
+            [nameof(ViewShowIngameBox)] = ViewShowIngameBox,
+        };
+
         _appSettings.Save();
     }
 
