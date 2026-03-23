@@ -587,6 +587,13 @@
                                     <Border Width="64" Height="64" Margin="1" Background="#11111b"
                                             ToolTip.Tip="{Binding SpriteId}"
                                             DoubleTapped="OnCompositionSpriteDoubleTapped">
+                                      <Border.ContextMenu>
+                                        <ContextMenu>
+                                          <MenuItem Header="Paste"
+                                                    Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).PasteSpriteToSlotCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </ContextMenu>
+                                      </Border.ContextMenu>
                                       <Image Source="{Binding Bitmap}" Width="64" Height="64"
                                              RenderOptions.BitmapInterpolationMode="None" Stretch="Fill"/>
                                     </Border>
@@ -1427,6 +1434,7 @@
                       <Border.ContextMenu>
                         <ContextMenu>
                           <MenuItem Header="Copy" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CopySpriteToClipboardCommand}"/>
+                          <MenuItem Header="Paste" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).PasteSpriteCommand}"/>
                           <Separator/>
                           <MenuItem Header="Replace" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ReplaceSpriteCommand}"/>
                           <MenuItem Header="Remove" Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveSpriteCommand}"/>

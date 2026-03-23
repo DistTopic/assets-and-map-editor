@@ -30,6 +30,9 @@ public partial class MainWindowViewModel : ObservableObject
     private DatThingType? _copiedClientItem;
     private SprFile? _copiedClientItemSprFile;
 
+    /// <summary>Internal clipboard for sprite copy/paste (stores sprite ID from the active SprFile).</summary>
+    private uint _copiedSpriteId;
+
     // ── Sessions ──
     public ObservableCollection<SessionViewModel> Sessions { get; } = [];
     private SessionViewModel? _currentSession;
@@ -3866,6 +3869,20 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void PasteSprite()
+    {
+        if (_copiedSpriteId == 0 || _sprFile == null || SelectedRightSprite == null) return;
+
+        var rgba = _sprFile.GetSpriteRgba(_copiedSpriteId);
+        _sprFile.SetSpriteRgba(SelectedRightSprite.SpriteId, rgba);
+        SelectedRightSprite.Bitmap = LoadSpriteBitmap(SelectedRightSprite.SpriteId);
+        InvalidateSpriteCache();
+        Palette?.RefreshSprites();
+        LoadAllSprites();
+        StatusText = $"Pasted sprite {_copiedSpriteId} → {SelectedRightSprite.SpriteId}";
+    }
+
+    [RelayCommand]
     private async Task ImportSpriteAsync()
     {
         if (_sprFile == null) return;
@@ -3966,7 +3983,23 @@ public partial class MainWindowViewModel : ObservableObject
         if (clipboard == null) { StatusText = "Clipboard not available"; return; }
 
         await Avalonia.Input.Platform.ClipboardExtensions.SetBitmapAsync(clipboard, bitmap);
+        _copiedSpriteId = SelectedRightSprite.SpriteId;
         StatusText = $"Sprite {SelectedRightSprite.SpriteId} copied to clipboard (RGBA)";
+    }
+
+    [RelayCommand]
+    private void PasteSpriteToSlot(SpriteViewModel? target)
+    {
+        if (_copiedSpriteId == 0 || _sprFile == null) return;
+
+        if (target == null || target.SlotIndex < 0)
+        {
+            StatusText = "Select a composition slot to paste into";
+            return;
+        }
+
+        AssignSpriteToSlot(target, _copiedSpriteId);
+        StatusText = $"Pasted sprite {_copiedSpriteId} → slot {target.SlotIndex}";
     }
 
     [RelayCommand]
