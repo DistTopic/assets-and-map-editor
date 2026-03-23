@@ -28,6 +28,9 @@ public partial class ClientItemViewModel : ObservableObject
     /// <summary>Current animation frame (cycled by timer in MainWindowViewModel).</summary>
     public int AnimFrame { get; set; }
 
+    /// <summary>True when an OTB item referencing this client ID has an animation mismatch.</summary>
+    [ObservableProperty] private bool _hasOtbMismatch;
+
     public int AnimPhases
     {
         get

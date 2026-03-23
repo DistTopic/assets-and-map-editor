@@ -35,6 +35,7 @@ public sealed class MapCanvasControl : Control
 
     // Server ID → Client ID lookup
     private Dictionary<ushort, ushort>? _serverToClientMap;
+    private Dictionary<ushort, OtbItem>? _serverToOtbItemMap;
 
     // Caches: individual 32x32 sprite bitmaps keyed by sprite ID
     private readonly Dictionary<uint, byte[]?> _spriteRgbaCache = new(4096);
@@ -75,6 +76,7 @@ public sealed class MapCanvasControl : Control
 
     // ── Drag-paint state ──
     private bool _isPainting;        // left mouse held with brush → continuous painting
+    private bool _isZonePainting;    // true if painting zones (flags) instead of items
     private MapPosition _lastPaintedTile; // avoid duplicate paint on same tile
     private Dictionary<MapPosition, MapTile?>? _paintUndoSnapshot; // accumulated snapshot for batch undo
 
@@ -169,6 +171,20 @@ public sealed class MapCanvasControl : Control
     public static readonly StyledProperty<ushort> BrushServerIdProperty =
         AvaloniaProperty.Register<MapCanvasControl, ushort>(nameof(BrushServerId), 0);
 
+    public static readonly StyledProperty<int> BrushSizeProperty =
+        AvaloniaProperty.Register<MapCanvasControl, int>(nameof(BrushSize), 0);
+
+    public static readonly StyledProperty<bool> BrushCircleProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(BrushCircle), false);
+
+    public static readonly StyledProperty<int> ActiveZoneBrushProperty =
+        AvaloniaProperty.Register<MapCanvasControl, int>(nameof(ActiveZoneBrush), 0);
+
+    public static readonly StyledProperty<IList<ushort>?> BrushItemIdsProperty =
+        AvaloniaProperty.Register<MapCanvasControl, IList<ushort>?>(nameof(BrushItemIds));
+
+    private static readonly Random _brushRandom = new();
+
     // ── Direct Properties (output) ──
 
     public static readonly DirectProperty<MapCanvasControl, string> HoveredTileInfoProperty =
@@ -236,6 +252,10 @@ public sealed class MapCanvasControl : Control
     public bool ShowTooltips { get => GetValue(ShowTooltipsProperty); set => SetValue(ShowTooltipsProperty, value); }
     public bool ShowIngameBox { get => GetValue(ShowIngameBoxProperty); set => SetValue(ShowIngameBoxProperty, value); }
     public ushort BrushServerId { get => GetValue(BrushServerIdProperty); set => SetValue(BrushServerIdProperty, value); }
+    public int BrushSize { get => GetValue(BrushSizeProperty); set => SetValue(BrushSizeProperty, value); }
+    public bool BrushCircle { get => GetValue(BrushCircleProperty); set => SetValue(BrushCircleProperty, value); }
+    public int ActiveZoneBrush { get => GetValue(ActiveZoneBrushProperty); set => SetValue(ActiveZoneBrushProperty, value); }
+    public IList<ushort>? BrushItemIds { get => GetValue(BrushItemIdsProperty); set => SetValue(BrushItemIdsProperty, value); }
 
     private string _hoveredTileInfo = string.Empty;
     public string HoveredTileInfo
@@ -321,7 +341,10 @@ public sealed class MapCanvasControl : Control
               || change.Property == HighlightItemsProperty
               || change.Property == ShowTooltipsProperty
               || change.Property == ShowIngameBoxProperty
-              || change.Property == BrushServerIdProperty)
+              || change.Property == BrushServerIdProperty
+              || change.Property == BrushSizeProperty
+              || change.Property == BrushCircleProperty
+              || change.Property == ActiveZoneBrushProperty)
         {
             InvalidateVisual();
         }
@@ -329,12 +352,15 @@ public sealed class MapCanvasControl : Control
 
     private void RebuildServerToClientMap()
     {
-        if (_otbData == null) { _serverToClientMap = null; return; }
+        if (_otbData == null) { _serverToClientMap = null; _serverToOtbItemMap = null; return; }
         _serverToClientMap = new Dictionary<ushort, ushort>(_otbData.Items.Count);
+        _serverToOtbItemMap = new Dictionary<ushort, OtbItem>(_otbData.Items.Count);
         foreach (var item in _otbData.Items)
         {
             if (item.ServerId != 0 && item.ClientId != 0)
                 _serverToClientMap[item.ServerId] = item.ClientId;
+            if (item.ServerId != 0)
+                _serverToOtbItemMap[item.ServerId] = item;
         }
     }
 
@@ -399,12 +425,12 @@ public sealed class MapCanvasControl : Control
             if (floor <= 7)
             {
                 startZ = 7;       // surface: start from ground level
-                superEndZ = 0;    // draw all the way up to floor 0
+                superEndZ = floor; // only show current floor and below (never above)
             }
             else
             {
                 startZ = Math.Min(15, floor + 2); // underground: 2 floors below current
-                superEndZ = 8;    // stop at underground boundary
+                superEndZ = floor; // only show current floor and below (never above)
             }
             endZ = floor;         // shade drawn when we reach current floor
         }
@@ -493,6 +519,37 @@ public sealed class MapCanvasControl : Control
                     double elevationOffsetY = 0;
                     bool isFirstItem = true;
 
+                    // Pre-compute zone/stair overlay color (only for current floor)
+                    Color? groundOverlayColor = null;
+                    if (isCurrentFloor)
+                    {
+                        if (showSpecial && tile.Flags != 0)
+                        {
+                            if ((tile.Flags & 0x01) != 0)
+                                groundOverlayColor = Color.FromArgb(100, 0, 255, 0);
+                            else if ((tile.Flags & 0x04) != 0)
+                                groundOverlayColor = Color.FromArgb(100, 0, 200, 255);
+                            else if ((tile.Flags & 0x02) != 0)
+                                groundOverlayColor = Color.FromArgb(100, 255, 255, 0);
+                            else if ((tile.Flags & 0x08) != 0)
+                                groundOverlayColor = Color.FromArgb(100, 255, 0, 0);
+                        }
+                        if (groundOverlayColor == null && showSpecial && _serverToOtbItemMap != null)
+                        {
+                            const OtbFlags floorChangeMask = OtbFlags.FloorChangeDown | OtbFlags.FloorChangeNorth
+                                | OtbFlags.FloorChangeEast | OtbFlags.FloorChangeSouth | OtbFlags.FloorChangeWest;
+                            foreach (var tItem in tile.Items)
+                            {
+                                if (_serverToOtbItemMap.TryGetValue(tItem.Id, out var otbItem)
+                                    && (otbItem.Flags & floorChangeMask) != 0)
+                                {
+                                    groundOverlayColor = Color.FromArgb(100, 255, 255, 0);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     foreach (var item in tile.Items)
                     {
                         ushort clientId = ResolveClientId(item.Id);
@@ -514,30 +571,49 @@ public sealed class MapCanvasControl : Control
                             }
                             if (isCurrentFloor && lights != null && thing.HasLight && thing.LightLevel > 0)
                                 lights.Add((tx, ty, (byte)Math.Min((int)thing.LightLevel, MaxLightIntensity), (byte)thing.LightColor));
+
+                            // Draw zone/stair overlay right after FullGround, so items above keep normal color
+                            if (isFirstItem && groundOverlayColor.HasValue && thing.IsFullGround)
+                            {
+                                var tileRect = new Rect(baseScreenX, baseScreenY, tilePixelSize, tilePixelSize);
+                                context.DrawRectangle(new SolidColorBrush(groundOverlayColor.Value), null, tileRect);
+                                groundOverlayColor = null; // already drawn
+                            }
                         }
                         isFirstItem = false;
                     }
 
-                    // ── Tile overlays (only for current floor) ──
-                    if (!isCurrentFloor) continue;
-
-                    var tileRect = new Rect(baseScreenX, baseScreenY, tilePixelSize, tilePixelSize);
-
-                    // Show special zones (PZ, PVP, etc.) — use tile flags
-                    if (showSpecial && tile.Flags != 0)
+                    // Fallback: if ground wasn't FullGround but overlay applies, draw it now
+                    if (groundOverlayColor.HasValue)
                     {
-                        Color? zoneColor = null;
-                        if ((tile.Flags & 0x01) != 0) // TILESTATE_PROTECTIONZONE
-                            zoneColor = Color.FromArgb(60, 0, 255, 0);
-                        else if ((tile.Flags & 0x04) != 0) // TILESTATE_NOPVP
-                            zoneColor = Color.FromArgb(60, 0, 200, 255);
-                        else if ((tile.Flags & 0x02) != 0) // TILESTATE_NOLOGOUT
-                            zoneColor = Color.FromArgb(60, 255, 255, 0);
-                        else if ((tile.Flags & 0x08) != 0) // TILESTATE_PVPZONE
-                            zoneColor = Color.FromArgb(60, 255, 0, 0);
-                        if (zoneColor.HasValue)
-                            context.DrawRectangle(new SolidColorBrush(zoneColor.Value), null, tileRect);
+                        var tileRect = new Rect(baseScreenX, baseScreenY, tilePixelSize, tilePixelSize);
+                        context.DrawRectangle(new SolidColorBrush(groundOverlayColor.Value), null, tileRect);
                     }
+
+                }
+            }
+        }
+
+        // ── Tile overlays pass (drawn AFTER all items to avoid multi-tile sprites covering them) ──
+        if (!showAsMinimap)
+        {
+            // Compute floor offset for current floor
+            double overlayFloorOffset;
+            if (floor <= 7)
+                overlayFloorOffset = (7 - floor) * TileSize * zoom;
+            else
+                overlayFloorOffset = 0; // current floor offset is always 0 for itself
+
+            for (int ty = startTileY; ty <= endTileY; ty++)
+            {
+                for (int tx = startTileX; tx <= endTileX; tx++)
+                {
+                    var pos = new MapPosition((ushort)tx, (ushort)ty, floor);
+                    if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+
+                    double baseScreenX = (tx * TileSize - _viewX) * zoom - overlayFloorOffset;
+                    double baseScreenY = (ty * TileSize - _viewY) * zoom - overlayFloorOffset;
+                    var tileRect = new Rect(baseScreenX, baseScreenY, tilePixelSize, tilePixelSize);
 
                     // Show houses
                     if (showHouses && tile.HouseId > 0)
@@ -658,27 +734,54 @@ public sealed class MapCanvasControl : Control
             context.DrawRectangle(null, boxPen, new Rect(boxX, boxY, boxW, boxH));
         }
 
-        // ── Ghost brush (translucent preview of selected item at cursor) ──
-        if (_cursorInsideCanvas && BrushServerId > 0 && !_isDragging && !_isPasting && !_isSelecting && !_isMoving)
+        // ── Ghost brush (translucent preview of selected item / zone at cursor) ──
+        var ghostItemIds = BrushItemIds;
+        bool hasGhostList = ghostItemIds != null && ghostItemIds.Count > 0;
+        if (_cursorInsideCanvas && (BrushServerId > 0 || hasGhostList || ActiveZoneBrush > 0) && !_isDragging && !_isPasting && !_isSelecting && !_isMoving)
         {
-            ushort brushClientId = ResolveClientId(BrushServerId);
-            // Snap cursor to tile grid
-            int ghostTileX = (int)Math.Floor((_viewX + _cursorScreenPos.X / zoom) / TileSize);
-            int ghostTileY = (int)Math.Floor((_viewY + _cursorScreenPos.Y / zoom) / TileSize);
-            double ghostScreenX = (ghostTileX * TileSize - _viewX) * zoom;
-            double ghostScreenY = (ghostTileY * TileSize - _viewY) * zoom;
+            int floorTileOff = floor <= 7 ? 7 - floor : 0;
+            int ghostTileX = (int)Math.Floor((_viewX + _cursorScreenPos.X / zoom) / TileSize) + floorTileOff;
+            int ghostTileY = (int)Math.Floor((_viewY + _cursorScreenPos.Y / zoom) / TileSize) + floorTileOff;
+            double floorOff = floor <= 7 ? (7 - floor) * TileSize * zoom : 0;
 
-            // Floor offset (same as tile rendering)
-            if (floor <= 7)
+            var center = new MapPosition((ushort)Math.Clamp(ghostTileX, 0, 65535),
+                                         (ushort)Math.Clamp(ghostTileY, 0, 65535), floor);
+            var brushTiles = GetBrushTiles(center);
+
+            if (BrushServerId > 0 || hasGhostList)
             {
-                ghostScreenX -= (7 - floor) * TileSize * zoom;
-                ghostScreenY -= (7 - floor) * TileSize * zoom;
+                // For custom brush, show first item as preview
+                ushort previewId = hasGhostList ? ghostItemIds![0] : BrushServerId;
+                ushort brushClientId = ResolveClientId(previewId);
+                using (context.PushOpacity(0.5))
+                {
+                    foreach (var pos in brushTiles)
+                    {
+                        double gx = (pos.X * TileSize - _viewX) * zoom - floorOff;
+                        double gy = (pos.Y * TileSize - _viewY) * zoom - floorOff;
+                        DrawItem(context, brushClientId, pos, gx, gy, zoom, elapsedMs, 1.0);
+                    }
+                }
             }
-
-            var ghostPos = new MapPosition((ushort)Math.Clamp(ghostTileX, 0, 65535),
-                                           (ushort)Math.Clamp(ghostTileY, 0, 65535), floor);
-            DrawItem(context, brushClientId, ghostPos,
-                     ghostScreenX, ghostScreenY, zoom, elapsedMs, 0.5);
+            else if (ActiveZoneBrush > 0)
+            {
+                // Show zone color preview
+                Color zoneColor = ActiveZoneBrush switch
+                {
+                    1 => Color.FromArgb(80, 0, 255, 0),    // PZ
+                    4 => Color.FromArgb(80, 0, 200, 255),   // NoPvP
+                    2 => Color.FromArgb(80, 255, 255, 0),   // NoLogout
+                    8 => Color.FromArgb(80, 255, 0, 0),     // PvPZone
+                    _ => Color.FromArgb(60, 255, 255, 255),
+                };
+                var zoneBrush = new SolidColorBrush(zoneColor);
+                foreach (var pos in brushTiles)
+                {
+                    double gx = (pos.X * TileSize - _viewX) * zoom - floorOff;
+                    double gy = (pos.Y * TileSize - _viewY) * zoom - floorOff;
+                    context.DrawRectangle(zoneBrush, null, new Rect(gx, gy, tilePixelSize, tilePixelSize));
+                }
+            }
         }
 
         // ── Selection highlight (tint selected tiles) ──
@@ -695,7 +798,7 @@ public sealed class MapCanvasControl : Control
             }
         }
 
-        // ── Selection box (while dragging) ──
+        // ── Selection box / area fill preview (while dragging) ──
         if (_isSelecting)
         {
             var (minPos, maxPos) = GetSelectionRect();
@@ -704,6 +807,38 @@ public sealed class MapCanvasControl : Control
             double ry1 = (minPos.Y * TileSize - _viewY) * zoom - floorOffset;
             double rx2 = ((maxPos.X + 1) * TileSize - _viewX) * zoom - floorOffset;
             double ry2 = ((maxPos.Y + 1) * TileSize - _viewY) * zoom - floorOffset;
+
+            // If brush active, show translucent fill preview
+            if (BrushServerId > 0 || hasGhostList)
+            {
+                ushort previewFillId = hasGhostList ? ghostItemIds![0] : BrushServerId;
+                ushort brushClientId = ResolveClientId(previewFillId);
+                using (context.PushOpacity(0.35))
+                {
+                    for (int y = minPos.Y; y <= maxPos.Y; y++)
+                        for (int x = minPos.X; x <= maxPos.X; x++)
+                        {
+                            double gx = (x * TileSize - _viewX) * zoom - floorOffset;
+                            double gy = (y * TileSize - _viewY) * zoom - floorOffset;
+                            var pos = new MapPosition((ushort)x, (ushort)y, floor);
+                            DrawItem(context, brushClientId, pos, gx, gy, zoom, elapsedMs, 1.0);
+                        }
+                }
+            }
+            else if (ActiveZoneBrush > 0)
+            {
+                Color zoneColor = ActiveZoneBrush switch
+                {
+                    1 => Color.FromArgb(60, 0, 255, 0),
+                    4 => Color.FromArgb(60, 0, 200, 255),
+                    2 => Color.FromArgb(60, 255, 255, 0),
+                    8 => Color.FromArgb(60, 255, 0, 0),
+                    _ => Color.FromArgb(40, 255, 255, 255),
+                };
+                context.DrawRectangle(new SolidColorBrush(zoneColor), null,
+                    new Rect(rx1, ry1, rx2 - rx1, ry2 - ry1));
+            }
+
             var selBoxPen = new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1,
                 new DashStyle(new double[] { 4, 4 }, 0));
             context.DrawRectangle(null, selBoxPen, new Rect(rx1, ry1, rx2 - rx1, ry2 - ry1));
@@ -712,8 +847,9 @@ public sealed class MapCanvasControl : Control
         // ── Paste ghost preview (copy buffer contents at cursor offset) ──
         if (_isPasting && _copyBuffer != null && _cursorInsideCanvas)
         {
-            int cursorTileX = (int)Math.Floor((_viewX + _cursorScreenPos.X / zoom) / TileSize);
-            int cursorTileY = (int)Math.Floor((_viewY + _cursorScreenPos.Y / zoom) / TileSize);
+            int floorTileOff = floor <= 7 ? 7 - floor : 0;
+            int cursorTileX = (int)Math.Floor((_viewX + _cursorScreenPos.X / zoom) / TileSize) + floorTileOff;
+            int cursorTileY = (int)Math.Floor((_viewY + _cursorScreenPos.Y / zoom) / TileSize) + floorTileOff;
             int offX = cursorTileX - _copyOrigin.X;
             int offY = cursorTileY - _copyOrigin.Y;
             double floorOffset = floor <= 7 ? (7 - floor) * TileSize * zoom : 0;
@@ -1158,8 +1294,9 @@ public sealed class MapCanvasControl : Control
     private MapPosition ScreenToTile(Point screen)
     {
         double zoom = ZoomLevel;
-        int tx = (int)Math.Floor((_viewX + screen.X / zoom) / TileSize);
-        int ty = (int)Math.Floor((_viewY + screen.Y / zoom) / TileSize);
+        int floorTileOff = CurrentFloor <= 7 ? 7 - CurrentFloor : 0;
+        int tx = (int)Math.Floor((_viewX + screen.X / zoom) / TileSize) + floorTileOff;
+        int ty = (int)Math.Floor((_viewY + screen.Y / zoom) / TileSize) + floorTileOff;
         return new MapPosition((ushort)Math.Clamp(tx, 0, 65535),
                                (ushort)Math.Clamp(ty, 0, 65535), CurrentFloor);
     }
@@ -1308,6 +1445,86 @@ public sealed class MapCanvasControl : Control
             }
     }
 
+    // Brush size → radius: 0→0, 1→1, 2→2, 3→3, 4→4, 5→5, 6→6 (diameters 1,3,5,7,9,11,13)
+    private static readonly int[] BrushRadii = [0, 1, 2, 3, 4, 5, 6];
+
+    /// <summary>
+    /// Returns the list of tile positions affected by the brush centred at <paramref name="center"/>.
+    /// Uses BrushSize and BrushCircle styled properties.
+    /// </summary>
+    private List<MapPosition> GetBrushTiles(MapPosition center)
+    {
+        int idx = Math.Clamp(BrushSize, 0, BrushRadii.Length - 1);
+        int radius = BrushRadii[idx];
+        var result = new List<MapPosition>();
+
+        for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if (BrushCircle && dx * dx + dy * dy > radius * radius)
+                    continue;
+                int nx = center.X + dx, ny = center.Y + dy;
+                if (nx < 0 || nx > 65535 || ny < 0 || ny > 65535) continue;
+                result.Add(new MapPosition((ushort)nx, (ushort)ny, center.Z));
+            }
+
+        return result;
+    }
+
+    /// <summary>Paint the current brush at the given center position using BrushSize.</summary>
+    private void PaintBrushAt(MapPosition center, Dictionary<MapPosition, MapTile?> undoSnapshot)
+    {
+        if (_mapData == null) return;
+        var itemIds = BrushItemIds;
+        bool hasList = itemIds != null && itemIds.Count > 0;
+        if (!hasList && BrushServerId == 0) return;
+
+        var tiles = GetBrushTiles(center);
+        foreach (var pos in tiles)
+        {
+            if (!undoSnapshot.ContainsKey(pos))
+                undoSnapshot[pos] = _mapData.Tiles.TryGetValue(pos, out var ex) ? ex.Clone() : null;
+            SnapshotNeighbours(pos, undoSnapshot);
+
+            if (!_mapData.Tiles.TryGetValue(pos, out var tile))
+            {
+                tile = new MapTile { Position = pos };
+                _mapData.Tiles[pos] = tile;
+            }
+
+            ushort idToPlace = hasList ? itemIds![_brushRandom.Next(itemIds.Count)] : BrushServerId;
+            AddItemToTile(tile, idToPlace);
+        }
+
+        BatchBorderize(tiles);
+    }
+
+    /// <summary>Paint zone flags at the given center position using BrushSize.</summary>
+    private void PaintZoneAt(MapPosition center, int zoneFlag, Dictionary<MapPosition, MapTile?> undoSnapshot)
+    {
+        if (_mapData == null) return;
+
+        // All zone flags that we toggle
+        const uint allZoneFlags = 0x01 | 0x02 | 0x04 | 0x08;
+        var tiles = GetBrushTiles(center);
+
+        foreach (var pos in tiles)
+        {
+            if (!undoSnapshot.ContainsKey(pos))
+                undoSnapshot[pos] = _mapData.Tiles.TryGetValue(pos, out var ex) ? ex.Clone() : null;
+
+            if (!_mapData.Tiles.TryGetValue(pos, out var tile))
+            {
+                if (zoneFlag == 0) continue; // clearing zone on non-existent tile is a no-op
+                tile = new MapTile { Position = pos };
+                _mapData.Tiles[pos] = tile;
+            }
+
+            // Clear all zone flags, then set the requested one
+            tile.Flags = (uint)((tile.Flags & ~allZoneFlags) | (uint)zoneFlag);
+        }
+    }
+
     /// <summary>
     /// Borderize a set of positions + their 8-neighbours (de-duplicated).
     /// Used after area fill / batch paint.
@@ -1351,7 +1568,10 @@ public sealed class MapCanvasControl : Control
     /// <summary>Fills a rectangular area with the current brush item.</summary>
     private void FillArea(MapPosition min, MapPosition max)
     {
-        if (_mapData == null || BrushServerId == 0) return;
+        if (_mapData == null) return;
+        var itemIds = BrushItemIds;
+        bool hasList = itemIds != null && itemIds.Count > 0;
+        if (!hasList && BrushServerId == 0) return;
 
         // Collect all positions for undo (including border zone for borderize)
         var positions = new List<MapPosition>();
@@ -1378,7 +1598,8 @@ public sealed class MapCanvasControl : Control
                 tile = new MapTile { Position = pos };
                 _mapData.Tiles[pos] = tile;
             }
-            AddItemToTile(tile, BrushServerId);
+            ushort idToPlace = hasList ? itemIds![_brushRandom.Next(itemIds.Count)] : BrushServerId;
+            AddItemToTile(tile, idToPlace);
         }
 
         BatchBorderize(positions);
@@ -1386,7 +1607,38 @@ public sealed class MapCanvasControl : Control
         int count = (max.X - min.X + 1) * (max.Y - min.Y + 1);
         _minimapDirty = true;
         MapEdited?.Invoke();
-        ActionLogged?.Invoke($"Area filled: {count} tiles with item {BrushServerId}");
+        ActionLogged?.Invoke($"Area filled: {count} tiles");
+        InvalidateVisual();
+    }
+
+    /// <summary>Fills a rectangular area with zone flags.</summary>
+    private void FillZoneArea(MapPosition min, MapPosition max, int zoneFlag)
+    {
+        if (_mapData == null) return;
+
+        const uint allZoneFlags = 0x01 | 0x02 | 0x04 | 0x08;
+        var positions = new List<MapPosition>();
+        for (int y = min.Y; y <= max.Y; y++)
+            for (int x = min.X; x <= max.X; x++)
+                positions.Add(new MapPosition((ushort)x, (ushort)y, CurrentFloor));
+
+        PushUndo(positions);
+
+        foreach (var pos in positions)
+        {
+            if (!_mapData.Tiles.TryGetValue(pos, out var tile))
+            {
+                if (zoneFlag == 0) continue;
+                tile = new MapTile { Position = pos };
+                _mapData.Tiles[pos] = tile;
+            }
+            tile.Flags = (uint)((tile.Flags & ~allZoneFlags) | (uint)zoneFlag);
+        }
+
+        int count = positions.Count;
+        _minimapDirty = true;
+        MapEdited?.Invoke();
+        ActionLogged?.Invoke($"Zone area filled: {count} tiles with flag 0x{zoneFlag:X2}");
         InvalidateVisual();
     }
 
@@ -1822,9 +2074,11 @@ public sealed class MapCanvasControl : Control
         if (point.Properties.IsMiddleButtonPressed || point.Properties.IsRightButtonPressed)
         {
             // Right-click clears the brush (like RME: drawing mode → selection mode)
-            if (point.Properties.IsRightButtonPressed && BrushServerId > 0)
+            if (point.Properties.IsRightButtonPressed && (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0))
             {
                 SetCurrentValue(BrushServerIdProperty, (ushort)0);
+                SetCurrentValue(BrushItemIdsProperty, null);
+                SetCurrentValue(ActiveZoneBrushProperty, 0);
                 InvalidateVisual();
             }
 
@@ -1861,35 +2115,39 @@ public sealed class MapCanvasControl : Control
                 _moveStart = tilePos;
                 e.Handled = true;
             }
-            // 4) Brush tool (place item + start drag-paint)
-            else if (BrushServerId > 0)
+            // 4) Zone brush (paint tile flags)
+            else if (ActiveZoneBrush >= 0 && ActiveZoneBrush != 0)
             {
-                // Start batch undo: snapshot the tile + neighbours before modifying
-                _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>
-                {
-                    [tilePos] = _mapData.Tiles.TryGetValue(tilePos, out var existing) ? existing.Clone() : null
-                };
-                // Pre-snapshot neighbours for borderize
-                SnapshotNeighbours(tilePos, _paintUndoSnapshot);
-
-                if (!_mapData.Tiles.TryGetValue(tilePos, out var tile))
-                {
-                    tile = new MapTile { Position = tilePos };
-                    _mapData.Tiles[tilePos] = tile;
-                }
-                AddItemToTile(tile, BrushServerId);
-                TryBorderize(tilePos);
+                _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>();
+                PaintZoneAt(tilePos, ActiveZoneBrush, _paintUndoSnapshot);
 
                 _isPainting = true;
+                _isZonePainting = true;
                 _lastPaintedTile = tilePos;
                 _selectedTiles.Clear();
                 _minimapDirty = true;
                 MapEdited?.Invoke();
-                ActionLogged?.Invoke($"Item {BrushServerId} placed at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
+                ActionLogged?.Invoke($"Zone flag 0x{ActiveZoneBrush:X2} painted at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
                 InvalidateVisual();
                 e.Handled = true;
             }
-            // 5) Click on empty = single tile select / deselect
+            // 5) Brush tool (place item + start drag-paint)
+            else if (BrushServerId > 0 || (BrushItemIds?.Count > 0))
+            {
+                _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>();
+                PaintBrushAt(tilePos, _paintUndoSnapshot);
+
+                _isPainting = true;
+                _isZonePainting = false;
+                _lastPaintedTile = tilePos;
+                _selectedTiles.Clear();
+                _minimapDirty = true;
+                MapEdited?.Invoke();
+                ActionLogged?.Invoke($"Item painted at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 6) Click on empty = single tile select / deselect
             else
             {
                 _selectedTiles.Clear();
@@ -1933,26 +2191,19 @@ public sealed class MapCanvasControl : Control
         }
 
         // Drag-paint: brush continuously while left button held
-        if (_isPainting && BrushServerId > 0 && _mapData != null)
+        if (_isPainting && _mapData != null)
         {
             var paintPos = ScreenToTile(point.Position);
             if (paintPos != _lastPaintedTile)
             {
-                // Accumulate snapshot for batch undo (only snapshot tiles not yet recorded)
                 if (_paintUndoSnapshot != null)
                 {
-                    if (!_paintUndoSnapshot.ContainsKey(paintPos))
-                        _paintUndoSnapshot[paintPos] = _mapData.Tiles.TryGetValue(paintPos, out var ex) ? ex.Clone() : null;
-                    SnapshotNeighbours(paintPos, _paintUndoSnapshot);
+                    if (_isZonePainting)
+                        PaintZoneAt(paintPos, ActiveZoneBrush, _paintUndoSnapshot);
+                    else if (BrushServerId > 0 || (BrushItemIds?.Count > 0))
+                        PaintBrushAt(paintPos, _paintUndoSnapshot);
                 }
 
-                if (!_mapData.Tiles.TryGetValue(paintPos, out var tile))
-                {
-                    tile = new MapTile { Position = paintPos };
-                    _mapData.Tiles[paintPos] = tile;
-                }
-                AddItemToTile(tile, BrushServerId);
-                TryBorderize(paintPos);
                 _lastPaintedTile = paintPos;
                 _minimapDirty = true;
                 MapEdited?.Invoke();
@@ -1972,7 +2223,7 @@ public sealed class MapCanvasControl : Control
         }
 
         // Repaint for ghost brush / paste preview position update
-        if (BrushServerId > 0 || _isPasting || _isMoving)
+        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || _isPasting || _isMoving)
             InvalidateVisual();
 
         // Update hovered tile info
@@ -2032,10 +2283,15 @@ public sealed class MapCanvasControl : Control
             _selectionEnd = ScreenToTile(e.GetPosition(this));
             var (minPos, maxPos) = GetSelectionRect();
 
-            // If a brush is active, fill the area instead of selecting
-            if (BrushServerId > 0)
+            // If a brush or zone brush is active, fill the area instead of selecting
+            if (BrushServerId > 0 || (BrushItemIds?.Count > 0))
             {
                 FillArea(minPos, maxPos);
+                e.Handled = true;
+            }
+            else if (ActiveZoneBrush > 0)
+            {
+                FillZoneArea(minPos, maxPos, ActiveZoneBrush);
                 e.Handled = true;
             }
             else
@@ -2073,7 +2329,7 @@ public sealed class MapCanvasControl : Control
     {
         base.OnPointerExited(e);
         _cursorInsideCanvas = false;
-        if (BrushServerId > 0)
+        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0)
             InvalidateVisual();
     }
 

@@ -43,7 +43,7 @@ public partial class ItemViewModel : ObservableObject
         _isReadable = model.Flags.HasFlag(OtbFlags.Readable);
         _isLookThrough = model.Flags.HasFlag(OtbFlags.LookThrough);
         _isForceUse = model.Flags.HasFlag(OtbFlags.ForceUse);
-        _isAlwaysOnTop = model.Flags.HasFlag(OtbFlags.AlwaysOnTop);
+        _isAlwaysOnTop = model.TopOrder != 0; // Derived from TopOrder — must stay in sync
         _isVertical = model.Flags.HasFlag(OtbFlags.Vertical);
         _isHorizontal = model.Flags.HasFlag(OtbFlags.Horizontal);
         _isAllowDistRead = model.Flags.HasFlag(OtbFlags.AllowDistRead);
@@ -185,6 +185,7 @@ public partial class ItemViewModel : ObservableObject
     partial void OnTopOrderChanged(byte value)
     {
         _parent.MarkDirty();
+        IsAlwaysOnTop = value != 0;
         OnPropertyChanged(nameof(StackOrderName));
         OnPropertyChanged(nameof(StackOrderValue));
     }
@@ -249,7 +250,7 @@ public partial class ItemViewModel : ObservableObject
         if (IsReadable) flags |= OtbFlags.Readable;
         if (IsLookThrough) flags |= OtbFlags.LookThrough;
         if (IsForceUse) flags |= OtbFlags.ForceUse;
-        if (IsAlwaysOnTop) flags |= OtbFlags.AlwaysOnTop;
+        if (TopOrder != 0) flags |= OtbFlags.AlwaysOnTop;
         if (IsVertical) flags |= OtbFlags.Vertical;
         if (IsHorizontal) flags |= OtbFlags.Horizontal;
         if (IsAllowDistRead) flags |= OtbFlags.AllowDistRead;

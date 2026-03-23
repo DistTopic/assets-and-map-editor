@@ -12,6 +12,7 @@ namespace POriginsItemEditor.App;
 public sealed class PaletteConfig
 {
     public List<PaletteCollection> Collections { get; set; } = [];
+    public List<PaletteCustomBrush> CustomBrushes { get; set; } = [];
 
     private static string ConfigPath =>
         Path.Combine(
@@ -60,6 +61,21 @@ public sealed class PaletteCollection
 
 /// <summary>A sub-collection within a collection (e.g., "Grass Tiles", "Stone Walls").</summary>
 public sealed class PaletteSubCollection
+{
+    public string Name { get; set; } = string.Empty;
+    public List<ushort> Items { get; set; } = [];
+    public List<PaletteSubSubCollection> SubSubCollections { get; set; } = [];
+}
+
+/// <summary>A sub-sub-collection within a sub-collection (third tier).</summary>
+public sealed class PaletteSubSubCollection
+{
+    public string Name { get; set; } = string.Empty;
+    public List<ushort> Items { get; set; } = [];
+}
+
+/// <summary>A custom brush: paints randomly from its item set for variety.</summary>
+public sealed class PaletteCustomBrush
 {
     public string Name { get; set; } = string.Empty;
     public List<ushort> Items { get; set; } = [];

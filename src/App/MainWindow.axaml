@@ -291,7 +291,7 @@
                 Background="Transparent" Foreground="#585b70" Padding="8,2"
                 CornerRadius="4" Cursor="Hand" Margin="4,0,0,0"
                 Command="{Binding NewSessionCommand}" ToolTip.Tip="New Session"/>
-        <ItemsControl ItemsSource="{Binding Sessions}">
+        <ItemsControl x:Name="SessionTabBar" ItemsSource="{Binding Sessions}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2"/></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
@@ -299,7 +299,20 @@
             <DataTemplate x:DataType="vm:SessionViewModel">
               <Border CornerRadius="6,6,0,0" Padding="10,4" Cursor="Hand"
                       Background="{Binding IsActive, Converter={StaticResource ActiveTabBackgroundConverter}}"
-                      PointerPressed="OnSessionTabPressed">
+                      PointerPressed="OnSessionTabPressed"
+                      PointerMoved="OnSessionTabPointerMoved"
+                      PointerReleased="OnSessionTabPointerReleased">
+                <Border.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Split Right" Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).SplitRightCommand}"
+                              CommandParameter="{Binding}"/>
+                    <MenuItem Header="Split Down" Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).SplitDownCommand}"
+                              CommandParameter="{Binding}"/>
+                    <Separator IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsSplit}"/>
+                    <MenuItem Header="Unsplit" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsSplit}"
+                              Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).UnsplitCommand}"/>
+                  </ContextMenu>
+                </Border.ContextMenu>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
                              Foreground="{Binding IsActive, Converter={StaticResource ActiveForegroundConverter}}"/>
@@ -400,8 +413,21 @@
       </StackPanel>
     </Border>
 
-    <!-- ═══ Main Content ═══ -->
-    <Grid Margin="8,10">
+    <!-- ═══ Main Content (Split Container) ═══ -->
+    <Grid x:Name="SplitContainer">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="0"/>
+        <ColumnDefinition Width="0"/>
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="0"/>
+        <RowDefinition Height="0"/>
+      </Grid.RowDefinitions>
+
+      <!-- ── Primary Pane ── -->
+      <Grid Grid.Column="0" Grid.Row="0" Margin="8,10">
 
       <!-- ═══ ITEM EDITOR ═══ -->
       <DockPanel IsVisible="{Binding IsItemEditorActive}">
@@ -500,6 +526,12 @@
                 <ListBox.ContextMenu>
                   <ContextMenu x:Name="ClientItemContextMenu" Opening="OnClientItemContextMenuOpening">
                     <MenuItem Header="Transplant to..." x:Name="TransplantToMenuItem"/>
+                    <Separator/>
+                    <MenuItem Header="Copy Item" x:Name="CopyClientItemMenuItem"/>
+                    <MenuItem Header="Replace with..." x:Name="ReplaceClientItemMenuItem">
+                      <MenuItem Header="From Clipboard" x:Name="ReplaceFromClipboardMenuItem"/>
+                      <MenuItem Header="From OBD File..." x:Name="ReplaceFromObdMenuItem"/>
+                    </MenuItem>
                     <Separator/>
                     <MenuItem Header="Create OTB Item" x:Name="CreateOtbItemMenuItem"/>
                     <Separator/>
@@ -1422,20 +1454,8 @@
             <StackPanel Spacing="4">
               <TextBlock Text="Tools" Classes="heading" FontSize="11" HorizontalAlignment="Center"/>
               <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
-                      ToolTip.Tip="Draw">
-                <i:Icon Value="fa-solid fa-pencil" FontSize="14"/>
-              </Button>
-              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
                       ToolTip.Tip="Select">
                 <i:Icon Value="fa-solid fa-arrow-pointer" FontSize="14"/>
-              </Button>
-              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
-                      ToolTip.Tip="Fill">
-                <i:Icon Value="fa-solid fa-fill-drip" FontSize="14"/>
-              </Button>
-              <Button Classes="toolbar" Padding="6" HorizontalAlignment="Stretch"
-                      ToolTip.Tip="Erase">
-                <i:Icon Value="fa-solid fa-eraser" FontSize="14"/>
               </Button>
               <Separator Background="#313244" Height="1" Margin="0,8"/>
               <!-- Floor controls -->
@@ -1477,293 +1497,343 @@
           <Border Grid.Column="1" Background="#181825" CornerRadius="8" Margin="0,0,6,0" Padding="0"
                   IsVisible="{Binding Palette, Converter={x:Static ObjectConverters.IsNotNull}}"
                   x:DataType="vm:MainWindowViewModel">
-            <Grid RowDefinitions="Auto,*" DataContext="{Binding Palette}"
-                  x:DataType="vm:PaletteViewModel">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" DataContext="{Binding Palette}"
+                  x:DataType="vm:PaletteViewModel" Margin="6,8,6,6">
 
-              <!-- Header + toolbar -->
-              <DockPanel Grid.Row="0" Margin="10,8,10,0">
-                <TextBlock Text="Palette" Classes="heading" FontSize="12" DockPanel.Dock="Left" Margin="0,0,0,0"/>
-                <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right">
-                  <Button Classes="toolbar" Padding="5" ToolTip.Tip="New Collection"
-                          Command="{Binding AddCollectionCommand}">
-                    <i:Icon Value="fa-solid fa-folder-plus" FontSize="11"/>
-                  </Button>
-                  <Button Classes="toolbar" Padding="5" ToolTip.Tip="New Sub-Collection"
-                          Command="{Binding AddSubCollectionCommand}">
-                    <i:Icon Value="fa-solid fa-plus" FontSize="11"/>
-                  </Button>
-                </StackPanel>
-              </DockPanel>
-
-              <!-- Content: 50% collections (north) + 50% catalog/items (south) -->
-              <Grid Grid.Row="1" RowDefinitions="*,4,*" Margin="6,4,6,6">
-
-                <!-- ══ NORTH: Collection tree ══ -->
-                <ScrollViewer Grid.Row="0">
-                  <ItemsControl ItemsSource="{Binding Collections}">
-                    <ItemsControl.DataTemplates>
+              <!-- Row 0: Collection selector -->
+              <DockPanel Grid.Row="0" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="3,0,0,0"
+                        ToolTip.Tip="New Collection"
+                        Command="{Binding AddCollectionCommand}">
+                  <i:Icon Value="fa-solid fa-folder-plus" FontSize="10"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Delete Collection"
+                        Command="{Binding RemoveCollectionCommand}"
+                        CommandParameter="{Binding SelectedCollection}">
+                  <i:Icon Value="fa-solid fa-trash" FontSize="9" Foreground="#f38ba8"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Rename Collection"
+                        Command="{Binding SelectedCollection.BeginRenameCommand}">
+                  <i:Icon Value="fa-solid fa-pen" FontSize="9"/>
+                </Button>
+                <Panel>
+                  <ComboBox ItemsSource="{Binding Collections}"
+                            SelectedItem="{Binding SelectedCollection}"
+                            IsVisible="{Binding SelectedCollection.IsRenaming, Converter={x:Static BoolConverters.Not}, FallbackValue=True}"
+                            FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                            Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                            CornerRadius="4" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
                       <DataTemplate x:DataType="vm:PaletteCollectionViewModel">
-                        <StackPanel Margin="0,0,0,2">
-                          <!-- Collection header (normal mode) -->
-                          <Button Background="Transparent" HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Left" Padding="6,4"
-                                  Cursor="Hand"
-                                  Command="{Binding ToggleExpandCommand}"
-                                  IsVisible="{Binding !IsRenaming}">
-                            <Button.ContextMenu>
-                              <ContextMenu>
-                                <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}"/>
-                                <MenuItem Header="New Sub-Collection"
-                                          Click="OnNewSubCollectionFromContext"/>
-                                <Separator/>
-                                <MenuItem Header="Delete Collection"
-                                          Click="OnDeleteCollectionFromContext"/>
-                              </ContextMenu>
-                            </Button.ContextMenu>
-                            <DockPanel>
-                              <i:Icon DockPanel.Dock="Left" FontSize="10" Margin="0,0,6,0"
-                                      Value="{Binding IsExpanded, Converter={StaticResource ExpandIconConverter}}"/>
-                              <i:Icon DockPanel.Dock="Left" Value="{Binding Icon}" FontSize="11" Margin="0,0,6,0"
-                                      Foreground="#89b4fa"/>
-                              <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
-                                         Foreground="#cdd6f4" VerticalAlignment="Center"/>
-                            </DockPanel>
-                          </Button>
-                          <!-- Rename mode -->
-                          <DockPanel IsVisible="{Binding IsRenaming}" Margin="6,1" Height="26">
-                            <Button DockPanel.Dock="Right" Classes="toolbar" Padding="3" Margin="2,0,0,0"
-                                    Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
-                              <i:Icon Value="fa-solid fa-xmark" FontSize="9"/>
-                            </Button>
-                            <Button DockPanel.Dock="Right" Classes="accent" Padding="3" Margin="2,0,0,0"
-                                    Command="{Binding CommitRenameCommand}" ToolTip.Tip="Confirm">
-                              <i:Icon Value="fa-solid fa-check" FontSize="9" Foreground="#1e1e2e"/>
-                            </Button>
-                            <TextBox Text="{Binding RenameText}" FontSize="10"
-                                     Background="#313244" Foreground="#cdd6f4" BorderBrush="#89b4fa"
-                                     CornerRadius="3" Padding="4,1" MinHeight="0"
-                                     KeyDown="OnRenameKeyDown"/>
-                          </DockPanel>
-                          <!-- Sub-collections (indented) -->
-                          <ItemsControl ItemsSource="{Binding SubCollections}"
-                                        IsVisible="{Binding IsExpanded}" Margin="16,0,0,0">
-                            <ItemsControl.DataTemplates>
-                              <DataTemplate x:DataType="vm:PaletteSubCollectionViewModel">
-                                <StackPanel>
-                                  <!-- Normal mode -->
-                                  <Button HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Left" Padding="6,3"
-                                          Cursor="Hand"
-                                          Click="OnPaletteSubCollectionClick"
-                                          DoubleTapped="OnPaletteSubCollectionDoubleTapped"
-                                          IsVisible="{Binding !IsRenaming}">
-                                    <Button.Styles>
-                                      <Style Selector="Button">
-                                        <Setter Property="Background" Value="Transparent"/>
-                                        <Setter Property="CornerRadius" Value="4"/>
-                                      </Style>
-                                      <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                        <Setter Property="Background" Value="#1a89b4fa"/>
-                                      </Style>
-                                    </Button.Styles>
-                                    <Button.ContextMenu>
-                                      <ContextMenu>
-                                        <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}"/>
-                                        <Separator/>
-                                        <MenuItem Header="Delete Sub-Collection"
-                                                  Click="OnDeleteSubCollectionFromContext"/>
-                                      </ContextMenu>
-                                    </Button.ContextMenu>
-                                    <Panel>
-                                      <!-- Selection highlight background -->
-                                      <Border Background="#2689b4fa" CornerRadius="4"
-                                              IsVisible="{Binding IsSelected}"
-                                              Margin="-6,-3"/>
-                                      <DockPanel>
-                                        <Border DockPanel.Dock="Left" Width="3" Height="14"
-                                                CornerRadius="2" Margin="0,0,5,0"
-                                                Background="#89b4fa"
-                                                IsVisible="{Binding IsSelected}"/>
-                                        <i:Icon DockPanel.Dock="Left" Value="fa-solid fa-list" FontSize="9"
-                                                Margin="0,0,6,0"
-                                                IsVisible="{Binding !IsSelected}">
-                                          <i:Icon.Foreground>
-                                            <SolidColorBrush Color="#585b70"/>
-                                          </i:Icon.Foreground>
-                                        </i:Icon>
-                                        <i:Icon DockPanel.Dock="Left" Value="fa-solid fa-list" FontSize="9"
-                                                Margin="0,0,6,0"
-                                                IsVisible="{Binding IsSelected}">
-                                          <i:Icon.Foreground>
-                                            <SolidColorBrush Color="#89b4fa"/>
-                                          </i:Icon.Foreground>
-                                        </i:Icon>
-                                        <TextBlock Text="{Binding Items.Count, StringFormat='({0})'}"
-                                                   DockPanel.Dock="Right"
-                                                   FontSize="9" Foreground="#585b70" Margin="4,0,0,0"
-                                                   VerticalAlignment="Center"/>
-                                        <!-- Name: selected = bright, unselected = muted -->
-                                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#cdd6f4"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   FontWeight="Medium"
-                                                   IsVisible="{Binding IsSelected}"/>
-                                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#a6adc8"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   IsVisible="{Binding !IsSelected}"/>
-                                      </DockPanel>
-                                    </Panel>
-                                  </Button>
-                                  <!-- Rename mode -->
-                                  <DockPanel IsVisible="{Binding IsRenaming}" Margin="0,1" Height="24">
-                                    <Button DockPanel.Dock="Right" Classes="toolbar" Padding="3" Margin="2,0,0,0"
-                                            Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
-                                      <i:Icon Value="fa-solid fa-xmark" FontSize="9"/>
-                                    </Button>
-                                    <Button DockPanel.Dock="Right" Classes="accent" Padding="3" Margin="2,0,0,0"
-                                            Command="{Binding CommitRenameCommand}" ToolTip.Tip="Confirm">
-                                      <i:Icon Value="fa-solid fa-check" FontSize="9" Foreground="#1e1e2e"/>
-                                    </Button>
-                                    <TextBox Text="{Binding RenameText}" FontSize="10"
-                                             Background="#313244" Foreground="#cdd6f4" BorderBrush="#89b4fa"
-                                             CornerRadius="3" Padding="4,1" MinHeight="0"
-                                             KeyDown="OnRenameKeyDown"/>
-                                  </DockPanel>
-                                </StackPanel>
-                              </DataTemplate>
-                            </ItemsControl.DataTemplates>
-                          </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <i:Icon Value="{Binding Icon}" FontSize="10" Foreground="#89b4fa"/>
+                          <TextBlock Text="{Binding Name}" FontSize="11"/>
                         </StackPanel>
                       </DataTemplate>
-                    </ItemsControl.DataTemplates>
-                  </ItemsControl>
-                </ScrollViewer>
-
-                <!-- Splitter -->
-                <GridSplitter Grid.Row="1" Background="#313244" Height="4" HorizontalAlignment="Stretch"
-                              Cursor="SizeNorthSouth"/>
-
-                <!-- ══ SOUTH: Catalog or Sub-Collection items ══ -->
-                <Panel Grid.Row="2">
-
-                  <!-- Catalog view (default) -->
-                  <Grid RowDefinitions="Auto,*,Auto"
-                        IsVisible="{Binding IsViewingCatalog}">
-                    <TextBox Grid.Row="0" Watermark="Search catalog..."
-                             Text="{Binding CatalogSearchText}" FontSize="10"
-                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                             CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
-                    <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
-                      <ScrollViewer>
-                        <ItemsControl ItemsSource="{Binding CatalogResults}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                              <WrapPanel/>
-                            </ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
-                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
-                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
-                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
-                                      BorderBrush="White"
-                                      DoubleTapped="OnCatalogItemDoubleTapped"
-                                      PointerPressed="OnCatalogItemPressed">
-                                <Border.ContextMenu>
-                                  <ContextMenu>
-                                    <MenuItem Header="Add to Sub-Collection"
-                                              Click="OnAddCatalogItemToSubCollection"/>
-                                  </ContextMenu>
-                                </Border.ContextMenu>
-                                <Image Source="{Binding Sprite}" Width="32" Height="32"
-                                       RenderOptions.BitmapInterpolationMode="None"/>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </ScrollViewer>
-                    </Border>
-                    <DockPanel Grid.Row="2" Margin="0,4,0,0">
-                      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
-                        <Button Classes="toolbar" Padding="4,2"
-                                Command="{Binding CatalogFirstPageCommand}"
-                                ToolTip.Tip="First page">
-                          <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
-                        </Button>
-                        <Button Classes="toolbar" Padding="4,2"
-                                Command="{Binding CatalogPreviousPageCommand}"
-                                ToolTip.Tip="Previous page">
-                          <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
-                        </Button>
-                      </StackPanel>
-                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
-                        <Button Classes="toolbar" Padding="4,2"
-                                Command="{Binding CatalogNextPageCommand}"
-                                ToolTip.Tip="Next page">
-                          <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
-                        </Button>
-                        <Button Classes="toolbar" Padding="4,2"
-                                Command="{Binding CatalogLastPageCommand}"
-                                ToolTip.Tip="Last page">
-                          <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
-                        </Button>
-                      </StackPanel>
-                      <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </DockPanel>
-                  </Grid>
-
-                  <!-- Sub-collection items view -->
-                  <Grid RowDefinitions="Auto,Auto,*"
-                        IsVisible="{Binding IsViewingSubCollection}">
-                    <!-- Back button + sub-collection name -->
-                    <DockPanel Grid.Row="0" Margin="0,0,0,4">
-                      <Button DockPanel.Dock="Left" Classes="toolbar" Padding="4,3"
-                              Command="{Binding BackToCatalogCommand}" ToolTip.Tip="Back to catalog">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                          <i:Icon Value="fa-solid fa-arrow-left" FontSize="10"/>
-                          <TextBlock Text="Catalog" FontSize="10" Foreground="#a6adc8"/>
-                        </StackPanel>
-                      </Button>
-                      <TextBlock Text="{Binding ViewingSubCollectionName}" FontSize="11"
-                                 FontWeight="SemiBold" Foreground="#cdd6f4"
-                                 VerticalAlignment="Center" Margin="6,0,0,0"/>
-                    </DockPanel>
-                    <TextBox Grid.Row="1" Watermark="Search items..."
-                             Text="{Binding ItemSearchText}" FontSize="10"
-                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                             CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
-                    <Border Grid.Row="2" CornerRadius="4" Background="#11111b" Padding="4">
-                      <ScrollViewer>
-                        <ItemsControl ItemsSource="{Binding DisplayedItems}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                              <WrapPanel/>
-                            </ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
-                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
-                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
-                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
-                                      BorderBrush="White"
-                                      PointerPressed="OnPaletteItemPointerPressed">
-                                <Border.ContextMenu>
-                                  <ContextMenu>
-                                    <MenuItem Header="Remove from Sub-Collection"
-                                              Click="OnRemoveItemFromSubCollection"/>
-                                  </ContextMenu>
-                                </Border.ContextMenu>
-                                <Image Source="{Binding Sprite}" Width="32" Height="32"
-                                       RenderOptions.BitmapInterpolationMode="None"/>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </ScrollViewer>
-                    </Border>
-                  </Grid>
-
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBox IsVisible="{Binding SelectedCollection.IsRenaming, FallbackValue=False}"
+                           Text="{Binding SelectedCollection.RenameText, Mode=TwoWay}"
+                           FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                           Background="#11111b" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                           CornerRadius="4" HorizontalAlignment="Stretch"
+                           KeyDown="OnCollectionRenameKeyDown"/>
                 </Panel>
+              </DockPanel>
+
+              <!-- Row 1: Sub-collection selector -->
+              <DockPanel Grid.Row="1" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="3,0,0,0"
+                        ToolTip.Tip="New Sub-Collection"
+                        Command="{Binding AddSubCollectionCommand}">
+                  <i:Icon Value="fa-solid fa-plus" FontSize="10"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Delete Sub-Collection"
+                        Command="{Binding RemoveSubCollectionCommand}"
+                        CommandParameter="{Binding SelectedSubCollection}">
+                  <i:Icon Value="fa-solid fa-trash" FontSize="9" Foreground="#f38ba8"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Rename Sub-Collection"
+                        Command="{Binding SelectedSubCollection.BeginRenameCommand}">
+                  <i:Icon Value="fa-solid fa-pen" FontSize="9"/>
+                </Button>
+                <Panel>
+                  <ComboBox ItemsSource="{Binding SelectedCollection.SubCollections}"
+                            SelectedItem="{Binding SelectedSubCollection}"
+                            IsVisible="{Binding SelectedSubCollection.IsRenaming, Converter={x:Static BoolConverters.Not}, FallbackValue=True}"
+                            FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                            Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                            CornerRadius="4" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PaletteSubCollectionViewModel">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock Text="{Binding Name}" FontSize="11"/>
+                          <TextBlock Text="{Binding Items.Count, StringFormat='({0})'}"
+                                     FontSize="9" Foreground="#585b70" VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBox IsVisible="{Binding SelectedSubCollection.IsRenaming, FallbackValue=False}"
+                           Text="{Binding SelectedSubCollection.RenameText, Mode=TwoWay}"
+                           FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                           Background="#11111b" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                           CornerRadius="4" HorizontalAlignment="Stretch"
+                           KeyDown="OnSubCollectionRenameKeyDown"/>
+                </Panel>
+              </DockPanel>
+
+              <!-- Row 2: Sub-sub-collection selector (3rd tier) -->
+              <DockPanel Grid.Row="2" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="3,0,0,0"
+                        ToolTip.Tip="New Group"
+                        Command="{Binding AddSubSubCollectionCommand}">
+                  <i:Icon Value="fa-solid fa-plus" FontSize="10"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Delete Group"
+                        Command="{Binding RemoveSubSubCollectionCommand}"
+                        CommandParameter="{Binding SelectedSubSubCollection}">
+                  <i:Icon Value="fa-solid fa-trash" FontSize="9" Foreground="#f38ba8"/>
+                </Button>
+                <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4" Margin="1,0,0,0"
+                        ToolTip.Tip="Rename Group"
+                        Command="{Binding SelectedSubSubCollection.BeginRenameCommand}">
+                  <i:Icon Value="fa-solid fa-pen" FontSize="9"/>
+                </Button>
+                <Panel>
+                  <ComboBox ItemsSource="{Binding SelectedSubCollection.SubSubCollections}"
+                            SelectedItem="{Binding SelectedSubSubCollection}"
+                            IsVisible="{Binding SelectedSubSubCollection.IsRenaming, Converter={x:Static BoolConverters.Not}, FallbackValue=True}"
+                            FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                            Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                            CornerRadius="4" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PaletteSubSubCollectionViewModel">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock Text="{Binding Name}" FontSize="11"/>
+                          <TextBlock Text="{Binding Items.Count, StringFormat='({0})'}"
+                                     FontSize="9" Foreground="#585b70" VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBox IsVisible="{Binding SelectedSubSubCollection.IsRenaming, FallbackValue=False}"
+                           Text="{Binding SelectedSubSubCollection.RenameText, Mode=TwoWay}"
+                           FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                           Background="#11111b" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                           CornerRadius="4" HorizontalAlignment="Stretch"
+                           KeyDown="OnSubSubCollectionRenameKeyDown"/>
+                </Panel>
+              </DockPanel>
+
+              <!-- Row 3: Brush size/shape toolbar -->
+              <Border Grid.Row="3" Background="#11111b" CornerRadius="4" Padding="4,3" Margin="0,0,0,4">
+                <StackPanel Spacing="3">
+                  <!-- Size buttons -->
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="Size" FontSize="9" Foreground="#585b70"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="1"
+                              ToolTip.Tip="1×1" Tag="0" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="3"
+                              ToolTip.Tip="3×3" Tag="1" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="5"
+                              ToolTip.Tip="5×5" Tag="2" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="7"
+                              ToolTip.Tip="7×7" Tag="3" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="9"
+                              ToolTip.Tip="9×9" Tag="4" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="11"
+                              ToolTip.Tip="11×11" Tag="5" Click="OnBrushSizeClick"/>
+                      <Button Classes="toolbar" Padding="4,2" FontSize="9" Content="13"
+                              ToolTip.Tip="13×13" Tag="6" Click="OnBrushSizeClick"/>
+                    </StackPanel>
+                  </DockPanel>
+                  <!-- Shape toggle -->
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="Shape" FontSize="9" Foreground="#585b70"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="Square brush"
+                              Tag="square" Click="OnBrushShapeClick">
+                        <i:Icon Value="fa-solid fa-square" FontSize="10"/>
+                      </Button>
+                      <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="Circle brush"
+                              Tag="circle" Click="OnBrushShapeClick">
+                        <i:Icon Value="fa-solid fa-circle" FontSize="10"/>
+                      </Button>
+                    </StackPanel>
+                  </DockPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- Row 4: Zone buttons -->
+              <Border Grid.Row="4" Background="#11111b" CornerRadius="4" Padding="4,3" Margin="0,0,0,4">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Left" Text="Zones" FontSize="9" Foreground="#585b70"
+                             VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <StackPanel Orientation="Horizontal" Spacing="2">
+                    <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="Protection Zone"
+                            Tag="1" Click="OnZoneBrushClick">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Border Width="8" Height="8" CornerRadius="2" Background="#a6e3a1"/>
+                        <TextBlock Text="PZ" FontSize="9" Foreground="#a6e3a1"/>
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="No PvP Zone"
+                            Tag="4" Click="OnZoneBrushClick">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Border Width="8" Height="8" CornerRadius="2" Background="#89b4fa"/>
+                        <TextBlock Text="NoPvP" FontSize="9" Foreground="#89b4fa"/>
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="No Logout Zone"
+                            Tag="2" Click="OnZoneBrushClick">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Border Width="8" Height="8" CornerRadius="2" Background="#f9e2af"/>
+                        <TextBlock Text="NoLog" FontSize="9" Foreground="#f9e2af"/>
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="PvP Zone"
+                            Tag="8" Click="OnZoneBrushClick">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Border Width="8" Height="8" CornerRadius="2" Background="#f38ba8"/>
+                        <TextBlock Text="PvP" FontSize="9" Foreground="#f38ba8"/>
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar" Padding="5,2" ToolTip.Tip="Clear Zone"
+                            Tag="0" Click="OnZoneBrushClick">
+                      <i:Icon Value="fa-solid fa-xmark" FontSize="9" Foreground="#585b70"/>
+                    </Button>
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+
+              <!-- Row 5: Custom brushes -->
+              <Border Grid.Row="5" Background="#11111b" CornerRadius="4" Padding="4,3" Margin="0,0,0,4">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Left" Text="Brush" FontSize="9" Foreground="#585b70"
+                             VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                          ToolTip.Tip="New Brush" Command="{Binding AddBrushCommand}">
+                    <i:Icon Value="fa-solid fa-plus" FontSize="9"/>
+                  </Button>
+                  <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                          ToolTip.Tip="Delete Brush"
+                          Command="{Binding RemoveBrushCommand}"
+                          CommandParameter="{Binding SelectedBrush}">
+                    <i:Icon Value="fa-solid fa-trash" FontSize="9" Foreground="#f38ba8"/>
+                  </Button>
+                  <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                          ToolTip.Tip="Edit Brush Items"
+                          Command="{Binding EditBrushCommand}">
+                    <i:Icon Value="fa-solid fa-pen" FontSize="9"/>
+                  </Button>
+                  <Button DockPanel.Dock="Right" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                          ToolTip.Tip="Rename Brush"
+                          Command="{Binding SelectedBrush.BeginRenameCommand}">
+                    <i:Icon Value="fa-solid fa-i-cursor" FontSize="9"/>
+                  </Button>
+                  <Panel>
+                    <ComboBox ItemsSource="{Binding CustomBrushes}"
+                              SelectedItem="{Binding SelectedBrush}"
+                              IsVisible="{Binding SelectedBrush.IsRenaming, Converter={x:Static BoolConverters.Not}, FallbackValue=True}"
+                              FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                              Background="#1e1e2e" Foreground="#cdd6f4" BorderBrush="#313244"
+                              CornerRadius="4" HorizontalAlignment="Stretch">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CustomBrushViewModel">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <i:Icon Value="fa-solid fa-paintbrush" FontSize="9" Foreground="#f9e2af"/>
+                            <TextBlock Text="{Binding Name}" FontSize="11"/>
+                            <TextBlock Text="{Binding Items.Count, StringFormat='({0})'}"
+                                       FontSize="9" Foreground="#585b70" VerticalAlignment="Center"/>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBox IsVisible="{Binding SelectedBrush.IsRenaming, FallbackValue=False}"
+                             Text="{Binding SelectedBrush.RenameText, Mode=TwoWay}"
+                             FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#89b4fa"
+                             CornerRadius="4" HorizontalAlignment="Stretch"
+                             KeyDown="OnBrushRenameKeyDown"/>
+                  </Panel>
+                </DockPanel>
+              </Border>
+
+              <!-- Row 6: Items grid (unified catalog + search) -->
+              <Grid Grid.Row="6" RowDefinitions="Auto,*,Auto">
+                <TextBox Grid.Row="0" Watermark="Search items..."
+                         Text="{Binding CatalogSearchText}" FontSize="10"
+                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                         CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
+                <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
+                  <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding CatalogResults}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                          <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                  ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                  BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                  BorderBrush="White"
+                                  DoubleTapped="OnCatalogItemDoubleTapped"
+                                  PointerPressed="OnCatalogItemPressed">
+                            <Border.ContextMenu>
+                              <ContextMenu Opening="OnCatalogContextMenuOpening">
+                                <MenuItem Header="Add to Collection"/>
+                                <Separator/>
+                                <MenuItem Header="Add to Brush"
+                                          Click="OnAddCatalogItemToBrush"/>
+                              </ContextMenu>
+                            </Border.ContextMenu>
+                            <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                   RenderOptions.BitmapInterpolationMode="None"/>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Border>
+                <DockPanel Grid.Row="2" Margin="0,4,0,0">
+                  <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
+                    <Button Classes="toolbar" Padding="4,2"
+                            Command="{Binding CatalogFirstPageCommand}"
+                            ToolTip.Tip="First page">
+                      <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
+                    </Button>
+                    <Button Classes="toolbar" Padding="4,2"
+                            Command="{Binding CatalogPreviousPageCommand}"
+                            ToolTip.Tip="Previous page">
+                      <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
+                    </Button>
+                  </StackPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
+                    <Button Classes="toolbar" Padding="4,2"
+                            Command="{Binding CatalogNextPageCommand}"
+                            ToolTip.Tip="Next page">
+                      <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
+                    </Button>
+                    <Button Classes="toolbar" Padding="4,2"
+                            Command="{Binding CatalogLastPageCommand}"
+                            ToolTip.Tip="Last page">
+                      <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
+                    </Button>
+                  </StackPanel>
+                  <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </DockPanel>
               </Grid>
             </Grid>
           </Border>
@@ -1798,7 +1868,11 @@
                                        HighlightItems="{Binding ViewHighlightItems, Mode=TwoWay}"
                                        ShowTooltips="{Binding ViewShowTooltips, Mode=TwoWay}"
                                        ShowIngameBox="{Binding ViewShowIngameBox, Mode=TwoWay}"
-                                       BrushServerId="{Binding BrushServerId, Mode=TwoWay}"/>
+                                       BrushServerId="{Binding BrushServerId, Mode=TwoWay}"
+                                       BrushSize="{Binding BrushSize, Mode=TwoWay}"
+                                       BrushCircle="{Binding BrushCircle, Mode=TwoWay}"
+                                       ActiveZoneBrush="{Binding ActiveZoneBrush, Mode=TwoWay}"
+                                       BrushItemIds="{Binding BrushItemIds}"/>
 
                 <!-- Overlay: empty state message (when no map loaded) -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12"
@@ -2074,6 +2148,53 @@
         </Grid>
       </DockPanel>
 
-    </Grid>
+    </Grid><!-- end Primary Pane -->
+
+      <!-- ── GridSplitter (horizontal split) ── -->
+      <GridSplitter x:Name="VSplitter" Grid.Column="1" Grid.Row="0"
+                    Width="6" Background="#313244" IsVisible="False" Cursor="SizeWestEast"/>
+      <!-- ── GridSplitter (vertical split) ── -->
+      <GridSplitter x:Name="HSplitter" Grid.Column="0" Grid.Row="1"
+                    Height="6" Background="#313244" IsVisible="False" Cursor="SizeNorthSouth"
+                    ResizeDirection="Rows"/>
+
+      <!-- ── Secondary Pane ── -->
+      <Border x:Name="SecondaryPane" Grid.Column="2" Grid.Row="0"
+              Background="#1e1e2e" CornerRadius="8" IsVisible="False"
+              Margin="4,10,8,10" Padding="0"
+              PointerPressed="OnSecondaryPanePressed">
+        <Grid RowDefinitions="Auto,*">
+          <!-- Mini tab bar for secondary pane -->
+          <Border Grid.Row="0" Background="#181825" CornerRadius="8,8,0,0" Padding="8,4"
+                  BorderBrush="#313244" BorderThickness="0,0,0,1">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="✕" FontSize="10" Padding="4,2" MinWidth="20" MinHeight="20"
+                      Background="Transparent" Foreground="#585b70" Cursor="Hand"
+                      Command="{Binding UnsplitCommand}" ToolTip.Tip="Close split"/>
+              <TextBlock Text="{Binding SecondaryPaneLabel}" FontSize="12" FontWeight="SemiBold"
+                         Foreground="#cba6f7" VerticalAlignment="Center"/>
+            </DockPanel>
+          </Border>
+          <!-- Session summary -->
+          <Border Grid.Row="1" Margin="16">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+              <i:Icon Value="fa-solid fa-layer-group" FontSize="48" Foreground="#45475a"/>
+              <TextBlock Text="{Binding SecondaryPaneLabel}" FontSize="18" FontWeight="Bold"
+                         Foreground="#cdd6f4" HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding SecondaryPaneProtocol}" FontSize="14"
+                         Foreground="#89b4fa" HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding SecondaryPaneItemCount}" FontSize="13"
+                         Foreground="#a6adc8" HorizontalAlignment="Center"/>
+              <Border Background="#313244" CornerRadius="8" Padding="16,10" Margin="0,8,0,0"
+                      Cursor="Hand" HorizontalAlignment="Center">
+                <TextBlock Text="Click to activate this session" FontSize="13"
+                           Foreground="#a6e3a1" FontWeight="SemiBold"/>
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+    </Grid><!-- end SplitContainer -->
   </DockPanel>
 </Window>

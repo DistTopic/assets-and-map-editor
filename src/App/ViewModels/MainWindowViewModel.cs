@@ -26,6 +26,10 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Original snapshots for reset: keyed by (Category, Id).</summary>
     private readonly Dictionary<(ThingCategory, ushort), DatThingType> _originalSnapshots = [];
 
+    /// <summary>Clipboard for Copy/Paste of client items (DatThingType clone + source SPR).</summary>
+    private DatThingType? _copiedClientItem;
+    private SprFile? _copiedClientItemSprFile;
+
     // ── Sessions ──
     public ObservableCollection<SessionViewModel> Sessions { get; } = [];
     private SessionViewModel? _currentSession;
@@ -35,6 +39,89 @@ public partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _currentSession, value);
     }
     public bool HasMultipleSessions => Sessions.Count > 1;
+
+    // ── Split view ──
+    [ObservableProperty] private SplitMode _splitMode = SplitMode.None;
+    [ObservableProperty] private SessionViewModel? _secondaryPaneSession;
+    public bool IsSplit => SplitMode != SplitMode.None;
+    public string SecondaryPaneLabel => SecondaryPaneSession?.Name ?? "";
+    public string SecondaryPaneProtocol => SecondaryPaneSession != null && SecondaryPaneSession.ProtocolVersion > 0
+        ? $"Protocol {SecondaryPaneSession.ProtocolVersion}" : "";
+    public string SecondaryPaneItemCount
+    {
+        get
+        {
+            if (SecondaryPaneSession == null) return "";
+            int otb = SecondaryPaneSession.AllItems.Count;
+            int dat = SecondaryPaneSession.AllClientItems.Count;
+            return $"OTB: {otb} items — DAT: {dat} items";
+        }
+    }
+
+    partial void OnSplitModeChanged(SplitMode value)
+    {
+        OnPropertyChanged(nameof(IsSplit));
+    }
+
+    partial void OnSecondaryPaneSessionChanged(SessionViewModel? value)
+    {
+        OnPropertyChanged(nameof(SecondaryPaneLabel));
+        OnPropertyChanged(nameof(SecondaryPaneProtocol));
+        OnPropertyChanged(nameof(SecondaryPaneItemCount));
+    }
+
+    [RelayCommand]
+    private void SplitRight(SessionViewModel? session)
+    {
+        if (session == null || Sessions.Count < 2) return;
+        // If dragging the active session, put it in secondary and switch to another
+        if (session == _currentSession)
+        {
+            var other = Sessions.FirstOrDefault(s => s != session);
+            if (other != null) SwitchToSession(other);
+        }
+        SplitMode = SplitMode.Right;
+        SecondaryPaneSession = session;
+    }
+
+    [RelayCommand]
+    private void SplitDown(SessionViewModel? session)
+    {
+        if (session == null || Sessions.Count < 2) return;
+        if (session == _currentSession)
+        {
+            var other = Sessions.FirstOrDefault(s => s != session);
+            if (other != null) SwitchToSession(other);
+        }
+        SplitMode = SplitMode.Down;
+        SecondaryPaneSession = session;
+    }
+
+    [RelayCommand]
+    private void Unsplit()
+    {
+        SplitMode = SplitMode.None;
+        SecondaryPaneSession = null;
+    }
+
+    [RelayCommand]
+    public void ActivateSecondaryPane()
+    {
+        if (SecondaryPaneSession == null) return;
+        var oldActive = _currentSession;
+        SwitchToSession(SecondaryPaneSession);
+        SecondaryPaneSession = oldActive;
+    }
+
+    [RelayCommand]
+    private void MoveSessionToIndex(object? parameter)
+    {
+        if (parameter is not int[] args || args.Length < 2) return;
+        int from = args[0];
+        int to = args[1];
+        if (from < 0 || from >= Sessions.Count || to < 0 || to >= Sessions.Count || from == to) return;
+        Sessions.Move(from, to);
+    }
     public string ActiveSessionLabel
     {
         get
@@ -69,6 +156,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (session == null || Sessions.Count <= 1) return;
         int idx = Sessions.IndexOf(session);
         if (idx < 0) return;
+
+        // If closing the secondary pane session, unsplit
+        if (session == SecondaryPaneSession)
+            Unsplit();
 
         // Save & remove
         SaveCurrentToSession(session);
@@ -1432,6 +1523,10 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ── Brush (selected item for map placement) ──
     [ObservableProperty] private ushort _brushServerId;
+    [ObservableProperty] private int _brushSize;       // 0=1x1, 1=3x3, 2=5x5, 3=7x7, 4=9x9, 5=11x11, 6=13x13
+    [ObservableProperty] private bool _brushCircle;    // false=square, true=circle
+    [ObservableProperty] private int _activeZoneBrush; // 0=none, 1=PZ, 2=NoLogout, 4=NoPvP, 8=PvPZone
+    [ObservableProperty] private IList<ushort>? _brushItemIds; // custom brush: random pick from this list
 
     [ObservableProperty] private string _statusText = "Select the client folder to begin";
     [ObservableProperty] private string _searchText = string.Empty;
@@ -2617,6 +2712,13 @@ public partial class MainWindowViewModel : ObservableObject
             if (vm.HasMismatch) mismatches++;
         }
         MismatchCount = mismatches;
+
+        // Propagate mismatch info to client items
+        var mismatchClientIds = new HashSet<ushort>();
+        foreach (var vm in _allItems)
+            if (vm.HasMismatch) mismatchClientIds.Add(vm.ClientId);
+        foreach (var cvm in _allClientItems)
+            cvm.HasOtbMismatch = mismatchClientIds.Contains(cvm.Id);
     }
 
     private void LoadAllSprites()
@@ -2692,6 +2794,10 @@ public partial class MainWindowViewModel : ObservableObject
                 if (isNumericSearch)
                 {
                     if (vm.ServerId != numericId && vm.ClientId != numericId) continue;
+                }
+                else if (search.Equals("mismatch", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!vm.HasMismatch) continue;
                 }
                 else
                 {
@@ -2907,6 +3013,10 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     if (vm.Id != numericId) continue;
                 }
+                else if (search.Equals("mismatch", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!vm.HasOtbMismatch) continue;
+                }
                 else
                 {
                     if (!vm.CategoryName.Contains(search, StringComparison.OrdinalIgnoreCase))
@@ -3006,6 +3116,19 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     private bool _suppressNavigateSync;
+
+    /// <summary>Navigate to a specific client item by ID and category after a replace operation.</summary>
+    private void NavigateToClientItemById(ushort id, ThingCategory category)
+    {
+        int idx = _clientFilteredItems.FindIndex(c => c.Id == id && c.Category == category);
+        if (idx >= 0)
+        {
+            int page = idx / ClientItemsPerPage + 1;
+            ClientCurrentPage = Math.Clamp(page, 1, ClientTotalPages);
+            LoadClientPage();
+            SelectedClientItem = _clientFilteredItems[idx];
+        }
+    }
 
     partial void OnClientNavigateIdChanged(string value)
     {
@@ -3494,6 +3617,132 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (_datData == null) return;
         StatusText = "New: not yet implemented — DAT write support needed";
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  Copy / Replace client item
+    // ════════════════════════════════════════════════════════════
+
+    /// <summary>Copy the currently selected client item to the internal clipboard.</summary>
+    public void CopyClientItem()
+    {
+        if (SelectedClientItem == null || _sprFile == null)
+        {
+            StatusText = "Select an item to copy.";
+            return;
+        }
+
+        _copiedClientItem = SelectedClientItem.ThingType.Clone();
+        _copiedClientItemSprFile = _sprFile;
+        StatusText = $"Copied client item #{SelectedClientItem.Id} to clipboard.";
+    }
+
+    public bool HasCopiedClientItem => _copiedClientItem != null;
+
+    /// <summary>Replace the selected client item's data with the clipboard clone.</summary>
+    public void ReplaceClientItemFromClipboard()
+    {
+        if (SelectedClientItem == null || _datData == null || _sprFile == null)
+        {
+            StatusText = "Select a target item first.";
+            return;
+        }
+        if (_copiedClientItem == null || _copiedClientItemSprFile == null)
+        {
+            StatusText = "Clipboard is empty — copy an item first.";
+            return;
+        }
+
+        var target = SelectedClientItem;
+        var clone = _copiedClientItem.Clone();
+
+        // Remap sprites from the source SPR into the current SPR
+        if (_copiedClientItemSprFile != _sprFile)
+            RemapSpritesToTarget(clone, _copiedClientItemSprFile, _sprFile);
+
+        // Keep the target's ID
+        clone.Id = target.Id;
+        clone.Category = target.Category;
+
+        // Replace in the DAT dictionary
+        var dict = GetDatDictForCategory(target.Category);
+        dict[target.Id] = clone;
+
+        // Replace the VM entry in the master list
+        int idx = _allClientItems.FindIndex(c => c.Id == target.Id && c.Category == target.Category);
+        if (idx >= 0)
+        {
+            var newVm = new ClientItemViewModel(clone) { Sprite = ComposeThingBitmap(clone) };
+            _allClientItems[idx] = newVm;
+        }
+
+        HasUnsavedChanges = true;
+        ApplyClientFilter();
+        NavigateToClientItemById(target.Id, target.Category);
+        StatusText = $"Replaced client item #{target.Id} with clipboard data.";
+    }
+
+    /// <summary>Replace the selected client item from an .obd (Object Builder Data) file.</summary>
+    public async Task ReplaceClientItemFromObdAsync()
+    {
+        if (SelectedClientItem == null || _datData == null || _sprFile == null)
+        {
+            StatusText = "Select a target item first.";
+            return;
+        }
+
+        var obdPath = await FileDialogHelper.OpenFileAsync(
+            "Open OBD file",
+            [("Object Builder Data", "*.obd")]);
+        if (obdPath == null) return;
+
+        ObdCodec.ObdData obd;
+        try
+        {
+            var bytes = File.ReadAllBytes(obdPath);
+            obd = ObdCodec.Decode(bytes);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Failed to load OBD file: {ex.Message}";
+            return;
+        }
+
+        var target = SelectedClientItem;
+        var clone = obd.Thing.Clone();
+
+        // Import sprites from OBD into our SPR file
+        foreach (var fg in clone.FrameGroups)
+        {
+            for (int i = 0; i < fg.SpriteIndex.Length; i++)
+            {
+                var oldId = fg.SpriteIndex[i];
+                if (oldId == 0) continue;
+                if (obd.Sprites.TryGetValue(oldId, out var rgba))
+                {
+                    var newId = _sprFile.AddSprite(rgba);
+                    fg.SpriteIndex[i] = newId;
+                }
+            }
+        }
+
+        clone.Id = target.Id;
+        clone.Category = target.Category;
+
+        var dict = GetDatDictForCategory(target.Category);
+        dict[target.Id] = clone;
+
+        int idx = _allClientItems.FindIndex(c => c.Id == target.Id && c.Category == target.Category);
+        if (idx >= 0)
+        {
+            var newVm = new ClientItemViewModel(clone) { Sprite = ComposeThingBitmap(clone) };
+            _allClientItems[idx] = newVm;
+        }
+
+        HasUnsavedChanges = true;
+        ApplyClientFilter();
+        NavigateToClientItemById(target.Id, target.Category);
+        StatusText = $"Replaced client item #{target.Id} from OBD file.";
     }
 
     [RelayCommand]

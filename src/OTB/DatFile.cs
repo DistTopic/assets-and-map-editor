@@ -86,7 +86,7 @@ public static class DatFile
             0x47A11B85 => 800,
             0x4865975E => 810,
             0x49971E5E => 854,
-            0x4B1E2CAA => 854, // custom PokéOrigins 854 DAT
+            0x4B1E2CAA => 1098, // custom PokéOrigins DAT (was incorrectly mapped to 854)
             0x4A10DC35 => 860,
             0x4C4B6B22 => 960,
             0x4D455ADE => 1050,

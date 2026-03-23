@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,7 +26,7 @@ public partial class PaletteItemViewModel : ObservableObject
 }
 
 /// <summary>
-/// A sub-collection node inside a collection — holds items.
+/// A sub-collection node inside a collection — holds sub-sub-collections and items.
 /// </summary>
 public partial class PaletteSubCollectionViewModel : ObservableObject
 {
@@ -34,9 +35,49 @@ public partial class PaletteSubCollectionViewModel : ObservableObject
     [ObservableProperty] private bool _isRenaming;
     [ObservableProperty] private string _renameText = string.Empty;
 
+    /// <summary>Direct items (legacy, still used for flat sub-collections).</summary>
     public ObservableCollection<PaletteItemViewModel> Items { get; } = [];
 
+    /// <summary>Sub-sub-collections (3rd tier).</summary>
+    public ObservableCollection<PaletteSubSubCollectionViewModel> SubSubCollections { get; } = [];
+
     public PaletteCollectionViewModel? Parent { get; init; }
+
+    /// <summary>True for built-in entries like "Others" — cannot be renamed/deleted.</summary>
+    public bool IsBuiltIn { get; init; }
+
+    [RelayCommand]
+    private void BeginRename()
+    {
+        if (IsBuiltIn) return;
+        RenameText = Name;
+        IsRenaming = true;
+    }
+
+    [RelayCommand]
+    private void CommitRename()
+    {
+        if (!string.IsNullOrWhiteSpace(RenameText))
+            Name = RenameText.Trim();
+        IsRenaming = false;
+    }
+
+    [RelayCommand]
+    private void CancelRename() => IsRenaming = false;
+}
+
+/// <summary>
+/// A sub-sub-collection (3rd tier) inside a sub-collection — holds items.
+/// </summary>
+public partial class PaletteSubSubCollectionViewModel : ObservableObject
+{
+    [ObservableProperty] private string _name = string.Empty;
+    [ObservableProperty] private bool _isRenaming;
+    [ObservableProperty] private string _renameText = string.Empty;
+
+    public ObservableCollection<PaletteItemViewModel> Items { get; } = [];
+
+    public PaletteSubCollectionViewModel? Parent { get; init; }
 
     [RelayCommand]
     private void BeginRename()
@@ -44,6 +85,32 @@ public partial class PaletteSubCollectionViewModel : ObservableObject
         RenameText = Name;
         IsRenaming = true;
     }
+
+    [RelayCommand]
+    private void CommitRename()
+    {
+        if (!string.IsNullOrWhiteSpace(RenameText))
+            Name = RenameText.Trim();
+        IsRenaming = false;
+    }
+
+    [RelayCommand]
+    private void CancelRename() => IsRenaming = false;
+}
+
+/// <summary>
+/// A custom brush: when active, paints randomly from its item set for tile variety.
+/// </summary>
+public partial class CustomBrushViewModel : ObservableObject
+{
+    [ObservableProperty] private string _name = string.Empty;
+    [ObservableProperty] private bool _isRenaming;
+    [ObservableProperty] private string _renameText = string.Empty;
+
+    public ObservableCollection<PaletteItemViewModel> Items { get; } = [];
+
+    [RelayCommand]
+    private void BeginRename() { RenameText = Name; IsRenaming = true; }
 
     [RelayCommand]
     private void CommitRename()
@@ -70,12 +137,16 @@ public partial class PaletteCollectionViewModel : ObservableObject
 
     public ObservableCollection<PaletteSubCollectionViewModel> SubCollections { get; } = [];
 
+    /// <summary>True for built-in entries like "Raw" — cannot be renamed/deleted.</summary>
+    public bool IsBuiltIn { get; init; }
+
     [RelayCommand]
     private void ToggleExpand() => IsExpanded = !IsExpanded;
 
     [RelayCommand]
     private void BeginRename()
     {
+        if (IsBuiltIn) return;
         RenameText = Name;
         IsRenaming = true;
     }
@@ -105,10 +176,29 @@ public partial class PaletteViewModel : ObservableObject
     // ── Data ────────────────────────────────────────────────────
     public ObservableCollection<PaletteCollectionViewModel> Collections { get; } = [];
 
+    // ── Custom brushes ──────────────────────────────────────────
+    public ObservableCollection<CustomBrushViewModel> CustomBrushes { get; } = [];
+    [ObservableProperty] private CustomBrushViewModel? _selectedBrush;
+    [ObservableProperty] private bool _isEditingBrush;
+    private static readonly Random _brushRandom = new();
+
+    /// <summary>Pick a random server ID from the active brush, or 0 if none.</summary>
+    public ushort GetBrushRandomItem()
+    {
+        if (SelectedBrush == null || SelectedBrush.Items.Count == 0) return 0;
+        return SelectedBrush.Items[_brushRandom.Next(SelectedBrush.Items.Count)].ServerId;
+    }
+
     // ── Selected state ──────────────────────────────────────────
     [ObservableProperty] private PaletteCollectionViewModel? _selectedCollection;
     [ObservableProperty] private PaletteSubCollectionViewModel? _selectedSubCollection;
+    [ObservableProperty] private PaletteSubSubCollectionViewModel? _selectedSubSubCollection;
     [ObservableProperty] private PaletteItemViewModel? _selectedPaletteItem;
+
+    /// <summary>The built-in "Raw" collection (always first, non-editable).</summary>
+    public PaletteCollectionViewModel? RawCollection { get; private set; }
+    /// <summary>The built-in "Others" sub-collection inside Raw (shows all items).</summary>
+    public PaletteSubCollectionViewModel? OthersSubCollection { get; private set; }
 
     // ── Display items for the active sub-collection ─────────────
     public ObservableCollection<PaletteItemViewModel> DisplayedItems { get; } = [];
@@ -130,6 +220,9 @@ public partial class PaletteViewModel : ObservableObject
 
     // ── Sub-collection search/filter ────────────────────────────
     [ObservableProperty] private string _itemSearchText = string.Empty;
+
+    /// <summary>Callback to show a confirmation dialog. Returns true if the user confirmed.</summary>
+    public Func<string, string, Task<bool>>? ConfirmAsync { get; set; }
 
     public PaletteViewModel(MainWindowViewModel parent)
     {
@@ -219,7 +312,26 @@ public partial class PaletteViewModel : ObservableObject
     {
         if (oldValue != null) oldValue.IsSelected = false;
         if (newValue != null) newValue.IsSelected = true;
-        RefreshDisplayedItems();
+        // Auto-select first sub-sub-collection (or null)
+        SelectedSubSubCollection = newValue?.SubSubCollections.FirstOrDefault();
+        // If no sub-sub-collections, refresh grid from sub-collection
+        if (newValue?.SubSubCollections.Count == 0)
+        {
+            CatalogPage = 0;
+            SearchCatalog();
+        }
+    }
+
+    partial void OnSelectedCollectionChanged(PaletteCollectionViewModel? value)
+    {
+        // Auto-select first sub-collection (or null for RAW/catalog)
+        SelectedSubCollection = value?.SubCollections.FirstOrDefault();
+    }
+
+    partial void OnSelectedSubSubCollectionChanged(PaletteSubSubCollectionViewModel? value)
+    {
+        CatalogPage = 0;
+        SearchCatalog();
     }
 
     partial void OnIsViewingSubCollectionChanged(bool value)
@@ -255,13 +367,13 @@ public partial class PaletteViewModel : ObservableObject
         SearchCatalog();
     }
 
-    /// <summary>Show a sub-collection's items in the south panel.</summary>
+    /// <summary>Select a sub-collection and show its items in the grid.</summary>
     public void ShowSubCollectionItems(PaletteSubCollectionViewModel sub)
     {
+        // Find parent collection and select it
+        if (sub.Parent != null)
+            SelectedCollection = sub.Parent;
         SelectedSubCollection = sub;
-        ViewingSubCollectionName = sub.Name;
-        IsViewingSubCollection = true;
-        RefreshDisplayedItems();
     }
 
     [RelayCommand]
@@ -316,12 +428,26 @@ public partial class PaletteViewModel : ObservableObject
     {
         if (_serverToClientMap.Count == 0) { CatalogResults.Clear(); CatalogStatusText = "No items — load OTB + Client"; return; }
 
+        // Determine source IDs based on selection hierarchy:
+        // SubSubCollection selected → its items
+        // SubCollection selected (no sub-sub) → its direct items
+        // "Others" (built-in) → all items
+        // Nothing selected → all items
+        IEnumerable<ushort> sourceIds;
+        if (SelectedSubSubCollection != null)
+            sourceIds = SelectedSubSubCollection.Items.Select(i => i.ServerId);
+        else if (SelectedSubCollection is { IsBuiltIn: true })
+            sourceIds = _serverToClientMap.Keys; // "Others" shows all
+        else if (SelectedSubCollection != null)
+            sourceIds = SelectedSubCollection.Items.Select(i => i.ServerId);
+        else
+            sourceIds = _serverToClientMap.Keys;
+
         var search = CatalogSearchText.Trim();
-        var allIds = _serverToClientMap.Keys;
 
         if (search.Length == 0)
         {
-            _filteredCatalogIds = allIds.OrderBy(id => id).ToList();
+            _filteredCatalogIds = sourceIds.OrderBy(id => id).ToList();
         }
         else
         {
@@ -331,33 +457,29 @@ public partial class PaletteViewModel : ObservableObject
 
             if (pattern.Length == 0)
             {
-                _filteredCatalogIds = allIds.OrderBy(id => id).ToList();
+                _filteredCatalogIds = sourceIds.OrderBy(id => id).ToList();
             }
             else if (startsWithWild && endsWithWild)
             {
-                // *100* → contains
-                _filteredCatalogIds = allIds
+                _filteredCatalogIds = sourceIds
                     .Where(id => id.ToString().Contains(pattern))
                     .OrderBy(id => id).ToList();
             }
             else if (startsWithWild)
             {
-                // *100 → ends with
-                _filteredCatalogIds = allIds
+                _filteredCatalogIds = sourceIds
                     .Where(id => id.ToString().EndsWith(pattern))
                     .OrderBy(id => id).ToList();
             }
             else if (endsWithWild)
             {
-                // 100* → starts with
-                _filteredCatalogIds = allIds
+                _filteredCatalogIds = sourceIds
                     .Where(id => id.ToString().StartsWith(pattern))
                     .OrderBy(id => id).ToList();
             }
             else
             {
-                // Exact match
-                if (ushort.TryParse(pattern, out var exactId) && allIds.Contains(exactId))
+                if (ushort.TryParse(pattern, out var exactId) && sourceIds.Contains(exactId))
                     _filteredCatalogIds = [exactId];
                 else
                     _filteredCatalogIds = [];
@@ -400,9 +522,11 @@ public partial class PaletteViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void RemoveCollection(PaletteCollectionViewModel? col)
+    private async Task RemoveCollectionAsync(PaletteCollectionViewModel? col)
     {
-        if (col == null) return;
+        if (col == null || col.IsBuiltIn) return;
+        if (ConfirmAsync != null && !await ConfirmAsync("Delete Collection", $"Delete collection \"{col.Name}\"?"))
+            return;
         Collections.Remove(col);
         if (SelectedCollection == col) SelectedCollection = Collections.FirstOrDefault();
         SaveToConfig();
@@ -412,7 +536,7 @@ public partial class PaletteViewModel : ObservableObject
     private void AddSubCollection()
     {
         var col = SelectedCollection;
-        if (col == null) return;
+        if (col == null || col.IsBuiltIn) return;
 
         var sub = new PaletteSubCollectionViewModel { Name = "New Sub-Collection", Parent = col };
         col.SubCollections.Add(sub);
@@ -423,13 +547,123 @@ public partial class PaletteViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void RemoveSubCollection(PaletteSubCollectionViewModel? sub)
+    private async Task RemoveSubCollectionAsync(PaletteSubCollectionViewModel? sub)
     {
-        if (sub?.Parent == null) return;
+        if (sub?.Parent == null || sub.IsBuiltIn) return;
+        if (ConfirmAsync != null && !await ConfirmAsync("Delete Sub-Collection", $"Delete sub-collection \"{sub.Name}\"?"))
+            return;
         sub.Parent.SubCollections.Remove(sub);
         if (SelectedSubCollection == sub)
             SelectedSubCollection = sub.Parent.SubCollections.FirstOrDefault();
         SaveToConfig();
+    }
+
+    [RelayCommand]
+    private void AddSubSubCollection()
+    {
+        var sub = SelectedSubCollection;
+        if (sub == null || sub.IsBuiltIn) return;
+
+        var subSub = new PaletteSubSubCollectionViewModel { Name = "New Group", Parent = sub };
+        sub.SubSubCollections.Add(subSub);
+        SelectedSubSubCollection = subSub;
+        subSub.BeginRenameCommand.Execute(null);
+        SaveToConfig();
+    }
+
+    [RelayCommand]
+    private async Task RemoveSubSubCollectionAsync(PaletteSubSubCollectionViewModel? subSub)
+    {
+        if (subSub?.Parent == null) return;
+        if (ConfirmAsync != null && !await ConfirmAsync("Delete Group", $"Delete group \"{subSub.Name}\"?"))
+            return;
+        subSub.Parent.SubSubCollections.Remove(subSub);
+        if (SelectedSubSubCollection == subSub)
+            SelectedSubSubCollection = subSub.Parent.SubSubCollections.FirstOrDefault();
+        SaveToConfig();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  Custom Brush CRUD
+    // ════════════════════════════════════════════════════════════
+
+    [RelayCommand]
+    private void AddBrush()
+    {
+        var brush = new CustomBrushViewModel { Name = "New Brush" };
+        CustomBrushes.Add(brush);
+        SelectedBrush = brush;
+        brush.BeginRenameCommand.Execute(null);
+        SaveToConfig();
+    }
+
+    [RelayCommand]
+    private async Task RemoveBrushAsync(CustomBrushViewModel? brush)
+    {
+        if (brush == null) return;
+        if (ConfirmAsync != null && !await ConfirmAsync("Delete Brush", $"Delete brush \"{brush.Name}\"?"))
+            return;
+        CustomBrushes.Remove(brush);
+        if (SelectedBrush == brush) SelectedBrush = CustomBrushes.FirstOrDefault();
+        SaveToConfig();
+    }
+
+    [RelayCommand]
+    private void EditBrush()
+    {
+        IsEditingBrush = SelectedBrush != null;
+    }
+
+    [RelayCommand]
+    private void StopEditingBrush()
+    {
+        IsEditingBrush = false;
+    }
+
+    /// <summary>Add a catalog item to the currently selected brush.</summary>
+    [RelayCommand]
+    private void AddItemToBrush(PaletteItemViewModel? item)
+    {
+        if (item == null || SelectedBrush == null) return;
+        if (SelectedBrush.Items.Any(i => i.ServerId == item.ServerId)) return;
+        var vm = CreatePaletteItem(item.ServerId);
+        if (vm != null) SelectedBrush.Items.Add(vm);
+        RefreshBrushItemIds();
+        SaveToConfig();
+    }
+
+    /// <summary>Remove an item from the currently selected brush.</summary>
+    [RelayCommand]
+    private void RemoveItemFromBrush(PaletteItemViewModel? item)
+    {
+        if (item == null || SelectedBrush == null) return;
+        SelectedBrush.Items.Remove(item);
+        RefreshBrushItemIds();
+        SaveToConfig();
+    }
+
+    /// <summary>When a brush is selected, push its item IDs to the map canvas.</summary>
+    partial void OnSelectedBrushChanged(CustomBrushViewModel? value)
+    {
+        if (value != null && value.Items.Count > 0)
+        {
+            _parent.BrushServerId = 0; // custom brush overrides single-item
+            _parent.BrushItemIds = value.Items.Select(i => i.ServerId).ToList();
+        }
+        else
+        {
+            _parent.BrushItemIds = null;
+        }
+        IsEditingBrush = false;
+    }
+
+    /// <summary>Refresh BrushItemIds after items are added/removed from the selected brush.</summary>
+    public void RefreshBrushItemIds()
+    {
+        if (SelectedBrush != null && SelectedBrush.Items.Count > 0)
+            _parent.BrushItemIds = SelectedBrush.Items.Select(i => i.ServerId).ToList();
+        else
+            _parent.BrushItemIds = null;
     }
 
     // ════════════════════════════════════════════════════════════
@@ -466,6 +700,18 @@ public partial class PaletteViewModel : ObservableObject
         SaveToConfig();
     }
 
+    /// <summary>Add a catalog item to a specific sub-sub-collection (from context menu).</summary>
+    public void AddItemToSubSubCollection(PaletteSubSubCollectionViewModel subsub, ushort serverId)
+    {
+        if (subsub.Items.Any(i => i.ServerId == serverId)) return;
+        var vm = CreatePaletteItem(serverId);
+        if (vm == null) return;
+        subsub.Items.Add(vm);
+        if (SelectedSubSubCollection == subsub)
+            RefreshDisplayedItems();
+        SaveToConfig();
+    }
+
     [RelayCommand]
     private void RemoveItemFromSelected(PaletteItemViewModel? item)
     {
@@ -494,15 +740,29 @@ public partial class PaletteViewModel : ObservableObject
     {
         var config = new PaletteConfig
         {
-            Collections = Collections.Select(c => new PaletteCollection
-            {
-                Name = c.Name,
-                Icon = c.Icon,
-                SubCollections = c.SubCollections.Select(s => new PaletteSubCollection
+            Collections = Collections
+                .Where(c => !c.IsBuiltIn)
+                .Select(c => new PaletteCollection
                 {
-                    Name = s.Name,
-                    Items = s.Items.Select(i => i.ServerId).ToList()
-                }).ToList()
+                    Name = c.Name,
+                    Icon = c.Icon,
+                    SubCollections = c.SubCollections
+                        .Where(s => !s.IsBuiltIn)
+                        .Select(s => new PaletteSubCollection
+                        {
+                            Name = s.Name,
+                            Items = s.Items.Select(i => i.ServerId).ToList(),
+                            SubSubCollections = s.SubSubCollections.Select(ss => new PaletteSubSubCollection
+                            {
+                                Name = ss.Name,
+                                Items = ss.Items.Select(i => i.ServerId).ToList()
+                            }).ToList()
+                        }).ToList()
+                }).ToList(),
+            CustomBrushes = CustomBrushes.Select(b => new PaletteCustomBrush
+            {
+                Name = b.Name,
+                Items = b.Items.Select(i => i.ServerId).ToList()
             }).ToList()
         };
         config.Save();
@@ -513,6 +773,25 @@ public partial class PaletteViewModel : ObservableObject
         var config = PaletteConfig.Load();
         Collections.Clear();
 
+        // 1) Create built-in "Raw" collection with "Others" sub-collection
+        var rawCol = new PaletteCollectionViewModel
+        {
+            Name = "Raw",
+            Icon = "fa-solid fa-database",
+            IsBuiltIn = true
+        };
+        var othersSub = new PaletteSubCollectionViewModel
+        {
+            Name = "Others",
+            Parent = rawCol,
+            IsBuiltIn = true
+        };
+        rawCol.SubCollections.Add(othersSub);
+        Collections.Add(rawCol);
+        RawCollection = rawCol;
+        OthersSubCollection = othersSub;
+
+        // 2) Load user-created collections from config
         foreach (var cc in config.Collections)
         {
             var colVm = new PaletteCollectionViewModel
@@ -536,15 +815,47 @@ public partial class PaletteViewModel : ObservableObject
                         subVm.Items.Add(itemVm);
                 }
 
+                // Load sub-sub-collections (3rd tier)
+                foreach (var ssc in sc.SubSubCollections)
+                {
+                    var subSubVm = new PaletteSubSubCollectionViewModel
+                    {
+                        Name = ssc.Name,
+                        Parent = subVm
+                    };
+
+                    foreach (var serverId in ssc.Items)
+                    {
+                        var itemVm = CreatePaletteItem(serverId);
+                        if (itemVm != null)
+                            subSubVm.Items.Add(itemVm);
+                    }
+
+                    subVm.SubSubCollections.Add(subSubVm);
+                }
+
                 colVm.SubCollections.Add(subVm);
             }
 
             Collections.Add(colVm);
         }
 
-        // Select first collection/subcollection if available
-        SelectedCollection = Collections.FirstOrDefault();
-        SelectedSubCollection = SelectedCollection?.SubCollections.FirstOrDefault();
+        // Select Raw → Others by default
+        SelectedCollection = RawCollection;
+        SelectedSubCollection = OthersSubCollection;
+
+        // 3) Load custom brushes
+        CustomBrushes.Clear();
+        foreach (var cb in config.CustomBrushes)
+        {
+            var brushVm = new CustomBrushViewModel { Name = cb.Name };
+            foreach (var serverId in cb.Items)
+            {
+                var itemVm = CreatePaletteItem(serverId);
+                if (itemVm != null) brushVm.Items.Add(itemVm);
+            }
+            CustomBrushes.Add(brushVm);
+        }
     }
 
     /// <summary>Clear the sprite bitmap cache (call after sprite mutation).</summary>
@@ -560,6 +871,11 @@ public partial class PaletteViewModel : ObservableObject
             {
                 foreach (var item in sub.Items)
                     item.Sprite = GetSprite(item.ServerId);
+                foreach (var subSub in sub.SubSubCollections)
+                {
+                    foreach (var item in subSub.Items)
+                        item.Sprite = GetSprite(item.ServerId);
+                }
             }
         }
         // Also refresh displayed items
@@ -578,9 +894,11 @@ public partial class PaletteViewModel : ObservableObject
     /// </summary>
     public void NavigateToCatalogItem(ushort serverId)
     {
-        // Ensure we're in catalog view
-        IsViewingSubCollection = false;
-        CatalogSearchText = string.Empty; // reset filter to show all items
+        // Navigate to Raw > Others (shows all items)
+        SelectedCollection = RawCollection;
+        SelectedSubCollection = OthersSubCollection;
+        SelectedSubSubCollection = null;
+        CatalogSearchText = string.Empty;
 
         // Find the index in the full sorted list
         int idx = _filteredCatalogIds.IndexOf(serverId);
@@ -605,15 +923,28 @@ public partial class PaletteViewModel : ObservableObject
         {
             foreach (var sub in col.SubCollections)
             {
+                // Check sub-sub-collections first (3rd tier)
+                foreach (var subSub in sub.SubSubCollections)
+                {
+                    if (subSub.Items.Any(i => i.ServerId == serverId))
+                    {
+                        col.IsExpanded = true;
+                        SelectedCollection = col;
+                        SelectedSubCollection = sub;
+                        SelectedSubSubCollection = subSub;
+                        ShowSubCollectionItems(sub);
+                        HighlightDisplayedItem(serverId);
+                        return true;
+                    }
+                }
+
                 if (sub.Items.Any(i => i.ServerId == serverId))
                 {
-                    // Expand the collection and select the sub-collection
                     col.IsExpanded = true;
                     SelectedCollection = col;
                     SelectedSubCollection = sub;
+                    SelectedSubSubCollection = null;
                     ShowSubCollectionItems(sub);
-
-                    // Highlight the item
                     HighlightDisplayedItem(serverId);
                     return true;
                 }

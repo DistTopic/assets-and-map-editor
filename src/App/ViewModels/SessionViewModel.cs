@@ -3,6 +3,8 @@ using POriginsItemEditor.OTB;
 
 namespace POriginsItemEditor.App.ViewModels;
 
+public enum SplitMode { None, Right, Down }
+
 /// <summary>
 /// Represents a single editor session — one set of OTB/DAT/SPR/OTBM files
 /// tied to a specific protocol version. Multiple sessions can coexist in tabs.
