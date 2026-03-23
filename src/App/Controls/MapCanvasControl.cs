@@ -459,68 +459,6 @@ public sealed class MapCanvasControl : Control
             superEndZ = floor;
         }
 
-        // ── Ghost higher floors: draw ONE floor above current with alpha (~65%) ──
-        if (ghostHigherFloors && floor > 0)
-        {
-            byte upperFloor = (byte)(floor - 1);
-            double ghostOffset;
-            if (upperFloor <= 7)
-                ghostOffset = (7 - upperFloor) * TileSize * zoom;
-            else
-                ghostOffset = (floor - upperFloor) * TileSize * zoom;
-
-            using (context.PushOpacity(0.65))
-            {
-                for (int ty = startTileY; ty <= endTileY; ty++)
-                {
-                    for (int tx = startTileX; tx <= endTileX; tx++)
-                    {
-                        var pos = new MapPosition((ushort)tx, (ushort)ty, upperFloor);
-                        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
-                        double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
-                        double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
-                        if (showAsMinimap)
-                            DrawMinimapTile(context, tile, baseScreenX, baseScreenY, tilePixelSize);
-                        else
-                            foreach (var item in tile.Items)
-                                DrawItem(context, ResolveClientId(item.Id), pos,
-                                         baseScreenX, baseScreenY, zoom, 0, 1.0);
-                    }
-                }
-            }
-        }
-
-        // ── Ghost lower floors: draw ONE floor below current with alpha (~65%) ──
-        if (ghostLowerFloors && floor < 15)
-        {
-            byte lowerFloor = (byte)(floor + 1);
-            double ghostOffset;
-            if (lowerFloor <= 7)
-                ghostOffset = (7 - lowerFloor) * TileSize * zoom;
-            else
-                ghostOffset = (floor - lowerFloor) * TileSize * zoom;
-
-            using (context.PushOpacity(0.65))
-            {
-                for (int ty = startTileY; ty <= endTileY; ty++)
-                {
-                    for (int tx = startTileX; tx <= endTileX; tx++)
-                    {
-                        var pos = new MapPosition((ushort)tx, (ushort)ty, lowerFloor);
-                        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
-                        double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
-                        double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
-                        if (showAsMinimap)
-                            DrawMinimapTile(context, tile, baseScreenX, baseScreenY, tilePixelSize);
-                        else
-                            foreach (var item in tile.Items)
-                                DrawItem(context, ResolveClientId(item.Id), pos,
-                                         baseScreenX, baseScreenY, zoom, 0, 1.0);
-                    }
-                }
-            }
-        }
-
         // ── Multi-floor loop: render from startZ down to superEndZ ──
         // Reference: for(map_z = start_z; map_z >= superend_z; map_z--)
         // Shade is drawn ONCE when map_z reaches end_z (current floor) and start_z != end_z
@@ -639,6 +577,68 @@ public sealed class MapCanvasControl : Control
                         context.DrawRectangle(new SolidColorBrush(groundOverlayColor.Value), null, tileRect);
                     }
 
+                }
+            }
+        }
+
+        // ── Ghost higher floors: draw ONE floor above current with alpha (~65%) ──
+        if (ghostHigherFloors && floor > 0)
+        {
+            byte upperFloor = (byte)(floor - 1);
+            double ghostOffset;
+            if (upperFloor <= 7)
+                ghostOffset = (7 - upperFloor) * TileSize * zoom;
+            else
+                ghostOffset = (floor - upperFloor) * TileSize * zoom;
+
+            using (context.PushOpacity(0.65))
+            {
+                for (int ty = startTileY; ty <= endTileY; ty++)
+                {
+                    for (int tx = startTileX; tx <= endTileX; tx++)
+                    {
+                        var pos = new MapPosition((ushort)tx, (ushort)ty, upperFloor);
+                        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+                        double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
+                        double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
+                        if (showAsMinimap)
+                            DrawMinimapTile(context, tile, baseScreenX, baseScreenY, tilePixelSize);
+                        else
+                            foreach (var item in tile.Items)
+                                DrawItem(context, ResolveClientId(item.Id), pos,
+                                         baseScreenX, baseScreenY, zoom, 0, 1.0);
+                    }
+                }
+            }
+        }
+
+        // ── Ghost lower floors: draw ONE floor below current with alpha (~65%) ──
+        if (ghostLowerFloors && floor < 15)
+        {
+            byte lowerFloor = (byte)(floor + 1);
+            double ghostOffset;
+            if (lowerFloor <= 7)
+                ghostOffset = (7 - lowerFloor) * TileSize * zoom;
+            else
+                ghostOffset = (floor - lowerFloor) * TileSize * zoom;
+
+            using (context.PushOpacity(0.65))
+            {
+                for (int ty = startTileY; ty <= endTileY; ty++)
+                {
+                    for (int tx = startTileX; tx <= endTileX; tx++)
+                    {
+                        var pos = new MapPosition((ushort)tx, (ushort)ty, lowerFloor);
+                        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+                        double baseScreenX = (tx * TileSize - _viewX) * zoom - ghostOffset;
+                        double baseScreenY = (ty * TileSize - _viewY) * zoom - ghostOffset;
+                        if (showAsMinimap)
+                            DrawMinimapTile(context, tile, baseScreenX, baseScreenY, tilePixelSize);
+                        else
+                            foreach (var item in tile.Items)
+                                DrawItem(context, ResolveClientId(item.Id), pos,
+                                         baseScreenX, baseScreenY, zoom, 0, 1.0);
+                    }
                 }
             }
         }
