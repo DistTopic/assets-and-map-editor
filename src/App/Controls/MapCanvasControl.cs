@@ -50,6 +50,7 @@ public sealed class MapCanvasControl : Control
     // Ghost brush cursor (screen position for rendering the brush preview)
     private Point _cursorScreenPos;
     private bool _cursorInsideCanvas;
+    private List<string>? _tooltipLines;
 
     // ── Selection state ──
     private readonly HashSet<MapPosition> _selectedTiles = new();
@@ -871,6 +872,36 @@ public sealed class MapCanvasControl : Control
         var crossPen = new Pen(new SolidColorBrush(Color.FromArgb(60, 137, 180, 250)), 1);
         context.DrawLine(crossPen, new Point(bw / 2.0, 0), new Point(bw / 2.0, bh));
         context.DrawLine(crossPen, new Point(0, bh / 2.0), new Point(bw, bh / 2.0));
+
+        // ── On-canvas tooltip (item list at cursor) ──
+        if (ShowTooltips && _cursorInsideCanvas && _tooltipLines != null && _tooltipLines.Count > 0)
+        {
+            var tf = new Typeface("Segoe UI");
+            double fontSize = 11;
+            double lineH = 15;
+            double padX = 6, padY = 4;
+            double maxW = 0;
+            var fmts = new List<FormattedText>(_tooltipLines.Count);
+            foreach (var line in _tooltipLines)
+            {
+                var ft = new FormattedText(line, System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, tf, fontSize, Brushes.White);
+                fmts.Add(ft);
+                if (ft.Width > maxW) maxW = ft.Width;
+            }
+            double boxW = maxW + padX * 2;
+            double boxH = _tooltipLines.Count * lineH + padY * 2;
+            double tx = _cursorScreenPos.X + 16;
+            double ty = _cursorScreenPos.Y + 16;
+            if (tx + boxW > bw) tx = _cursorScreenPos.X - boxW - 4;
+            if (ty + boxH > bh) ty = _cursorScreenPos.Y - boxH - 4;
+            context.DrawRectangle(
+                new SolidColorBrush(Color.FromArgb(220, 0x18, 0x18, 0x25)),
+                new Pen(new SolidColorBrush(Color.FromArgb(180, 0x31, 0x32, 0x44)), 1),
+                new Rect(tx, ty, boxW, boxH), 4, 4);
+            for (int i = 0; i < fmts.Count; i++)
+                context.DrawText(fmts[i], new Point(tx + padX, ty + padY + i * lineH));
+        }
 
         // Start/stop animation timer based on whether animated items are visible
         UpdateAnimationTimer();
@@ -2244,9 +2275,31 @@ public sealed class MapCanvasControl : Control
         {
             var pos = ScreenToTile(point.Position);
             if (_mapData.Tiles.TryGetValue(pos, out var tile))
+            {
                 HoveredTileInfo = $"X:{pos.X} Y:{pos.Y} Z:{pos.Z} | {tile.Items.Count} items";
+                if (ShowTooltips)
+                {
+                    var lines = new List<string> { $"X:{pos.X}  Y:{pos.Y}  Z:{pos.Z}" };
+                    foreach (var item in tile.Items)
+                    {
+                        string name = "";
+                        if (_serverToOtbItemMap != null && _serverToOtbItemMap.TryGetValue(item.Id, out var otb)
+                            && !string.IsNullOrEmpty(otb.Name))
+                            name = $" - {otb.Name}";
+                        lines.Add($"  [{item.Id}]{name}");
+                        if (lines.Count >= 12) { lines.Add("  ..."); break; }
+                    }
+                    _tooltipLines = lines;
+                    InvalidateVisual();
+                }
+                else
+                    _tooltipLines = null;
+            }
             else
+            {
                 HoveredTileInfo = $"X:{pos.X} Y:{pos.Y} Z:{pos.Z}";
+                _tooltipLines = null;
+            }
         }
     }
 
@@ -2342,7 +2395,8 @@ public sealed class MapCanvasControl : Control
     {
         base.OnPointerExited(e);
         _cursorInsideCanvas = false;
-        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0)
+        _tooltipLines = null;
+        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || ShowTooltips)
             InvalidateVisual();
     }
 
