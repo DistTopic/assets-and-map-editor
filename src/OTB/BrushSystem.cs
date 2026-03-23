@@ -159,6 +159,8 @@ public sealed class BrushDatabase
             // Border rules
             foreach (var borderEl in el.Elements("border"))
             {
+                // Skip inline border definitions (they have <borderitem> children but no id)
+                if (borderEl.Attribute("id") == null) continue;
                 brush.Borders.Add(new BorderBlock
                 {
                     IsOuter = (string?)borderEl.Attribute("align") == "outer",

@@ -75,6 +75,10 @@ public sealed class GroundBorderRef
     public int BorderId { get; set; }
     public string? To { get; set; } // brush name or "none"
     public bool Super { get; set; }
+    /// <summary>True when this is an inline border definition (has borderitem children, no id).</summary>
+    public bool Inline { get; set; }
+    public ushort GroundEquivalent { get; set; }
+    public Dictionary<string, ushort> InlineEdges { get; set; } = [];
 }
 
 // ── Wall brush ──
@@ -249,13 +253,26 @@ public static class BrushXmlLoader
 
             foreach (var border in el.Elements("border"))
             {
-                def.Borders.Add(new GroundBorderRef
+                var bref = new GroundBorderRef
                 {
                     Align = (string?)border.Attribute("align") ?? "",
                     BorderId = (int?)border.Attribute("id") ?? 0,
                     To = (string?)border.Attribute("to"),
                     Super = (string?)border.Attribute("super") == "true",
-                });
+                };
+                // Handle inline border definitions (have <borderitem> children but no id)
+                if (border.Attribute("id") == null && border.HasElements)
+                {
+                    bref.Inline = true;
+                    bref.GroundEquivalent = (ushort?)(int?)border.Attribute("ground_equivalent") ?? 0;
+                    foreach (var bi in border.Elements("borderitem"))
+                    {
+                        var edge = (string?)bi.Attribute("edge") ?? "";
+                        var itemId = (ushort?)(int?)bi.Attribute("item") ?? 0;
+                        if (itemId > 0) bref.InlineEdges[edge] = itemId;
+                    }
+                }
+                def.Borders.Add(bref);
             }
 
             foreach (var friend in el.Elements("friend"))

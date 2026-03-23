@@ -2535,10 +2535,12 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void LoadBrushDatabase()
     {
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var brushDir = Path.Combine(baseDir, "data", "brushes");
+
+        // Load OTB autobordering system
         try
         {
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var brushDir = Path.Combine(baseDir, "data", "brushes");
             var bordersPath = Path.Combine(brushDir, "borders.xml");
             var groundsPath = Path.Combine(brushDir, "grounds.xml");
             if (File.Exists(bordersPath) && File.Exists(groundsPath))
@@ -2547,8 +2549,15 @@ public partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(BrushDb));
                 AddMapLog($"Brush system loaded: {BrushDb.GroundBrushes.Count} ground brushes, {BrushDb.AutoBorders.Count} borders");
             }
+        }
+        catch (Exception ex)
+        {
+            AddMapLog($"Brush system error: {ex.Message}");
+        }
 
-            // Load full catalog (all brush types + tilesets)
+        // Load full catalog (all brush types + tilesets)
+        try
+        {
             if (Directory.Exists(brushDir))
             {
                 BrushCatalog = BrushXmlLoader.LoadFromDirectory(brushDir);
@@ -2559,7 +2568,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AddMapLog($"Brush load error: {ex.Message}");
+            AddMapLog($"Brush catalog error: {ex.Message}");
         }
     }
 
