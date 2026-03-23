@@ -4011,6 +4011,14 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void CopyCompositionSprite(SpriteViewModel? source)
+    {
+        if (source == null || source.SpriteId == 0) return;
+        _copiedSpriteId = source.SpriteId;
+        StatusText = $"Copied sprite {source.SpriteId} from composition";
+    }
+
+    [RelayCommand]
     private void PasteSpriteToSlot(SpriteViewModel? target)
     {
         if (_copiedSpriteId == 0 || _sprFile == null) return;
