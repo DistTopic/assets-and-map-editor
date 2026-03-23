@@ -1527,6 +1527,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _viewGhostItems;
     [ObservableProperty] private bool _viewGhostHigherFloors;
     [ObservableProperty] private bool _viewShowSpecial = true;
+    [ObservableProperty] private bool _viewShowZones = true;
     [ObservableProperty] private bool _viewShowHouses = true;
     [ObservableProperty] private bool _viewShowWaypoints = true;
     [ObservableProperty] private bool _viewShowTowns;

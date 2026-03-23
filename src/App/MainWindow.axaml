@@ -260,6 +260,7 @@
         <MenuItem Header="Show Lights" ToggleType="CheckBox" IsChecked="{Binding ViewShowLights}"/>
         <Separator/>
         <MenuItem Header="Show Special" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial}"/>
+        <MenuItem Header="Show Zones" ToggleType="CheckBox" IsChecked="{Binding ViewShowZones}"/>
         <MenuItem Header="Show Houses" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses}"/>
         <MenuItem Header="Show Pathing" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing}"/>
         <Separator/>
@@ -1949,6 +1950,7 @@
                                        GhostItems="{Binding ViewGhostItems, Mode=TwoWay}"
                                        GhostHigherFloors="{Binding ViewGhostHigherFloors, Mode=TwoWay}"
                                        ShowSpecial="{Binding ViewShowSpecial, Mode=TwoWay}"
+                                       ShowZones="{Binding ViewShowZones, Mode=TwoWay}"
                                        ShowHouses="{Binding ViewShowHouses, Mode=TwoWay}"
                                        ShowWaypoints="{Binding ViewShowWaypoints, Mode=TwoWay}"
                                        ShowTowns="{Binding ViewShowTowns, Mode=TwoWay}"

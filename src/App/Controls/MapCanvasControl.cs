@@ -144,6 +144,8 @@ public sealed class MapCanvasControl : Control
 
     public static readonly StyledProperty<bool> ShowSpecialProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowSpecial), true);
+    public static readonly StyledProperty<bool> ShowZonesProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowZones), true);
 
     public static readonly StyledProperty<bool> ShowHousesProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowHouses), true);
@@ -244,6 +246,7 @@ public sealed class MapCanvasControl : Control
     public bool GhostItems { get => GetValue(GhostItemsProperty); set => SetValue(GhostItemsProperty, value); }
     public bool GhostHigherFloors { get => GetValue(GhostHigherFloorsProperty); set => SetValue(GhostHigherFloorsProperty, value); }
     public bool ShowSpecial { get => GetValue(ShowSpecialProperty); set => SetValue(ShowSpecialProperty, value); }
+    public bool ShowZones { get => GetValue(ShowZonesProperty); set => SetValue(ShowZonesProperty, value); }
     public bool ShowHouses { get => GetValue(ShowHousesProperty); set => SetValue(ShowHousesProperty, value); }
     public bool ShowWaypoints { get => GetValue(ShowWaypointsProperty); set => SetValue(ShowWaypointsProperty, value); }
     public bool ShowTowns { get => GetValue(ShowTownsProperty); set => SetValue(ShowTownsProperty, value); }
@@ -334,6 +337,7 @@ public sealed class MapCanvasControl : Control
               || change.Property == GhostItemsProperty
               || change.Property == GhostHigherFloorsProperty
               || change.Property == ShowSpecialProperty
+              || change.Property == ShowZonesProperty
               || change.Property == ShowHousesProperty
               || change.Property == ShowWaypointsProperty
               || change.Property == ShowTownsProperty
@@ -382,6 +386,7 @@ public sealed class MapCanvasControl : Control
         bool showShade = ShowShade;
         bool showAllFloors = ShowAllFloors;
         bool showSpecial = ShowSpecial;
+        bool showZones = ShowZones;
         bool showHouses = ShowHouses;
         bool showWaypoints = ShowWaypoints;
         bool showTowns = ShowTowns;
@@ -395,7 +400,13 @@ public sealed class MapCanvasControl : Control
         context.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1b)), null,
             new Rect(0, 0, bw, bh));
 
-        if (_mapData == null || _sprFile == null || _datData == null) return;
+        if (_mapData == null || _sprFile == null || _datData == null)
+        {
+            // Still draw ingame box even when no map data is loaded
+            if (showIngameBox)
+                DrawIngameBox(context, bw, bh, TileSize * zoom);
+            return;
+        }
 
         // Visible tile range (expand by a few tiles to catch multi-tile items extending into view)
         double tilePixelSize = TileSize * zoom;
@@ -523,7 +534,7 @@ public sealed class MapCanvasControl : Control
                     Color? groundOverlayColor = null;
                     if (isCurrentFloor)
                     {
-                        if (showSpecial && tile.Flags != 0)
+                        if (showSpecial && showZones && tile.Flags != 0)
                         {
                             if ((tile.Flags & 0x01) != 0)
                                 groundOverlayColor = Color.FromArgb(100, 0, 255, 0);
@@ -718,21 +729,7 @@ public sealed class MapCanvasControl : Control
 
         // ── Ingame box (15×11 tile viewport indicator) ──
         if (showIngameBox)
-        {
-            double boxW = 15 * tilePixelSize;
-            double boxH = 11 * tilePixelSize;
-            double boxX = (bw - boxW) / 2;
-            double boxY = (bh - boxH) / 2;
-            // Darken outside the box
-            var shadowBrush = new SolidColorBrush(Color.FromArgb(100, 0, 0, 0));
-            context.DrawRectangle(shadowBrush, null, new Rect(0, 0, bw, boxY)); // top
-            context.DrawRectangle(shadowBrush, null, new Rect(0, boxY + boxH, bw, bh - boxY - boxH)); // bottom
-            context.DrawRectangle(shadowBrush, null, new Rect(0, boxY, boxX, boxH)); // left
-            context.DrawRectangle(shadowBrush, null, new Rect(boxX + boxW, boxY, bw - boxX - boxW, boxH)); // right
-            // Box border
-            var boxPen = new Pen(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)), 1);
-            context.DrawRectangle(null, boxPen, new Rect(boxX, boxY, boxW, boxH));
-        }
+            DrawIngameBox(context, bw, bh, tilePixelSize);
 
         // ── Ghost brush (translucent preview of selected item / zone at cursor) ──
         var ghostItemIds = BrushItemIds;
@@ -877,6 +874,21 @@ public sealed class MapCanvasControl : Control
 
         // Start/stop animation timer based on whether animated items are visible
         UpdateAnimationTimer();
+    }
+
+    private void DrawIngameBox(DrawingContext context, int bw, int bh, double tilePixelSize)
+    {
+        double boxW = 15 * tilePixelSize;
+        double boxH = 11 * tilePixelSize;
+        double boxX = (bw - boxW) / 2;
+        double boxY = (bh - boxH) / 2;
+        var shadowBrush = new SolidColorBrush(Color.FromArgb(140, 0, 0, 0));
+        context.DrawRectangle(shadowBrush, null, new Rect(0, 0, bw, boxY));
+        context.DrawRectangle(shadowBrush, null, new Rect(0, boxY + boxH, bw, bh - boxY - boxH));
+        context.DrawRectangle(shadowBrush, null, new Rect(0, boxY, boxX, boxH));
+        context.DrawRectangle(shadowBrush, null, new Rect(boxX + boxW, boxY, bw - boxX - boxW, boxH));
+        var boxPen = new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1.5);
+        context.DrawRectangle(null, boxPen, new Rect(boxX, boxY, boxW, boxH));
     }
 
     /// <summary>Draws a tile as a flat-colored minimap square.</summary>
