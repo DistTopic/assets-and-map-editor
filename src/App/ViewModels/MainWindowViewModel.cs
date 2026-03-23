@@ -30,8 +30,8 @@ public partial class MainWindowViewModel : ObservableObject
     private DatThingType? _copiedClientItem;
     private SprFile? _copiedClientItemSprFile;
 
-    /// <summary>Internal clipboard for sprite copy/paste (stores sprite ID from the active SprFile).</summary>
-    private uint _copiedSpriteId;
+    /// <summary>Internal clipboard for sprite copy/paste (stores 32×32 RGBA pixel data).</summary>
+    private byte[]? _copiedSpriteRgba;
 
     // ── Sessions ──
     public ObservableCollection<SessionViewModel> Sessions { get; } = [];
@@ -3894,15 +3894,14 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void PasteSprite()
     {
-        if (_copiedSpriteId == 0 || _sprFile == null || SelectedRightSprite == null) return;
+        if (_copiedSpriteRgba == null || _sprFile == null || SelectedRightSprite == null) return;
 
-        var rgba = _sprFile.GetSpriteRgba(_copiedSpriteId);
-        _sprFile.SetSpriteRgba(SelectedRightSprite.SpriteId, rgba);
+        _sprFile.SetSpriteRgba(SelectedRightSprite.SpriteId, (byte[])_copiedSpriteRgba.Clone());
         SelectedRightSprite.Bitmap = LoadSpriteBitmap(SelectedRightSprite.SpriteId);
         InvalidateSpriteCache();
         Palette?.RefreshSprites();
         LoadAllSprites();
-        StatusText = $"Pasted sprite {_copiedSpriteId} → {SelectedRightSprite.SpriteId}";
+        StatusText = $"Pasted sprite → {SelectedRightSprite.SpriteId}";
     }
 
     [RelayCommand]
@@ -3989,9 +3988,8 @@ public partial class MainWindowViewModel : ObservableObject
         var rgba = _sprFile.GetSpriteRgba(SelectedRightSprite.SpriteId);
         if (rgba == null) { StatusText = "Sprite has no data"; return; }
 
-        // Store internally first so Paste always works even if system clipboard fails
-        _copiedSpriteId = SelectedRightSprite.SpriteId;
-        StatusText = $"Sprite {_copiedSpriteId} copied";
+        _copiedSpriteRgba = (byte[])rgba.Clone();
+        StatusText = $"Sprite {SelectedRightSprite.SpriteId} copied";
 
         // Best-effort: also copy to system clipboard as image
         try
@@ -4018,15 +4016,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void CopyCompositionSprite(SpriteViewModel? source)
     {
-        if (source == null || source.SpriteId == 0) return;
-        _copiedSpriteId = source.SpriteId;
+        if (source == null || source.SpriteId == 0 || _sprFile == null) return;
+        var rgba = _sprFile.GetSpriteRgba(source.SpriteId);
+        if (rgba == null) { StatusText = "Sprite has no data"; return; }
+        _copiedSpriteRgba = (byte[])rgba.Clone();
         StatusText = $"Copied sprite {source.SpriteId} from composition";
     }
 
     [RelayCommand]
     private void PasteSpriteToSlot(SpriteViewModel? target)
     {
-        if (_copiedSpriteId == 0 || _sprFile == null) return;
+        if (_copiedSpriteRgba == null || _sprFile == null) return;
 
         if (target == null || target.SlotIndex < 0)
         {
@@ -4034,8 +4034,20 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        AssignSpriteToSlot(target, _copiedSpriteId);
-        StatusText = $"Pasted sprite {_copiedSpriteId} → slot {target.SlotIndex}";
+        // Write the copied pixels into the sprite at this slot
+        if (target.SpriteId == 0)
+        {
+            // Slot has no sprite — create a new one
+            var newId = _sprFile.AddSprite((byte[])_copiedSpriteRgba.Clone());
+            AssignSpriteToSlot(target, newId);
+        }
+        else
+        {
+            _sprFile.SetSpriteRgba(target.SpriteId, (byte[])_copiedSpriteRgba.Clone());
+            target.Bitmap = LoadSpriteBitmap(target.SpriteId);
+        }
+        InvalidateSpriteCache();
+        StatusText = $"Pasted sprite → slot {target.SlotIndex}";
     }
 
     [RelayCommand]
