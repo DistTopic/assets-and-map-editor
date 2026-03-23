@@ -459,7 +459,7 @@ public sealed class MapCanvasControl : Control
             superEndZ = floor;
         }
 
-        // ── Ghost higher floors: draw ONE floor above current with alpha (~37%) ──
+        // ── Ghost higher floors: draw ONE floor above current with alpha (~65%) ──
         if (ghostHigherFloors && floor > 0)
         {
             byte upperFloor = (byte)(floor - 1);
@@ -469,7 +469,7 @@ public sealed class MapCanvasControl : Control
             else
                 ghostOffset = (floor - upperFloor) * TileSize * zoom;
 
-            using (context.PushOpacity(0.375))
+            using (context.PushOpacity(0.65))
             {
                 for (int ty = startTileY; ty <= endTileY; ty++)
                 {
@@ -490,7 +490,7 @@ public sealed class MapCanvasControl : Control
             }
         }
 
-        // ── Ghost lower floors: draw ONE floor below current with alpha (~37%) ──
+        // ── Ghost lower floors: draw ONE floor below current with alpha (~65%) ──
         if (ghostLowerFloors && floor < 15)
         {
             byte lowerFloor = (byte)(floor + 1);
@@ -500,7 +500,7 @@ public sealed class MapCanvasControl : Control
             else
                 ghostOffset = (floor - lowerFloor) * TileSize * zoom;
 
-            using (context.PushOpacity(0.375))
+            using (context.PushOpacity(0.65))
             {
                 for (int ty = startTileY; ty <= endTileY; ty++)
                 {
