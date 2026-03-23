@@ -1175,7 +1175,7 @@ public sealed class MapCanvasControl : Control
         return bitmap;
     }
 
-    private void ClearCaches()
+    public void ClearCaches()
     {
         _spriteRgbaCache.Clear();
         _spriteBitmapCache.Clear();

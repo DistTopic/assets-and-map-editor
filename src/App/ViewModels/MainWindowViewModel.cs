@@ -1502,6 +1502,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Events for the View to hook into (for MapCanvasControl interaction)
     internal Action? _mapCenterRequested;
     internal Action<ushort, ushort, byte>? _mapGoToRequested;
+    internal Action? _mapSpriteCacheInvalidated;
 
     // ── View menu toggles (bound to MapCanvasControl properties) ──
     [ObservableProperty] private bool _viewShowAllFloors = true;
@@ -4083,7 +4084,21 @@ public partial class MainWindowViewModel : ObservableObject
     private void InvalidateSpriteCache()
     {
         Palette?.ClearSpriteCache();
-        // Reload the composition/expanded preview if something is selected
+
+        // Refresh client item thumbnails that may use the modified sprite
+        if (_sprFile != null)
+        {
+            foreach (var vm in _allClientItems)
+                vm.Sprite = ComposeThingBitmap(vm.ThingType);
+        }
+
+        // Reload composition grid if a thing is being edited
+        ReloadComposition();
+
+        // Clear map canvas sprite caches so it re-fetches fresh data
+        _mapSpriteCacheInvalidated?.Invoke();
+
+        // Reload the OTB items preview if something is selected
         if (SelectedItem != null)
             OnPropertyChanged(nameof(SelectedItem));
     }
