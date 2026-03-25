@@ -57,6 +57,8 @@ public partial class MainWindow : Window
                 // Wire brush database to map canvas after data is loaded
                 if (mapCanvas != null && vm.BrushDb != null)
                     mapCanvas.BrushDb = vm.BrushDb;
+                if (mapCanvas != null && vm.BrushCatalog != null)
+                    mapCanvas.BrushCatalog = vm.BrushCatalog;
 
                 // Listen for future BrushDb loads
                 if (mapCanvas != null)
@@ -65,6 +67,8 @@ public partial class MainWindow : Window
                     {
                         if (args.PropertyName == nameof(vm.BrushDb))
                             mapCanvas.BrushDb = vm.BrushDb;
+                        if (args.PropertyName == nameof(vm.BrushCatalog))
+                            mapCanvas.BrushCatalog = vm.BrushCatalog;
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
                     };
@@ -112,6 +116,8 @@ public partial class MainWindow : Window
             var mapCanvas = this.FindControl<MapCanvasControl>("MapCanvas");
             if (mapCanvas != null && vm.BrushDb != null)
                 mapCanvas.BrushDb = vm.BrushDb;
+            if (mapCanvas != null && vm.BrushCatalog != null)
+                mapCanvas.BrushCatalog = vm.BrushCatalog;
 
             // Start drag tracking
             _dragSession = session;
@@ -195,6 +201,8 @@ public partial class MainWindow : Window
             var mapCanvas = this.FindControl<MapCanvasControl>("MapCanvas");
             if (mapCanvas != null && vm.BrushDb != null)
                 mapCanvas.BrushDb = vm.BrushDb;
+            if (mapCanvas != null && vm.BrushCatalog != null)
+                mapCanvas.BrushCatalog = vm.BrushCatalog;
         }
     }
 

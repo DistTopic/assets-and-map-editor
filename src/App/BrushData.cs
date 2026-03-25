@@ -21,13 +21,30 @@ public sealed class BrushCatalog
     public Dictionary<string, WallBrushDef> WallsByName { get; set; } = [];
     /// <summary>Lookup: brush name → doodad brush def.</summary>
     public Dictionary<string, DoodadBrushDef> DoodadsByName { get; set; } = [];
+    /// <summary>Reverse lookup: wall item server ID → owning WallBrushDef.</summary>
+    public Dictionary<ushort, WallBrushDef> WallItemToBrush { get; set; } = [];
 
     /// <summary>Build lookup dictionaries after loading.</summary>
     public void BuildIndexes()
     {
-        GroundsByName = Grounds.Where(g => g.Name.Length > 0).ToDictionary(g => g.Name);
-        WallsByName = Walls.Where(w => w.Name.Length > 0).ToDictionary(w => w.Name);
-        DoodadsByName = Doodads.Where(d => d.Name.Length > 0).ToDictionary(d => d.Name);
+        GroundsByName = Grounds.Where(g => g.Name.Length > 0).GroupBy(g => g.Name).ToDictionary(g => g.Key, g => g.Last());
+        WallsByName = Walls.Where(w => w.Name.Length > 0).GroupBy(w => w.Name).ToDictionary(g => g.Key, g => g.Last());
+        DoodadsByName = Doodads.Where(d => d.Name.Length > 0).GroupBy(d => d.Name).ToDictionary(g => g.Key, g => g.Last());
+
+        // Build reverse lookup: every item in every wall segment → its parent WallBrushDef
+        var wallItemMap = new Dictionary<ushort, WallBrushDef>();
+        foreach (var wall in Walls)
+        {
+            foreach (var seg in wall.Segments.Values)
+                foreach (var ci in seg.Items)
+                    if (ci.Id > 0)
+                        wallItemMap[ci.Id] = wall;
+            foreach (var seg in wall.Segments.Values)
+                foreach (var door in seg.Doors)
+                    if (door.Id > 0)
+                        wallItemMap[door.Id] = wall;
+        }
+        WallItemToBrush = wallItemMap;
     }
 
     /// <summary>Get the server_lookid for a brush name (any type).</summary>
@@ -431,14 +448,21 @@ public static class BrushXmlLoader
             {
                 Name = (string?)el.Attribute("name") ?? "",
                 Type = (string?)el.Attribute("type") ?? "monster",
-                LookType = (int?)el.Attribute("looktype") ?? 0,
-                LookItem = (int?)el.Attribute("lookitem") ?? 0,
-                LookHead = (int?)el.Attribute("lookhead") ?? 0,
-                LookBody = (int?)el.Attribute("lookbody") ?? 0,
-                LookLegs = (int?)el.Attribute("looklegs") ?? 0,
-                LookFeet = (int?)el.Attribute("lookfeet") ?? 0,
+                LookType = SafeInt(el, "looktype"),
+                LookItem = SafeInt(el, "lookitem"),
+                LookHead = SafeInt(el, "lookhead"),
+                LookBody = SafeInt(el, "lookbody"),
+                LookLegs = SafeInt(el, "looklegs"),
+                LookFeet = SafeInt(el, "lookfeet"),
             });
         }
+    }
+
+    /// <summary>Safely parse an integer attribute, returning 0 for missing/empty/invalid values.</summary>
+    private static int SafeInt(XElement el, string attr)
+    {
+        var s = (string?)el.Attribute(attr);
+        return int.TryParse(s, out var v) ? v : 0;
     }
 
     private static void LoadTilesets(string path, BrushCatalog db)
@@ -451,8 +475,12 @@ public static class BrushXmlLoader
                 Name = (string?)ts.Attribute("name") ?? "",
             };
 
-            // Parse each category section: raw, terrain, doodad, items_and_raw, terrain_and_raw
-            string[] sectionNames = ["raw", "terrain", "doodad", "items_and_raw", "terrain_and_raw"];
+            // Parse each category section (all types from OTAcademy map editor)
+            string[] sectionNames = [
+                "raw", "terrain", "doodad", "items", "creatures",
+                "items_and_raw", "terrain_and_raw", "doodad_and_raw",
+                "collections", "collections_and_terrain",
+            ];
             foreach (var secName in sectionNames)
             {
                 foreach (var sec in ts.Elements(secName))

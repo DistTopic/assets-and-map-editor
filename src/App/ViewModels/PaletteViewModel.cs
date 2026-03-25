@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using POriginsItemEditor.OTB;
@@ -216,6 +217,7 @@ public partial class PaletteViewModel : ObservableObject
     [ObservableProperty] private int _catalogTotalPages;
     [ObservableProperty] private string _catalogStatusText = string.Empty;
     private List<ushort> _filteredCatalogIds = [];
+    private List<PaletteItemViewModel>? _filteredCatalogItems;
     public bool HasItems => _serverToClientMap.Count > 0;
 
     // ── Sub-collection search/filter ────────────────────────────
@@ -324,8 +326,10 @@ public partial class PaletteViewModel : ObservableObject
 
     partial void OnSelectedCollectionChanged(PaletteCollectionViewModel? value)
     {
-        // Auto-select first sub-collection (or null for RAW/catalog)
-        SelectedSubCollection = value?.SubCollections.FirstOrDefault();
+        // Defer selection so the ComboBox finishes rebinding ItemsSource first;
+        // otherwise the ComboBox clears SelectedItem after we set it.
+        var first = value?.SubCollections.FirstOrDefault();
+        Dispatcher.UIThread.Post(() => SelectedSubCollection = first);
     }
 
     partial void OnSelectedSubSubCollectionChanged(PaletteSubSubCollectionViewModel? value)
@@ -428,26 +432,47 @@ public partial class PaletteViewModel : ObservableObject
     {
         if (_serverToClientMap.Count == 0) { CatalogResults.Clear(); CatalogStatusText = "No items — load OTB + Client"; return; }
 
-        // Determine source IDs based on selection hierarchy:
-        // SubSubCollection selected → its items
-        // SubCollection selected (no sub-sub) → its direct items
-        // "Others" (built-in) → all items
-        // Nothing selected → all items
-        IEnumerable<ushort> sourceIds;
+        // Determine source based on selection hierarchy.
+        // For brush-catalog sub-collections, use pre-built items directly
+        // (they may contain IDs not in OTB). For "Others" / fallback, use OTB keys.
+        IReadOnlyList<PaletteItemViewModel>? sourceItems = null;
+        IEnumerable<ushort>? sourceIds = null;
+
         if (SelectedSubSubCollection != null)
-            sourceIds = SelectedSubSubCollection.Items.Select(i => i.ServerId);
-        else if (SelectedSubCollection is { IsBuiltIn: true })
-            sourceIds = _serverToClientMap.Keys; // "Others" shows all
+            sourceItems = SelectedSubSubCollection.Items;
+        else if (SelectedSubCollection == OthersSubCollection)
+            sourceIds = _serverToClientMap.Keys; // "Others" shows all OTB items
         else if (SelectedSubCollection != null)
-            sourceIds = SelectedSubCollection.Items.Select(i => i.ServerId);
+            sourceItems = SelectedSubCollection.Items;
         else
             sourceIds = _serverToClientMap.Keys;
 
         var search = CatalogSearchText.Trim();
 
+        // When we have pre-built items, filter them directly
+        if (sourceItems != null)
+        {
+            _filteredCatalogIds = [];
+            IEnumerable<PaletteItemViewModel> items = sourceItems;
+            if (search.Length > 0)
+            {
+                items = items.Where(i =>
+                    i.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    i.ServerId.ToString().Contains(search));
+            }
+            _filteredCatalogItems = items.ToList();
+            CatalogTotalPages = Math.Max(1, (int)Math.Ceiling((double)_filteredCatalogItems.Count / CatalogPageSize));
+            CatalogPage = 0;
+            FillCatalogPage();
+            return;
+        }
+
+        // ID-based path ("Others" / all OTB items)
+        _filteredCatalogItems = null;
+
         if (search.Length == 0)
         {
-            _filteredCatalogIds = sourceIds.OrderBy(id => id).ToList();
+            _filteredCatalogIds = sourceIds!.OrderBy(id => id).ToList();
         }
         else
         {
@@ -457,29 +482,29 @@ public partial class PaletteViewModel : ObservableObject
 
             if (pattern.Length == 0)
             {
-                _filteredCatalogIds = sourceIds.OrderBy(id => id).ToList();
+                _filteredCatalogIds = sourceIds!.OrderBy(id => id).ToList();
             }
             else if (startsWithWild && endsWithWild)
             {
-                _filteredCatalogIds = sourceIds
+                _filteredCatalogIds = sourceIds!
                     .Where(id => id.ToString().Contains(pattern))
                     .OrderBy(id => id).ToList();
             }
             else if (startsWithWild)
             {
-                _filteredCatalogIds = sourceIds
+                _filteredCatalogIds = sourceIds!
                     .Where(id => id.ToString().EndsWith(pattern))
                     .OrderBy(id => id).ToList();
             }
             else if (endsWithWild)
             {
-                _filteredCatalogIds = sourceIds
+                _filteredCatalogIds = sourceIds!
                     .Where(id => id.ToString().StartsWith(pattern))
                     .OrderBy(id => id).ToList();
             }
             else
             {
-                if (ushort.TryParse(pattern, out var exactId) && sourceIds.Contains(exactId))
+                if (ushort.TryParse(pattern, out var exactId) && sourceIds!.Contains(exactId))
                     _filteredCatalogIds = [exactId];
                 else
                     _filteredCatalogIds = [];
@@ -494,11 +519,25 @@ public partial class PaletteViewModel : ObservableObject
     private void FillCatalogPage()
     {
         CatalogResults.Clear();
-        var page = _filteredCatalogIds
+
+        if (_filteredCatalogItems != null)
+        {
+            // Pre-built items from brush catalog sub-collections
+            var page = _filteredCatalogItems
+                .Skip(CatalogPage * CatalogPageSize)
+                .Take(CatalogPageSize);
+            foreach (var vm in page)
+                CatalogResults.Add(vm);
+            CatalogStatusText = $"{_filteredCatalogItems.Count} items — page {CatalogPage + 1}/{CatalogTotalPages}";
+            return;
+        }
+
+        // ID-based path — recreate items from OTB mapping
+        var idPage = _filteredCatalogIds
             .Skip(CatalogPage * CatalogPageSize)
             .Take(CatalogPageSize);
 
-        foreach (var serverId in page)
+        foreach (var serverId in idPage)
         {
             var vm = CreatePaletteItem(serverId);
             if (vm != null) CatalogResults.Add(vm);
@@ -865,188 +904,185 @@ public partial class PaletteViewModel : ObservableObject
     public BrushCatalog? Catalog { get; private set; }
 
     /// <summary>
-    /// Populate palette collections from the brush catalog tilesets.
-    /// Each tileset becomes a top-level collection. Sections (terrain, doodad, raw)
-    /// become sub-collections. Brush references are resolved to server_lookid.
+    /// Populate palette collections from the brush catalog tilesets,
+    /// matching the OTAcademy map editor's palette structure:
+    ///   Primary collections = category types (Terrain, Doodad, Items, Raw)
+    ///   Sub-collections = tileset names within each category type
+    ///   Dual categories (items_and_raw, etc.) populate multiple collections.
     /// </summary>
     public void LoadFromBrushCatalog(BrushCatalog catalog)
     {
         Catalog = catalog;
 
-        // Group tilesets into logical parent collections.
-        // Each tileset becomes a sub-collection; its entries become items.
-        var groupMap = new Dictionary<string, List<TilesetDef>>();
+        // Map each category type to a primary collection name.
+        // Dual types expand to multiple collections (same as OTAcademy).
+        static string[] GetCollectionNames(string catType) => catType switch
+        {
+            "terrain" => ["Terrain"],
+            "doodad" => ["Doodad"],
+            "raw" => ["Raw"],
+            "items" => ["Items"],
+            "creatures" => ["Creature"],
+            "terrain_and_raw" => ["Terrain", "Raw"],
+            "items_and_raw" => ["Items", "Raw"],
+            "doodad_and_raw" => ["Doodad", "Raw"],
+            "collections" => ["Items"],
+            "collections_and_terrain" => ["Items", "Terrain"],
+            _ => ["Raw"],
+        };
+
+        // Build: collectionName → { tilesetName → entries }
+        var collMap = new Dictionary<string, Dictionary<string, List<TilesetEntry>>>();
+
         foreach (var tileset in catalog.Tilesets)
         {
-            var group = GetTilesetGroup(tileset.Name);
-            if (!groupMap.TryGetValue(group, out var list))
+            foreach (var cat in tileset.Categories)
             {
-                list = [];
-                groupMap[group] = list;
+                foreach (var collName in GetCollectionNames(cat.Type))
+                {
+                    if (!collMap.TryGetValue(collName, out var tilesetMap))
+                    {
+                        tilesetMap = new Dictionary<string, List<TilesetEntry>>();
+                        collMap[collName] = tilesetMap;
+                    }
+                    if (!tilesetMap.TryGetValue(tileset.Name, out var entries))
+                    {
+                        entries = [];
+                        tilesetMap[tileset.Name] = entries;
+                    }
+                    entries.AddRange(cat.Entries);
+                }
             }
-            list.Add(tileset);
         }
 
-        // Ordered group keys for stable display
-        string[] groupOrder = ["Terrain", "Doodad", "Items", "Creature", "Other"];
-
-        foreach (var groupName in groupOrder)
+        // Create collections in stable order
+        string[] collOrder = ["Terrain", "Doodad", "Items", "Raw", "Creature"];
+        var icons = new Dictionary<string, string>
         {
-            if (!groupMap.TryGetValue(groupName, out var tilesets)) continue;
-            if (Collections.Any(c => c.Name == groupName)) continue;
+            ["Terrain"] = "fa-solid fa-mountain-sun",
+            ["Doodad"] = "fa-solid fa-tree",
+            ["Items"] = "fa-solid fa-box-open",
+            ["Raw"] = "fa-solid fa-cube",
+            ["Creature"] = "fa-solid fa-dragon",
+        };
 
-            var colVm = new PaletteCollectionViewModel
-            {
-                Name = groupName,
-                Icon = GetGroupIcon(groupName),
-                IsBuiltIn = true,
-            };
+        foreach (var collName in collOrder)
+        {
+            if (!collMap.TryGetValue(collName, out var tilesetMap)) continue;
 
-            foreach (var tileset in tilesets)
+            // For "Raw", add tileset sub-collections to the existing Raw collection
+            PaletteCollectionViewModel colVm;
+            if (collName == "Raw" && RawCollection != null)
             {
+                colVm = RawCollection;
+            }
+            else
+            {
+                if (Collections.Any(c => c.Name == collName)) continue;
+                colVm = new PaletteCollectionViewModel
+                {
+                    Name = collName,
+                    Icon = icons.GetValueOrDefault(collName, "fa-solid fa-layer-group"),
+                    IsBuiltIn = true,
+                };
+            }
+
+            foreach (var (tilesetName, entryList) in tilesetMap)
+            {
+                // Skip if this sub-collection already exists (e.g. "Others" in Raw)
+                if (colVm.SubCollections.Any(s => s.Name == tilesetName)) continue;
+
                 var subVm = new PaletteSubCollectionViewModel
                 {
-                    Name = tileset.Name,
+                    Name = tilesetName,
                     Parent = colVm,
                     IsBuiltIn = true,
                 };
 
-                // Flatten all categories of this tileset into one sub-collection.
-                // If multiple category sections exist, use sub-sub-collections.
-                if (tileset.Categories.Count <= 1)
+                foreach (var entry in entryList)
                 {
-                    // Single category → items go directly into sub-collection
-                    foreach (var cat in tileset.Categories)
-                        AddCategoryEntries(catalog, cat, subVm, null);
-                }
-                else
-                {
-                    // Multiple categories → each becomes a sub-sub-collection
-                    foreach (var cat in tileset.Categories)
-                    {
-                        var subSubName = GetCategoryLabel(cat.Type);
-                        var subSubVm = new PaletteSubSubCollectionViewModel
-                        {
-                            Name = subSubName,
-                            Parent = subVm,
-                        };
-                        AddCategoryEntries(catalog, cat, null, subSubVm);
-                        if (subSubVm.Items.Count > 0)
-                            subVm.SubSubCollections.Add(subSubVm);
-                    }
+                    // In Raw, only add item entries (no brushes) — OTAcademy behavior
+                    if (collName == "Raw" && entry.Type != "raw") continue;
+                    AddEntryToSub(catalog, entry, subVm);
                 }
 
-                if (subVm.Items.Count > 0 || subVm.SubSubCollections.Count > 0)
+                if (subVm.Items.Count > 0)
                     colVm.SubCollections.Add(subVm);
             }
 
-            if (colVm.SubCollections.Count > 0)
-                Collections.Add(colVm);
+            // Only add new collections (Raw already exists)
+            if (collName != "Raw" || RawCollection == null)
+            {
+                if (colVm.SubCollections.Count > 0)
+                    Collections.Add(colVm);
+            }
         }
-    }
 
-    /// <summary>Add entries from a tileset category to either a sub- or sub-sub-collection.</summary>
-    private void AddCategoryEntries(BrushCatalog catalog, TilesetCategory cat,
-        PaletteSubCollectionViewModel? sub, PaletteSubSubCollectionViewModel? subSub)
-    {
-        foreach (var entry in cat.Entries)
+        // Log diagnostic summary
+        int totalItems = 0;
+        int withSprite = 0;
+        foreach (var col in Collections)
         {
-            PaletteItemViewModel? itemVm = null;
-
-            if (entry.Type == "brush" && entry.BrushName != null)
+            foreach (var sub in col.SubCollections)
             {
-                var lookId = catalog.GetBrushLookId(entry.BrushName);
-                if (lookId > 0)
-                {
-                    var vm = CreatePaletteItem(lookId);
-                    if (vm != null)
-                    {
-                        itemVm = new PaletteItemViewModel
-                        {
-                            ServerId = vm.ServerId,
-                            ClientId = vm.ClientId,
-                            Name = entry.BrushName,
-                            Article = null,
-                            Sprite = vm.Sprite,
-                        };
-                    }
-                }
+                totalItems += sub.Items.Count;
+                withSprite += sub.Items.Count(i => i.Sprite != null);
             }
-            else if (entry.Type == "raw")
+        }
+        _parent.AddMapLog($"Palette: {Collections.Count} collections, {totalItems} items ({withSprite} with sprites)");
+    }
+
+    /// <summary>Add a single tileset entry to a sub-collection.
+    /// Items are added even if they don't exist in OTB (shown without sprite).</summary>
+    private void AddEntryToSub(BrushCatalog catalog, TilesetEntry entry,
+        PaletteSubCollectionViewModel sub)
+    {
+        if (entry.Type == "brush" && entry.BrushName != null)
+        {
+            var lookId = catalog.GetBrushLookId(entry.BrushName);
+            if (lookId > 0)
             {
-                ushort start = entry.ItemId;
-                ushort end = entry.ItemIdEnd > 0 ? entry.ItemIdEnd : start;
-                for (ushort id = start; id <= end; id++)
+                _serverToClientMap.TryGetValue(lookId, out var clientId);
+                sub.Items.Add(new PaletteItemViewModel
                 {
-                    var vm = CreatePaletteItem(id);
-                    if (vm != null)
-                    {
-                        var item = entry.DisplayName != null
-                            ? new PaletteItemViewModel
-                            {
-                                ServerId = vm.ServerId,
-                                ClientId = vm.ClientId,
-                                Name = entry.DisplayName,
-                                Article = null,
-                                Sprite = vm.Sprite,
-                            }
-                            : vm;
-
-                        if (subSub != null) subSub.Items.Add(item);
-                        else sub?.Items.Add(item);
-                    }
-                }
-                continue; // ranges already added inline
+                    ServerId = lookId,
+                    ClientId = clientId,
+                    Name = entry.BrushName,
+                    Article = null,
+                    Sprite = GetSprite(lookId),
+                });
             }
-
-            if (itemVm != null)
+            else
             {
-                if (subSub != null) subSub.Items.Add(itemVm);
-                else sub?.Items.Add(itemVm);
+                // Brush name not found in any brush definition — add placeholder
+                sub.Items.Add(new PaletteItemViewModel
+                {
+                    ServerId = 0,
+                    ClientId = 0,
+                    Name = entry.BrushName,
+                    Article = null,
+                    Sprite = null,
+                });
+            }
+        }
+        else if (entry.Type == "raw")
+        {
+            ushort start = entry.ItemId;
+            ushort end = entry.ItemIdEnd > 0 ? entry.ItemIdEnd : start;
+            for (ushort id = start; id <= end; id++)
+            {
+                _serverToClientMap.TryGetValue(id, out var clientId);
+                sub.Items.Add(new PaletteItemViewModel
+                {
+                    ServerId = id,
+                    ClientId = clientId,
+                    Name = entry.DisplayName ?? $"item #{id}",
+                    Article = null,
+                    Sprite = GetSprite(id),
+                });
             }
         }
     }
-
-    /// <summary>Maps tileset names to logical parent collection groups.</summary>
-    private static string GetTilesetGroup(string name) => name switch
-    {
-        "Grounds" or "Cave" or "Snow" or "Town" or "Roofs"
-            or "Stairs" or "Walls" or "Borders" or "Blank"
-            or "Stairs / Ramps / Ladders" => "Terrain",
-
-        "Nature" or "Interior" or "Beds" or "Statues" or "Exterior"
-            or "Signs" or "Hangables" or "Splash" or "Architecture"
-            or "Magic Fields" or "Trash" or "Boats" or "Sea"
-            or "Devices" or "Corpses" or "Pillars" => "Doodad",
-
-        "Equipment" or "Ornaments" or "Tools" or "Weapons"
-            or "Weapons (Magic)" or "Shields" or "Trinkets"
-            or "Jewelry" or "Containers" or "Lockers" or "Writeables"
-            or "Food" or "Runes" or "Fluid Containers"
-            or "Addon and Quest Items" => "Items",
-
-        _ => "Other",
-    };
-
-    private static string GetGroupIcon(string group) => group switch
-    {
-        "Terrain" => "fa-solid fa-mountain-sun",
-        "Doodad" => "fa-solid fa-tree",
-        "Items" => "fa-solid fa-box-open",
-        "Creature" => "fa-solid fa-dragon",
-        "Other" => "fa-solid fa-layer-group",
-        _ => "fa-solid fa-layer-group",
-    };
-
-    private static string GetCategoryLabel(string type) => type switch
-    {
-        "terrain" => "Terrains",
-        "doodad" => "Doodads",
-        "raw" => "Items",
-        "items_and_raw" => "Items",
-        "terrain_and_raw" => "Terrains",
-        _ => type,
-    };
 
     /// <summary>Reload sprite thumbnails after client data changes.</summary>
     public void RefreshSprites()

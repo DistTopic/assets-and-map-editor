@@ -33,6 +33,9 @@ public sealed class MapCanvasControl : Control
     /// <summary>Autobordering brush database. Set from code-behind after loading XML files.</summary>
     public BrushDatabase? BrushDb { get; set; }
 
+    /// <summary>Brush catalog with wall/ground/doodad definitions. Used for wall auto-alignment.</summary>
+    public BrushCatalog? BrushCatalog { get; set; }
+
     // Server ID → Client ID lookup
     private Dictionary<ushort, ushort>? _serverToClientMap;
     private Dictionary<ushort, OtbItem>? _serverToOtbItemMap;
@@ -1552,6 +1555,101 @@ public sealed class MapCanvasControl : Control
         return result;
     }
 
+    // ── Wall auto-alignment (port of OTAcademy doWalls) ──
+
+    /// <summary>Check if a neighbor tile has a wall item belonging to the given wall brush.</summary>
+    private bool HasMatchingWall(WallBrushDef wallBrush, int x, int y, byte z)
+    {
+        if (x < 0 || x > 65535 || y < 0 || y > 65535) return false;
+        var pos = new MapPosition((ushort)x, (ushort)y, z);
+        if (!_mapData!.Tiles.TryGetValue(pos, out var tile)) return false;
+        foreach (var item in tile.Items)
+            if (BrushCatalog!.WallItemToBrush.TryGetValue(item.Id, out var brush) && brush == wallBrush)
+                return true;
+        return false;
+    }
+
+    /// <summary>Pick a random item from a wall segment based on chance weights.</summary>
+    private static ushort PickWallItem(WallSegment seg)
+    {
+        if (seg.Items.Count == 0) return 0;
+        int totalChance = 0;
+        foreach (var ci in seg.Items)
+            totalChance += ci.Chance;
+        if (totalChance <= 0)
+            return seg.Items[0].Id;
+        int roll = _brushRandom.Next(1, totalChance + 1);
+        foreach (var ci in seg.Items)
+        {
+            if (roll <= ci.Chance) return ci.Id;
+            roll -= ci.Chance;
+        }
+        return seg.Items[0].Id;
+    }
+
+    /// <summary>
+    /// Update wall items on a tile to the correct segment based on cardinal neighbors.
+    /// Mirrors OTAcademy's doWalls() logic with simplified 4-segment system.
+    /// </summary>
+    private void DoWalls(MapPosition pos)
+    {
+        if (BrushCatalog == null || _mapData == null) return;
+        if (!_mapData.Tiles.TryGetValue(pos, out var tile)) return;
+
+        for (int i = 0; i < tile.Items.Count; i++)
+        {
+            if (!BrushCatalog.WallItemToBrush.TryGetValue(tile.Items[i].Id, out var wallBrush))
+                continue;
+
+            int x = pos.X, y = pos.Y;
+            byte z = pos.Z;
+
+            // Build neighbor bitmask: N=1, W=2, E=4, S=8
+            int bitmask = 0;
+            if (HasMatchingWall(wallBrush, x, y - 1, z)) bitmask |= 1;
+            if (HasMatchingWall(wallBrush, x - 1, y, z)) bitmask |= 2;
+            if (HasMatchingWall(wallBrush, x + 1, y, z)) bitmask |= 4;
+            if (HasMatchingWall(wallBrush, x, y + 1, z)) bitmask |= 8;
+
+            // POrigins has 4 segment types; the half_border_types table always resolves
+            // to one of: pole(0), corner(3), horizontal(6), vertical(9).
+            // Selection depends only on North (bit 0) and West (bit 1) neighbors.
+            string segmentName = (bitmask & 3) switch
+            {
+                3 => "corner",
+                1 => "vertical",
+                2 => "horizontal",
+                _ => "pole",
+            };
+
+            if (!wallBrush.Segments.TryGetValue(segmentName, out var segment) || segment.Items.Count == 0)
+                continue;
+
+            ushort newId = PickWallItem(segment);
+            if (newId == 0 || newId == tile.Items[i].Id) continue;
+
+            tile.Items[i] = new MapItem { Id = newId };
+        }
+    }
+
+    /// <summary>Run DoWalls on a set of positions plus their 4 cardinal neighbors.</summary>
+    private void BatchDoWalls(IEnumerable<MapPosition> positions)
+    {
+        if (BrushCatalog == null || _mapData == null) return;
+        var todo = new HashSet<MapPosition>();
+        foreach (var p in positions)
+        {
+            todo.Add(p);
+            int x = p.X, y = p.Y;
+            if (y > 0) todo.Add(new MapPosition((ushort)x, (ushort)(y - 1), p.Z));
+            if (x > 0) todo.Add(new MapPosition((ushort)(x - 1), (ushort)y, p.Z));
+            if (x < 65535) todo.Add(new MapPosition((ushort)(x + 1), (ushort)y, p.Z));
+            if (y < 65535) todo.Add(new MapPosition((ushort)x, (ushort)(y + 1), p.Z));
+        }
+        foreach (var pos in todo)
+            DoWalls(pos);
+    }
+
     /// <summary>Paint the current brush at the given center position using BrushSize.</summary>
     private void PaintBrushAt(MapPosition center, Dictionary<MapPosition, MapTile?> undoSnapshot)
     {
@@ -1574,9 +1672,26 @@ public sealed class MapCanvasControl : Control
             }
 
             ushort idToPlace = hasList ? itemIds![_brushRandom.Next(itemIds.Count)] : BrushServerId;
-            AddItemToTile(tile, idToPlace);
+
+            // Wall dedup: if the item belongs to a wall brush and the tile already has
+            // a wall from the same brush, skip adding a duplicate.
+            if (BrushCatalog != null
+                && BrushCatalog.WallItemToBrush.TryGetValue(idToPlace, out var wallBrush))
+            {
+                bool alreadyHasWall = false;
+                foreach (var existing in tile.Items)
+                    if (BrushCatalog.WallItemToBrush.TryGetValue(existing.Id, out var eb) && eb == wallBrush)
+                    { alreadyHasWall = true; break; }
+                if (!alreadyHasWall)
+                    AddItemToTile(tile, idToPlace);
+            }
+            else
+            {
+                AddItemToTile(tile, idToPlace);
+            }
         }
 
+        BatchDoWalls(tiles);
         BatchBorderize(tiles);
     }
 
@@ -1683,6 +1798,7 @@ public sealed class MapCanvasControl : Control
             AddItemToTile(tile, idToPlace);
         }
 
+        BatchDoWalls(positions);
         BatchBorderize(positions);
 
         int count = (max.X - min.X + 1) * (max.Y - min.Y + 1);
@@ -1864,11 +1980,20 @@ public sealed class MapCanvasControl : Control
         int count = _selectedTiles.Count;
         PushUndo(_selectedTiles);
 
+        // Track positions where wall items were removed so we can update neighbors
+        var wallAffected = new List<MapPosition>();
+
         if (_isAreaSelection)
         {
             // Area selection: remove entire tiles (all items)
             foreach (var pos in _selectedTiles)
+            {
+                if (BrushCatalog != null && _mapData.Tiles.TryGetValue(pos, out var t))
+                    foreach (var item in t.Items)
+                        if (BrushCatalog.WallItemToBrush.ContainsKey(item.Id))
+                        { wallAffected.Add(pos); break; }
                 _mapData.Tiles.Remove(pos);
+            }
         }
         else
         {
@@ -1878,14 +2003,21 @@ public sealed class MapCanvasControl : Control
                 if (!_mapData.Tiles.TryGetValue(pos, out var tile) || tile.Items.Count == 0)
                     continue;
 
-                // Find the topmost non-meta item: last in list is topmost
+                // Check if the item being removed is a wall
+                var removed = tile.Items[tile.Items.Count - 1];
+                if (BrushCatalog != null && BrushCatalog.WallItemToBrush.ContainsKey(removed.Id))
+                    wallAffected.Add(pos);
+
                 tile.Items.RemoveAt(tile.Items.Count - 1);
 
-                // If tile has no items left, remove it from the map
                 if (tile.Items.Count == 0)
                     _mapData.Tiles.Remove(pos);
             }
         }
+
+        // Update wall segments on affected neighbors
+        if (wallAffected.Count > 0)
+            BatchDoWalls(wallAffected);
 
         _selectedTiles.Clear();
         _minimapDirty = true;

@@ -3262,13 +3262,13 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelectedClientItem == null) return;
         var targetId = SelectedClientItem.Id;
 
-        // Reset filters to show all items
+        // Set filter to the item's category so it stays visible
         _suppressNavigateSync = true;
         ClientSearchText = string.Empty;
-        ClientCategoryFilter = "All";
+        ClientCategoryFilter = SelectedClientItem.CategoryName;
         _suppressNavigateSync = false;
 
-        // Rebuild filtered list with no filters
+        // Rebuild filtered list with category filter
         ApplyClientFilter();
 
         // Find the item in the full list and navigate to its page
