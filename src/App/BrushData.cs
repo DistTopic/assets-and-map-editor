@@ -212,9 +212,18 @@ public static class BrushXmlLoader
         var tilesetsPath = Path.Combine(dir, "tilesets.xml");
 
         if (File.Exists(bordersPath)) LoadBorders(bordersPath, db);
-        if (File.Exists(groundsPath)) LoadGrounds(groundsPath, db);
-        if (File.Exists(wallsPath)) LoadWalls(wallsPath, db);
-        if (File.Exists(doodadsPath)) LoadDoodads(doodadsPath, db);
+
+        // Brush definitions can appear in any XML file (e.g. wall brushes in doodads.xml,
+        // doodad brushes in grounds.xml). Parse every file through every type-specific loader.
+        var brushFiles = new[] { groundsPath, wallsPath, doodadsPath }
+            .Where(File.Exists).ToArray();
+        foreach (var file in brushFiles)
+        {
+            LoadGrounds(file, db);
+            LoadWalls(file, db);
+            LoadDoodads(file, db);
+        }
+
         if (File.Exists(creaturesPath)) LoadCreatures(creaturesPath, db);
         if (File.Exists(tilesetsPath)) LoadTilesets(tilesetsPath, db);
 
@@ -310,7 +319,7 @@ public static class BrushXmlLoader
         foreach (var el in doc.Descendants("brush"))
         {
             var type = (string?)el.Attribute("type");
-            if (type != "wall") continue;
+            if (type != "wall" && type != "wall decoration") continue;
 
             var def = new WallBrushDef
             {
@@ -356,7 +365,7 @@ public static class BrushXmlLoader
         foreach (var el in doc.Descendants("brush"))
         {
             var type = (string?)el.Attribute("type");
-            if (type != "doodad") continue;
+            if (type != "doodad" && type != "carpet" && type != "table") continue;
 
             var def = new DoodadBrushDef
             {
