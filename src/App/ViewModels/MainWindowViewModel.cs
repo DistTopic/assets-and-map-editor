@@ -628,14 +628,14 @@ public partial class MainWindowViewModel : ObservableObject
         if (_datData == null || _sprFile == null) return;
 
         int transplanted = 0;
-        int replaced = 0;
         int skipped = 0;
 
         ushort nextId = (ushort)(_datData.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
 
         foreach (var entry in entries)
         {
-            if (entry.Action == TransplantAction.Skip)
+            // Duplicates are always skipped — never copied
+            if (entry.Action == TransplantAction.Skip || entry.DuplicateTargetId.HasValue)
             {
                 skipped++;
                 continue;
@@ -650,18 +650,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Copy sprites from source SPR → current session's SPR
             RemapSpritesToTarget(clone, sourceSpr, _sprFile);
 
-            if (entry.Action == TransplantAction.Replace && entry.DuplicateTargetId.HasValue)
-            {
-                clone.Id = entry.DuplicateTargetId.Value;
-                _datData.Items[clone.Id] = clone;
-                replaced++;
-            }
-            else
-            {
-                clone.Id = nextId++;
-                _datData.Items[clone.Id] = clone;
-                transplanted++;
-            }
+            clone.Id = nextId++;
+            _datData.Items[clone.Id] = clone;
+            transplanted++;
 
             entry.NewTargetId = clone.Id;
         }
@@ -677,7 +668,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         BuildClientItemList();
 
-        var msg = $"Merge complete: {transplanted} added, {replaced} replaced, {skipped} skipped.";
+        var msg = $"Merge complete: {transplanted} added, {skipped} skipped (duplicates excluded).";
         StatusText = msg;
         AddMapLog(msg);
     }
@@ -872,7 +863,7 @@ public partial class MainWindowViewModel : ObservableObject
             sb.AppendLine();
         }
 
-        sb.AppendLine("Uncheck items to skip them. Duplicates are auto-skipped (uncheck to include).");
+        sb.AppendLine("Uncheck items to skip them. Duplicates are automatically excluded.");
 
         // Build item rows with sprite previews rendered from source SPR
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
@@ -885,9 +876,11 @@ public partial class MainWindowViewModel : ObservableObject
                 Margin = new Avalonia.Thickness(0, 1),
             };
 
+            var isDuplicate = entry.DuplicateTargetId.HasValue;
             var cb = new Avalonia.Controls.CheckBox
             {
-                IsChecked = entry.Action != TransplantAction.Skip,
+                IsChecked = !isDuplicate && entry.Action != TransplantAction.Skip,
+                IsEnabled = !isDuplicate,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Margin = new Avalonia.Thickness(4, 0),
             };
@@ -895,7 +888,7 @@ public partial class MainWindowViewModel : ObservableObject
             cb.IsCheckedChanged += (_, _) =>
             {
                 capturedEntry.Action = cb.IsChecked == true
-                    ? (capturedEntry.DuplicateTargetId.HasValue ? TransplantAction.Replace : TransplantAction.Add)
+                    ? TransplantAction.Add
                     : TransplantAction.Skip;
             };
             Avalonia.Controls.Grid.SetColumn(cb, 0);
@@ -1013,7 +1006,11 @@ public partial class MainWindowViewModel : ObservableObject
         {
             foreach (var row in itemsPanel.Children.OfType<Avalonia.Controls.Border>())
                 if (row.Child is Avalonia.Controls.Grid g)
-                    g.Children.OfType<Avalonia.Controls.CheckBox>().FirstOrDefault()?.SetCurrentValue(Avalonia.Controls.CheckBox.IsCheckedProperty, (bool?)true);
+                {
+                    var cb = g.Children.OfType<Avalonia.Controls.CheckBox>().FirstOrDefault();
+                    if (cb?.IsEnabled == true)
+                        cb.SetCurrentValue(Avalonia.Controls.CheckBox.IsCheckedProperty, (bool?)true);
+                }
         };
 
         var deselectAllBtn = new Avalonia.Controls.Button
