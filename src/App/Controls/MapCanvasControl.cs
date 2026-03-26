@@ -103,6 +103,9 @@ public sealed class MapCanvasControl : Control
     private WriteableBitmap? _minimapBitmap;
     private bool _minimapDirty = true;
 
+    /// <summary>Callback to invalidate the minimap overlay when the viewport changes.</summary>
+    internal Action? _minimapOverlayInvalidated;
+
     // Animation
     private DispatcherTimer? _animationTimer;
     private readonly System.Diagnostics.Stopwatch _animationClock = System.Diagnostics.Stopwatch.StartNew();
@@ -959,6 +962,9 @@ public sealed class MapCanvasControl : Control
 
         // Start/stop animation timer based on whether animated items are visible
         UpdateAnimationTimer();
+
+        // Notify minimap overlay to repaint with updated viewport
+        _minimapOverlayInvalidated?.Invoke();
     }
 
     private void DrawIngameBox(DrawingContext context, int bw, int bh, double tilePixelSize)

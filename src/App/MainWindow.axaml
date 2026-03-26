@@ -1993,18 +1993,12 @@
                           Content="Open Map" Margin="0,8,0,0"/>
                 </StackPanel>
 
-                <!-- Minimap overlay (bottom-right) -->
-                <Border Background="#181825" CornerRadius="6" Padding="4" Opacity="0.9"
-                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                        Margin="0,0,8,8" BorderBrush="#313244" BorderThickness="1"
-                        IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}">
-                  <StackPanel Spacing="4">
-                    <TextBlock Text="Minimap" FontSize="9" Foreground="#585b70" HorizontalAlignment="Center"/>
-                    <Image Source="{Binding #MapCanvas.MinimapBitmap}" MaxWidth="180" MaxHeight="140"
-                           RenderOptions.BitmapInterpolationMode="None"
-                           ToolTip.Tip="Minimap"/>
-                  </StackPanel>
-                </Border>
+                <!-- Minimap overlay (navigable, movable, resizable) -->
+                <ctrl:MinimapOverlayControl x:Name="MinimapOverlay"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,8,8"
+                    Width="220" Height="180"
+                    IsVisible="{Binding MapData, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                 <!-- Map info overlay (top-left) -->
                 <Border Background="#181825BB" CornerRadius="6" Padding="8,4"

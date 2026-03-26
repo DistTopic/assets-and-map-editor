@@ -48,6 +48,14 @@ public partial class MainWindow : Window
                         if (vm.Palette?.NavigateToSubCollection(serverId) != true)
                             vm.AddMapLog($"Item {serverId} not found in any collection.");
                     };
+
+                    // Wire minimap overlay
+                    var minimapOverlay = this.FindControl<MinimapOverlayControl>("MinimapOverlay");
+                    if (minimapOverlay != null)
+                    {
+                        minimapOverlay.Attach(mapCanvas);
+                        mapCanvas._minimapOverlayInvalidated = () => minimapOverlay.OnMapCanvasRendered();
+                    }
                 }
 
                 await vm.TryLoadLastSessionAsync();
