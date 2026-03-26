@@ -1361,8 +1361,10 @@ public partial class MainWindowViewModel : ObservableObject
         }
         try
         {
+            AddMapLog($"Opening brush editor: {BrushCatalog.Grounds.Count} grounds, {BrushCatalog.Walls.Count} walls, {BrushCatalog.Doodads.Count} doodads, {BrushCatalog.Creatures.Count} creatures");
             var vm = new BrushEditorViewModel(this);
             vm.Initialize(BrushCatalog);
+            AddMapLog($"Brush editor initialized: {vm.FilteredBrushes.Count} brushes shown");
             var win = new BrushEditorWindow(vm);
             if (Application.Current?.ApplicationLifetime
                 is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
@@ -1377,7 +1379,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AddMapLog($"Brush editor error: {ex.Message}");
+            AddMapLog($"Brush editor error: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
@@ -1577,6 +1579,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _brushCircle;    // false=square, true=circle
     [ObservableProperty] private int _activeZoneBrush; // 0=none, 1=PZ, 2=NoLogout, 4=NoPvP, 8=PvPZone
     [ObservableProperty] private IList<ushort>? _brushItemIds; // custom brush: random pick from this list
+    [ObservableProperty] private bool _useAutomagic = true; // Border Automagic toggle (A key)
 
     [ObservableProperty] private string _statusText = "Select the client folder to begin";
     [ObservableProperty] private string _searchText = string.Empty;

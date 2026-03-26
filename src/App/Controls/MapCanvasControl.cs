@@ -192,6 +192,9 @@ public sealed class MapCanvasControl : Control
     public static readonly StyledProperty<IList<ushort>?> BrushItemIdsProperty =
         AvaloniaProperty.Register<MapCanvasControl, IList<ushort>?>(nameof(BrushItemIds));
 
+    public static readonly StyledProperty<bool> UseAutomagicProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(UseAutomagic), true);
+
     private static readonly Random _brushRandom = new();
 
     // ── Direct Properties (output) ──
@@ -267,6 +270,7 @@ public sealed class MapCanvasControl : Control
     public bool BrushCircle { get => GetValue(BrushCircleProperty); set => SetValue(BrushCircleProperty, value); }
     public int ActiveZoneBrush { get => GetValue(ActiveZoneBrushProperty); set => SetValue(ActiveZoneBrushProperty, value); }
     public IList<ushort>? BrushItemIds { get => GetValue(BrushItemIdsProperty); set => SetValue(BrushItemIdsProperty, value); }
+    public bool UseAutomagic { get => GetValue(UseAutomagicProperty); set => SetValue(UseAutomagicProperty, value); }
 
     private string _hoveredTileInfo = string.Empty;
     public string HoveredTileInfo
@@ -1692,7 +1696,8 @@ public sealed class MapCanvasControl : Control
         }
 
         BatchDoWalls(tiles);
-        BatchBorderize(tiles);
+        if (hasList && UseAutomagic)
+            BatchBorderize(tiles);
     }
 
     /// <summary>Paint zone flags at the given center position using BrushSize.</summary>
@@ -1799,7 +1804,8 @@ public sealed class MapCanvasControl : Control
         }
 
         BatchDoWalls(positions);
-        BatchBorderize(positions);
+        if (hasList && UseAutomagic)
+            BatchBorderize(positions);
 
         int count = (max.X - min.X + 1) * (max.Y - min.Y + 1);
         _minimapDirty = true;
@@ -2661,6 +2667,13 @@ public sealed class MapCanvasControl : Control
                 e.Handled = true;
                 break;
             case Key.A:
+                if (!ctrl && !shift)
+                {
+                    UseAutomagic = !UseAutomagic;
+                    ActionLogged?.Invoke(UseAutomagic ? "Automagic enabled." : "Automagic disabled.");
+                    e.Handled = true;
+                    break;
+                }
                 // Ctrl+A = select all visible tiles on current floor
                 if (ctrl && _mapData != null)
                 {

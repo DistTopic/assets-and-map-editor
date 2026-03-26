@@ -242,6 +242,14 @@
           <MenuItem.Icon><i:Icon Value="fa-solid fa-file-export" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
         </MenuItem>
       </MenuItem>
+      <MenuItem Header="_Edit" IsVisible="{Binding IsMapEditorActive}">
+        <MenuItem Header="Border Options">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-border-all" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+          <MenuItem Header="Border Automagic" ToggleType="CheckBox"
+                    IsChecked="{Binding UseAutomagic, Mode=TwoWay}"
+                    InputGesture="A"/>
+        </MenuItem>
+      </MenuItem>
       <MenuItem Header="_View" IsVisible="{Binding IsMapEditorActive}">
         <MenuItem Header="Show All Floors" ToggleType="CheckBox" IsChecked="{Binding ViewShowAllFloors, Mode=TwoWay}"/>
         <MenuItem Header="Show as Minimap" ToggleType="CheckBox" IsChecked="{Binding ViewShowAsMinimap, Mode=TwoWay}"/>
@@ -1970,7 +1978,8 @@
                                        BrushSize="{Binding BrushSize, Mode=TwoWay}"
                                        BrushCircle="{Binding BrushCircle, Mode=TwoWay}"
                                        ActiveZoneBrush="{Binding ActiveZoneBrush, Mode=TwoWay}"
-                                       BrushItemIds="{Binding BrushItemIds}"/>
+                                       BrushItemIds="{Binding BrushItemIds}"
+                                       UseAutomagic="{Binding UseAutomagic, Mode=TwoWay}"/>
 
                 <!-- Overlay: empty state message (when no map loaded) -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12"
