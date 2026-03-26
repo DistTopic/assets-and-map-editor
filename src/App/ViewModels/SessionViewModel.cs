@@ -38,6 +38,12 @@ public partial class SessionViewModel : ObservableObject
     public bool IsClientLoaded { get; set; }
     public bool MapHasUnsavedChanges { get; set; }
 
+    // ── Map viewport state ──
+    public double MapViewX { get; set; }
+    public double MapViewY { get; set; }
+    public byte MapCurrentFloor { get; set; } = 7;
+    public double MapZoom { get; set; } = 1.0;
+
     // ── UI state preservation (selection, page, filters) ──
     public ushort? SelectedClientItemId { get; set; }
     public ushort? SelectedOtbItemServerId { get; set; }

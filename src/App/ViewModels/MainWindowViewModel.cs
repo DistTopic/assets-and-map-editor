@@ -232,6 +232,16 @@ public partial class MainWindowViewModel : ObservableObject
         session.ClientSearchText = ClientSearchText;
         session.SearchText = SearchText;
 
+        // Save map viewport state
+        if (_mapGetViewport != null)
+        {
+            var (vx, vy) = _mapGetViewport();
+            session.MapViewX = vx;
+            session.MapViewY = vy;
+        }
+        session.MapCurrentFloor = MapCurrentFloor;
+        session.MapZoom = MapZoom;
+
         session.UpdateName();
     }
 
@@ -253,6 +263,11 @@ public partial class MainWindowViewModel : ObservableObject
         _sprFile = session.SprFile;
         _otbPath = session.OtbPath;
         ClientFolderPath = session.ClientFolderPath;
+
+        // Restore viewport BEFORE setting MapData so CenterOnMap is suppressed
+        if (session.MapData != null && _mapRestoreViewport != null)
+            _mapRestoreViewport(session.MapViewX, session.MapViewY);
+
         MapData = session.MapData;
         MapFilePath = session.MapFilePath;
         BrushDb = session.BrushDb;
@@ -336,6 +351,11 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         MapTileCount = MapData?.Tiles.Count ?? 0;
+
+        // Restore map viewport state
+        MapCurrentFloor = session.MapCurrentFloor;
+        MapZoom = session.MapZoom;
+
         StatusText = IsClientLoaded
             ? $"Session loaded: {_datData?.ItemCount ?? 0} items"
             : "Select the client folder to begin";
@@ -1549,6 +1569,8 @@ public partial class MainWindowViewModel : ObservableObject
     internal Action? _mapCenterRequested;
     internal Action<ushort, ushort, byte>? _mapGoToRequested;
     internal Action? _mapSpriteCacheInvalidated;
+    internal Func<(double, double)>? _mapGetViewport;
+    internal Action<double, double>? _mapRestoreViewport;
 
     // ── View menu toggles (bound to MapCanvasControl properties) ──
     [ObservableProperty] private bool _viewShowAllFloors = true;
@@ -2392,8 +2414,13 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 ClientFolderPath = session.ClientFolderPath,
                 OtbPath = session.OtbPath,
+                MapFilePath = session.MapFilePath,
                 ProtocolVersion = session.ProtocolVersion,
                 IsActive = session.IsActive,
+                MapViewX = session.MapViewX,
+                MapViewY = session.MapViewY,
+                MapCurrentFloor = session.MapCurrentFloor,
+                MapZoom = session.MapZoom,
             });
         }
 
@@ -2442,6 +2469,11 @@ public partial class MainWindowViewModel : ObservableObject
                 ProtocolVersion = s.ProtocolVersion,
                 ClientFolderPath = s.ClientFolderPath,
                 OtbPath = s.OtbPath,
+                MapFilePath = s.MapFilePath,
+                MapViewX = s.MapViewX,
+                MapViewY = s.MapViewY,
+                MapCurrentFloor = s.MapCurrentFloor,
+                MapZoom = s.MapZoom,
             };
             session.UpdateName();
             Sessions.Add(session);
@@ -2503,6 +2535,12 @@ public partial class MainWindowViewModel : ObservableObject
                 session.OtbData = OtbFile.Load(session.OtbPath);
             }
 
+            // Load Map
+            if (!string.IsNullOrEmpty(session.MapFilePath) && File.Exists(session.MapFilePath))
+            {
+                session.MapData = OtbmFile.Load(session.MapFilePath);
+            }
+
             session.UpdateName();
 
             // If this is the active session, propagate data to the view model
@@ -2529,6 +2567,20 @@ public partial class MainWindowViewModel : ObservableObject
                     ApplyFilter();
                     if (_datData != null && _sprFile != null)
                         InitializePalette();
+                }
+
+                // Restore map for the active session
+                if (session.MapData != null)
+                {
+                    if (_mapRestoreViewport != null)
+                        _mapRestoreViewport(session.MapViewX, session.MapViewY);
+                    MapData = session.MapData;
+                    MapFilePath = session.MapFilePath;
+                    MapTileCount = MapData.Tiles.Count;
+                    MapHasUnsavedChanges = false;
+                    MapCurrentFloor = session.MapCurrentFloor;
+                    MapZoom = session.MapZoom;
+                    OnPropertyChanged(nameof(MapFloors));
                 }
 
                 StatusText = IsClientLoaded
@@ -2595,30 +2647,82 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task SaveAllAsync()
     {
         var saved = new List<string>();
+        StatusText = "Saving…";
 
         try
         {
-            // 1. OTB + DAT + SPR
+            // Apply model changes on UI thread before background save
             if (_otbData != null && _otbPath != null)
             {
                 foreach (var vm in _allItems)
                     vm.ApplyToModel();
-
-                OtbFile.Save(_otbPath, _otbData);
-                SaveClientFilesIfLoaded();
-                HasUnsavedChanges = false;
-                saved.Add("OTB");
-                if (_datData != null) saved.Add("DAT");
-                if (_sprFile != null) saved.Add("SPR");
             }
 
-            // 2. Map
-            if (MapData != null && !string.IsNullOrEmpty(MapFilePath))
+            // Capture references for background work
+            var otbData = _otbData;
+            var otbPath = _otbPath;
+            var datData = _datData;
+            var sprFile = _sprFile;
+            var mapData = MapData;
+            var mapPath = MapFilePath;
+            var clientFolder = ClientFolderPath;
+            string? datFilePath = null;
+            string? sprFilePath = null;
+
+            if (clientFolder != null)
             {
-                OtbmFile.Save(MapFilePath, MapData);
-                MapTileCount = MapData.Tiles.Count;
+                var (dp, sp) = FindClientFiles(clientFolder);
+                datFilePath = dp;
+                sprFilePath = sp;
+            }
+
+            await Task.Run(() =>
+            {
+                if (otbData != null && otbPath != null)
+                {
+                    OtbFile.Save(otbPath, otbData);
+                    saved.Add("OTB");
+
+                    if (datData != null && datFilePath != null)
+                    {
+                        DatFile.Save(datFilePath, datData);
+                        saved.Add("DAT");
+                    }
+
+                    if (sprFile != null && sprFilePath != null && sprFile.HasChanges)
+                    {
+                        var tempPath = sprFilePath + ".tmp";
+                        sprFile.Save(tempPath);
+                        sprFile.Dispose();
+                        File.Move(tempPath, sprFilePath, overwrite: true);
+                        saved.Add("SPR");
+                    }
+                }
+
+                if (mapData != null && !string.IsNullOrEmpty(mapPath))
+                {
+                    OtbmFile.Save(mapPath, mapData);
+                    saved.Add("Map");
+                }
+            });
+
+            // UI-thread updates after background save
+            if (otbData != null && otbPath != null)
+                HasUnsavedChanges = false;
+
+            // Reload SPR if it was saved (needs re-open for memory-mapped access)
+            if (saved.Contains("SPR") && sprFilePath != null && datData != null)
+            {
+                _sprFile = SprFile.Load(sprFilePath, datData.Extended);
+                if (_currentSession != null)
+                    _currentSession.SprFile = _sprFile;
+                OnPropertyChanged(nameof(ExposedSprFile));
+            }
+
+            if (mapData != null && !string.IsNullOrEmpty(mapPath))
+            {
+                MapTileCount = mapData.Tiles.Count;
                 MapHasUnsavedChanges = false;
-                saved.Add("Map");
             }
 
             StatusText = saved.Count > 0

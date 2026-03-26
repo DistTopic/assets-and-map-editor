@@ -33,6 +33,8 @@ public partial class MainWindow : Window
                     vm._mapCenterRequested = () => mapCanvas.CenterOnMap();
                     vm._mapGoToRequested = (x, y, z) => mapCanvas.GoToPosition(x, y, z);
                     vm._mapSpriteCacheInvalidated = () => { mapCanvas.ClearCaches(); mapCanvas.InvalidateVisual(); };
+                    vm._mapGetViewport = () => (mapCanvas.ViewX, mapCanvas.ViewY);
+                    vm._mapRestoreViewport = (vx, vy) => mapCanvas.RestoreViewport(vx, vy);
                     mapCanvas.SaveRequested += () => vm.SaveMap();
                     mapCanvas.MapEdited += () => vm.MarkMapDirty();
                     mapCanvas.ActionLogged += msg => vm.AddMapLog(msg);

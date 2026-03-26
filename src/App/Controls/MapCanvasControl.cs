@@ -23,6 +23,15 @@ public sealed class MapCanvasControl : Control
 
     // Viewport
     private double _viewX, _viewY;
+    private bool _suppressCenterOnLoad;
+
+    /// <summary>Camera X position in world pixel coordinates.</summary>
+    public double ViewX { get => _viewX; set { _viewX = value; InvalidateVisual(); } }
+    /// <summary>Camera Y position in world pixel coordinates.</summary>
+    public double ViewY { get => _viewY; set { _viewY = value; InvalidateVisual(); } }
+
+    /// <summary>Set viewport without triggering CenterOnMap when MapDataSource changes.</summary>
+    public void RestoreViewport(double vx, double vy) { _suppressCenterOnLoad = true; _viewX = vx; _viewY = vy; }
 
     // Internal data refs (synced from styled properties)
     private MapData? _mapData;
@@ -309,7 +318,8 @@ public sealed class MapCanvasControl : Control
             _mapData = change.GetNewValue<MapData?>();
             ClearCaches();
             _minimapDirty = true;
-            if (_mapData != null) CenterOnMap();
+            if (_mapData != null && !_suppressCenterOnLoad) CenterOnMap();
+            _suppressCenterOnLoad = false;
             InvalidateVisual();
         }
         else if (change.Property == DatDataSourceProperty)

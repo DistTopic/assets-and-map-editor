@@ -6,8 +6,13 @@ public class SavedSession
 {
     public string? ClientFolderPath { get; set; }
     public string? OtbPath { get; set; }
+    public string? MapFilePath { get; set; }
     public int ProtocolVersion { get; set; }
     public bool IsActive { get; set; }
+    public double MapViewX { get; set; }
+    public double MapViewY { get; set; }
+    public byte MapCurrentFloor { get; set; } = 7;
+    public double MapZoom { get; set; } = 1.0;
 }
 
 public class AppSettings
