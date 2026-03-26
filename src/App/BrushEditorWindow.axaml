@@ -5,365 +5,593 @@
         x:Class="POriginsItemEditor.App.BrushEditorWindow"
         x:DataType="vm:BrushEditorViewModel"
         Title="Brush Editor"
-        Width="900" Height="640"
-        MinWidth="700" MinHeight="500"
+        Width="1060" Height="720"
+        MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterOwner"
         Background="#1e1e2e">
 
   <Window.Styles>
-    <Style Selector="Button.toolbar">
+    <!-- All TextBoxes: vertically center the text -->
+    <Style Selector="TextBox">
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <!-- Shared button -->
+    <Style Selector="Button.tb">
       <Setter Property="Background" Value="#313244"/>
       <Setter Property="Foreground" Value="#cdd6f4"/>
       <Setter Property="CornerRadius" Value="4"/>
       <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="Padding" Value="6,3"/>
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
-    <Style Selector="Button.toolbar:pointerover">
+    <Style Selector="Button.tb:pointerover">
       <Setter Property="Background" Value="#45475a"/>
     </Style>
-    <Style Selector="TextBlock.label">
+    <!-- Accent button (save/export) -->
+    <Style Selector="Button.accent">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.accent:pointerover">
+      <Setter Property="Background" Value="#45475a"/>
+    </Style>
+    <!-- Subtle label -->
+    <Style Selector="TextBlock.lbl">
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="Foreground" Value="#a6adc8"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
+    <!-- Section header -->
+    <Style Selector="TextBlock.sec">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#cdd6f4"/>
+    </Style>
+    <!-- Card -->
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#11111b"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="10,8"/>
+    </Style>
+    <!-- Ensure all grid children are vertically centered -->
+    <Style Selector="Grid > TextBox">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Grid > Button">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Grid > ComboBox">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
   </Window.Styles>
 
-  <Grid ColumnDefinitions="280,*" Margin="8">
+  <Grid ColumnDefinitions="280,*" Margin="6">
 
-    <!-- LEFT: Brush list -->
-    <Border Background="#181825" CornerRadius="8" Padding="8" Margin="0,0,4,0">
-      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <!-- ════════════════ LEFT PANEL ════════════════ -->
+    <Border Background="#181825" CornerRadius="8" Padding="8" Margin="0,0,3,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
 
-        <!-- Filter type -->
-        <ComboBox Grid.Row="0" ItemsSource="{Binding BrushTypes}"
+        <TextBlock Grid.Row="0" Text="Brushes" FontSize="15" FontWeight="Bold"
+                   Foreground="#cdd6f4" Margin="2,0,0,6"/>
+
+        <!-- Filter -->
+        <ComboBox Grid.Row="1" ItemsSource="{Binding BrushTypes}"
                   SelectedItem="{Binding FilterType}"
-                  FontSize="11" Padding="6,4" MinHeight="0" MaxHeight="28"
+                  FontSize="11" Padding="6,3" MinHeight="0" MaxHeight="26"
                   Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                  CornerRadius="4" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+                  CornerRadius="4" HorizontalAlignment="Stretch" Margin="0,0,0,3"/>
 
         <!-- Search -->
-        <TextBox Grid.Row="1" Watermark="Search brushes..."
-                 Text="{Binding SearchText}" FontSize="11"
+        <TextBox Grid.Row="2" Watermark="Search..." Text="{Binding SearchText}" FontSize="11"
                  Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                 CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
+                 CornerRadius="4" Padding="6,3" Margin="0,0,0,4"/>
 
-        <!-- New brush buttons -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4">
-          <Button Classes="toolbar" Padding="6,3" Command="{Binding NewGroundBrushCommand}"
-                  ToolTip.Tip="New Ground Brush">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#a6e3a1"/>
-              <TextBlock Text="Ground" FontSize="10"/>
-            </StackPanel>
-          </Button>
-          <Button Classes="toolbar" Padding="6,3" Command="{Binding NewWallBrushCommand}"
-                  ToolTip.Tip="New Wall Brush">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#89b4fa"/>
-              <TextBlock Text="Wall" FontSize="10"/>
-            </StackPanel>
-          </Button>
-          <Button Classes="toolbar" Padding="6,3" Command="{Binding NewDoodadBrushCommand}"
-                  ToolTip.Tip="New Doodad Brush">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#f9e2af"/>
-              <TextBlock Text="Doodad" FontSize="10"/>
-            </StackPanel>
-          </Button>
-        </StackPanel>
+        <!-- Empty state -->
+        <TextBlock Grid.Row="3" Text="No brushes found." FontSize="12" Foreground="#585b70"
+                   VerticalAlignment="Top" Margin="4,4,0,0"
+                   IsVisible="{Binding !HasBrushes}"/>
 
         <!-- Brush list -->
         <ListBox Grid.Row="3" ItemsSource="{Binding FilteredBrushes}"
                  SelectedItem="{Binding SelectedBrush}"
                  Background="Transparent" Foreground="#cdd6f4"
-                 BorderThickness="0" Padding="0">
+                 BorderThickness="0" Padding="0"
+                 IsVisible="{Binding HasBrushes}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:BrushListItemViewModel">
-              <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
-                <Border Width="28" Height="28" Background="#313244" CornerRadius="3">
-                  <Image Source="{Binding Sprite}" Width="24" Height="24"
-                         RenderOptions.BitmapInterpolationMode="None"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <StackPanel VerticalAlignment="Center" Spacing="1">
-                  <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#cdd6f4"/>
-                  <TextBlock Text="{Binding BrushType}" FontSize="9" Foreground="#585b70"/>
-                </StackPanel>
-              </StackPanel>
+              <Border Background="#11111b" CornerRadius="4" Padding="4,3" Margin="0,1"
+                      ToolTip.Tip="{Binding Tooltip}">
+                <Grid ColumnDefinitions="34,*,Auto">
+                  <Border Width="30" Height="30" Background="#313244" CornerRadius="3"
+                          VerticalAlignment="Center">
+                    <Panel>
+                      <Image Source="{Binding Sprite}" Width="26" Height="26"
+                             RenderOptions.BitmapInterpolationMode="None"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             IsVisible="{Binding HasSprite}"/>
+                      <TextBlock Text="{Binding LookLabel}" FontSize="8" Foreground="#585b70"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 IsVisible="{Binding !HasSprite}"/>
+                    </Panel>
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0" Margin="5,0,0,0">
+                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="Medium" Foreground="#cdd6f4"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding BrushType}" FontSize="9" Foreground="#585b70"/>
+                  </StackPanel>
+                  <Border Grid.Column="2" Background="#313244" CornerRadius="6"
+                          Padding="5,1" VerticalAlignment="Center" Margin="3,0,0,0"
+                          IsVisible="{Binding ItemCount}">
+                    <TextBlock Text="{Binding ItemCount}" FontSize="8" Foreground="#a6adc8"
+                               HorizontalAlignment="Center"/>
+                  </Border>
+                </Grid>
+              </Border>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <!-- Status -->
-        <TextBlock Grid.Row="4" Text="{Binding StatusText}" FontSize="10" Foreground="#585b70"
-                   Margin="0,4,0,0"/>
+        <!-- New brush row -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="3" Margin="0,4,0,3">
+          <Button Classes="tb" Command="{Binding NewGroundBrushCommand}" ToolTip.Tip="New Ground">
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#a6e3a1"/>
+              <TextBlock Text="Ground" FontSize="9"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="tb" Command="{Binding NewWallBrushCommand}" ToolTip.Tip="New Wall">
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#89b4fa"/>
+              <TextBlock Text="Wall" FontSize="9"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="tb" Command="{Binding NewDoodadBrushCommand}" ToolTip.Tip="New Doodad">
+            <StackPanel Orientation="Horizontal" Spacing="3">
+              <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#f9e2af"/>
+              <TextBlock Text="Doodad" FontSize="9"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <!-- Footer -->
+        <StackPanel Grid.Row="5" Spacing="0">
+          <TextBlock Text="{Binding StatusText}" FontSize="9" Foreground="#585b70"/>
+          <TextBlock Text="{Binding DiagnosticText}" FontSize="8" Foreground="#45475a"/>
+        </StackPanel>
       </Grid>
     </Border>
 
-    <!-- RIGHT: Brush details -->
-    <Border Grid.Column="1" Background="#181825" CornerRadius="8" Padding="8" Margin="4,0,0,0">
-      <ScrollViewer>
-        <StackPanel Spacing="8" IsVisible="{Binding SelectedBrush, Converter={x:Static ObjectConverters.IsNotNull}}">
+    <!-- ════════════════ RIGHT PANEL ════════════════ -->
+    <Border Grid.Column="1" Background="#181825" CornerRadius="8" Padding="10,8" Margin="3,0,0,0">
+      <Panel>
 
-          <!-- Name + LookId -->
-          <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,4">
-            <TextBox Text="{Binding EditName}" FontSize="12" FontWeight="Bold"
-                     Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                     CornerRadius="4" Padding="8,4"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="8,0,0,0"
-                        VerticalAlignment="Center">
-              <TextBlock Classes="label" Text="Look ID:"/>
-              <TextBox Text="{Binding EditLookId}" Width="70" FontSize="11"
-                       Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                       CornerRadius="4" Padding="6,3"/>
-            </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="8,0,0,0">
-              <Button Classes="toolbar" Padding="8,4" Command="{Binding SaveBrushCommand}">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <i:Icon Value="fa-solid fa-floppy-disk" FontSize="10" Foreground="#a6e3a1"/>
-                  <TextBlock Text="Save" FontSize="11"/>
+        <!-- Empty state -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
+                    IsVisible="{Binding SelectedBrush, Converter={x:Static ObjectConverters.IsNull}}">
+          <i:Icon Value="fa-solid fa-paintbrush" FontSize="36" Foreground="#313244"/>
+          <TextBlock Text="Select a brush" FontSize="13" Foreground="#585b70" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Detail -->
+        <ScrollViewer IsVisible="{Binding SelectedBrush, Converter={x:Static ObjectConverters.IsNotNull}}"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="8" Margin="0,0,4,0">
+
+            <!-- ── Header bar ── -->
+            <Border Classes="card">
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto" MinHeight="36">
+                <TextBox Text="{Binding EditName}" FontSize="14" FontWeight="Bold"
+                         Background="Transparent" Foreground="#cdd6f4" BorderBrush="#45475a"
+                         CornerRadius="4" Padding="8,5" Watermark="Brush name"
+                         VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3"
+                            VerticalAlignment="Center" Margin="8,0,0,0">
+                  <TextBlock Classes="lbl" Text="Look:"/>
+                  <TextBox Text="{Binding EditLookId}" Width="60" FontSize="10"
+                           Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
+                           CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
                 </StackPanel>
-              </Button>
-              <Button Classes="toolbar" Padding="8,4" Command="{Binding DeleteBrushCommand}">
-                <i:Icon Value="fa-solid fa-trash" FontSize="10" Foreground="#f38ba8"/>
-              </Button>
-            </StackPanel>
-          </Grid>
-
-          <!-- Ground brush details -->
-          <StackPanel Spacing="6"
-                      IsVisible="{Binding SelectedBrush.GroundDef, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="Ground Brush" FontSize="12" FontWeight="SemiBold" Foreground="#a6e3a1"/>
-
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Classes="label" Text="Z-Order:"/>
-                <TextBox Text="{Binding EditZOrder}" Width="70" FontSize="11"
-                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                         CornerRadius="4" Padding="6,3"/>
-              </StackPanel>
-              <CheckBox IsChecked="{Binding EditRandomize}" Content="Randomize" FontSize="11"
-                        Foreground="#cdd6f4"/>
-            </StackPanel>
-
-            <!-- Items -->
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4">
-                <TextBlock Classes="label" Text="Items" FontWeight="SemiBold"/>
-                <Button Classes="toolbar" Padding="4,2" Command="{Binding AddGroundItemCommand}">
-                  <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#a6e3a1"/>
+                <Button Grid.Column="2" Classes="accent" Margin="8,0,0,0"
+                        Command="{Binding SaveBrushCommand}" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <i:Icon Value="fa-solid fa-floppy-disk" FontSize="10" Foreground="#a6e3a1"/>
+                    <TextBlock Text="Save" FontSize="10"/>
+                  </StackPanel>
                 </Button>
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding EditGroundItems}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
-                    <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="0,1">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="28" Height="28" Background="#313244" CornerRadius="3">
-                          <Image Source="{Binding Sprite}" Width="24" Height="24"
-                                 RenderOptions.BitmapInterpolationMode="None"/>
+                <Button Grid.Column="3" Classes="tb" Margin="4,0,0,0"
+                        Command="{Binding DeleteBrushCommand}" VerticalAlignment="Center">
+                  <i:Icon Value="fa-solid fa-trash" FontSize="10" Foreground="#f38ba8"/>
+                </Button>
+              </Grid>
+            </Border>
+
+            <!-- ════════════ GROUND BRUSH ════════════ -->
+            <StackPanel Spacing="6"
+                        IsVisible="{Binding SelectedBrush.GroundDef, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+              <!-- Type badge + properties -->
+              <DockPanel>
+                <Border Background="#a6e3a1" CornerRadius="3" Padding="8,3" DockPanel.Dock="Left">
+                  <TextBlock Text="GROUND" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
+                </Border>
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="10,0,0,0"
+                            VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Classes="lbl" Text="Z-Order:"/>
+                    <TextBox Text="{Binding EditZOrder}" Width="55" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="3" Padding="4,2"/>
+                  </StackPanel>
+                  <CheckBox IsChecked="{Binding EditRandomize}" Content="Randomize"
+                            FontSize="10" Foreground="#cdd6f4"/>
+                </StackPanel>
+              </DockPanel>
+
+              <!-- ── Ground Items ── -->
+              <Border Classes="card">
+                <StackPanel Spacing="4">
+                  <DockPanel>
+                    <TextBlock Classes="sec" Text="Items" Foreground="#a6e3a1" VerticalAlignment="Center"/>
+                    <Button Classes="tb" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                            Command="{Binding AddGroundItemCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#a6e3a1"/>
+                        <TextBlock Text="Add" FontSize="9"/>
+                      </StackPanel>
+                    </Button>
+                  </DockPanel>
+                  <ItemsControl ItemsSource="{Binding EditGroundItems}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
+                        <Border Background="#181825" CornerRadius="4" Padding="6,4" Margin="0,1">
+                          <Grid ColumnDefinitions="34,Auto,Auto,Auto,Auto,*,Auto" MinHeight="32">
+                            <Border Width="30" Height="30" Background="#313244" CornerRadius="3"
+                                    VerticalAlignment="Center">
+                              <Panel>
+                                <Image Source="{Binding Sprite}" Width="26" Height="26"
+                                       RenderOptions.BitmapInterpolationMode="None"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding IdLabel}" FontSize="7" Foreground="#585b70"
+                                           HorizontalAlignment="Center" VerticalAlignment="Bottom"/>
+                              </Panel>
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="lbl" Text="ID:" Margin="6,0,3,0"/>
+                            <TextBox Grid.Column="2" Text="{Binding ServerId}" Width="60" FontSize="10"
+                                     Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                     CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="3" Classes="lbl" Text="Chance:" Margin="8,0,3,0"/>
+                            <TextBox Grid.Column="4" Text="{Binding Chance}" Width="50" FontSize="10"
+                                     Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                     CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
+                            <Button Grid.Column="6" Classes="tb" Padding="4,3"
+                                    Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveGroundItemCommand}"
+                                    CommandParameter="{Binding}" VerticalAlignment="Center">
+                              <i:Icon Value="fa-solid fa-xmark" FontSize="8" Foreground="#f38ba8"/>
+                            </Button>
+                          </Grid>
                         </Border>
-                        <TextBlock Classes="label" Text="ID:"/>
-                        <TextBox Text="{Binding ServerId}" Width="60" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2"/>
-                        <TextBlock Classes="label" Text="Chance:"/>
-                        <TextBox Text="{Binding Chance}" Width="50" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2"/>
-                        <Button Classes="toolbar" Padding="3,1"
-                                Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveGroundItemCommand}"
-                                CommandParameter="{Binding}">
-                          <i:Icon Value="fa-solid fa-xmark" FontSize="9" Foreground="#f38ba8"/>
-                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
+              <!-- ── Borders ── -->
+              <Border Classes="card">
+                <StackPanel Spacing="4">
+                  <DockPanel>
+                    <TextBlock Classes="sec" Text="Borders" Foreground="#89b4fa" VerticalAlignment="Center"/>
+                    <Button Classes="tb" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                            Command="{Binding AddBorderRefCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#89b4fa"/>
+                        <TextBlock Text="Add" FontSize="9"/>
                       </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </DockPanel>
+                    </Button>
+                  </DockPanel>
 
-            <!-- Borders -->
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4">
-                <TextBlock Classes="label" Text="Borders" FontWeight="SemiBold"/>
-                <Button Classes="toolbar" Padding="4,2" Command="{Binding AddBorderRefCommand}">
-                  <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#89b4fa"/>
-                </Button>
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding EditBorders}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:BorderRefViewModel">
-                    <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="0,1">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Classes="label" Text="Align:"/>
-                        <ComboBox SelectedItem="{Binding Align}" FontSize="10" Padding="4,2" MinHeight="0"
-                                  Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244" CornerRadius="3">
-                          <x:String>outer</x:String>
-                          <x:String>inner</x:String>
-                        </ComboBox>
-                        <TextBlock Classes="label" Text="Border ID:"/>
-                        <TextBox Text="{Binding BorderId}" Width="50" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2"/>
-                        <TextBlock Classes="label" Text="To:"/>
-                        <TextBox Text="{Binding To}" Width="90" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2" Watermark="none"/>
-                        <Button Classes="toolbar" Padding="3,1"
-                                Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveBorderRefCommand}"
-                                CommandParameter="{Binding}">
-                          <i:Icon Value="fa-solid fa-xmark" FontSize="9" Foreground="#f38ba8"/>
-                        </Button>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </DockPanel>
-          </StackPanel>
+                  <ItemsControl ItemsSource="{Binding EditBorders}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BorderRefViewModel">
+                        <Border Background="#181825" CornerRadius="5" Padding="6,5" Margin="0,2">
+                          <StackPanel Spacing="4">
 
-          <!-- Wall brush details -->
-          <StackPanel Spacing="6"
-                      IsVisible="{Binding SelectedBrush.WallDef, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="Wall Brush" FontSize="12" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                            <!-- Border header row -->
+                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" MinHeight="30">
+                              <TextBlock Classes="lbl" Text="Align:" Margin="0,0,3,0"/>
+                              <ComboBox Grid.Column="1" SelectedItem="{Binding Align}" FontSize="10"
+                                        Padding="5,3" MinHeight="0" MaxHeight="26"
+                                        Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                        CornerRadius="3" VerticalAlignment="Center">
+                                <x:String>outer</x:String>
+                                <x:String>inner</x:String>
+                              </ComboBox>
+                              <TextBlock Grid.Column="2" Classes="lbl" Text="Border:" Margin="10,0,3,0"/>
+                              <TextBox Grid.Column="3" Text="{Binding BorderId}" Width="50" FontSize="10"
+                                       Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                       CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
+                              <TextBlock Grid.Column="4" Classes="lbl" Text="To:" Margin="10,0,3,0"/>
+                              <TextBox Grid.Column="5" Text="{Binding To}" Width="100" FontSize="10"
+                                       Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                       CornerRadius="3" Padding="5,3" Watermark="none"
+                                       VerticalAlignment="Center"/>
+                              <!-- Expand/collapse edges -->
+                              <Button Grid.Column="7" Classes="tb" Padding="6,3" Margin="6,0,0,0"
+                                      Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).ToggleBorderExpandCommand}"
+                                      CommandParameter="{Binding}"
+                                      ToolTip.Tip="Show/hide border edges" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <i:Icon Value="fa-solid fa-border-all" FontSize="9" Foreground="#89b4fa"/>
+                                  <TextBlock Text="Edges" FontSize="9" Foreground="#89b4fa"/>
+                                </StackPanel>
+                              </Button>
+                              <!-- Remove -->
+                              <Button Grid.Column="8" Classes="tb" Padding="4,3" Margin="4,0,0,0"
+                                      Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveBorderRefCommand}"
+                                      CommandParameter="{Binding}" VerticalAlignment="Center">
+                                <i:Icon Value="fa-solid fa-xmark" FontSize="8" Foreground="#f38ba8"/>
+                              </Button>
+                            </Grid>
 
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4">
-                <TextBlock Classes="label" Text="Segments" FontWeight="SemiBold"/>
-                <Button Classes="toolbar" Padding="4,2" Command="{Binding AddWallSegmentCommand}">
-                  <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#89b4fa"/>
-                </Button>
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding EditWallSegments}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:WallSegmentViewModel">
-                    <Border Background="#11111b" CornerRadius="6" Padding="6" Margin="0,2">
-                      <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                          <TextBlock Classes="label" Text="Type:" FontWeight="SemiBold"/>
-                          <ComboBox SelectedItem="{Binding SegmentType}" FontSize="10" Padding="4,2" MinHeight="0"
-                                    Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244" CornerRadius="3">
-                            <x:String>horizontal</x:String>
-                            <x:String>vertical</x:String>
-                            <x:String>corner</x:String>
-                            <x:String>pole</x:String>
-                          </ComboBox>
-                        </StackPanel>
-                        <TextBlock Classes="label" Text="Items:"/>
-                        <ItemsControl ItemsSource="{Binding Items}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
-                              <Border Width="32" Height="32" Background="#313244" CornerRadius="3" Margin="1"
-                                      ToolTip.Tip="{Binding Tooltip}">
-                                <Image Source="{Binding Sprite}" Width="28" Height="28"
-                                       RenderOptions.BitmapInterpolationMode="None"/>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Classes="label" Text="Doors:" IsVisible="{Binding Doors.Count}"/>
-                        <ItemsControl ItemsSource="{Binding Doors}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:DoorEntryViewModel">
-                              <Border Width="32" Height="32" Background="#45475a" CornerRadius="3" Margin="1"
-                                      ToolTip.Tip="{Binding DoorType}">
-                                <Image Source="{Binding Sprite}" Width="28" Height="28"
-                                       RenderOptions.BitmapInterpolationMode="None"/>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </DockPanel>
-          </StackPanel>
+                            <!-- Expanded: Edge grid (4 rows x 4 cols visual layout) -->
+                            <Border Background="#11111b" CornerRadius="4" Padding="8,6"
+                                    Margin="0,2,0,0" IsVisible="{Binding IsExpanded}">
+                              <StackPanel Spacing="4">
+                                <DockPanel Margin="0,0,0,4">
+                                  <TextBlock Text="Edge Items" FontSize="10" FontWeight="SemiBold"
+                                             Foreground="#89b4fa" VerticalAlignment="Center"/>
+                                  <Button Classes="tb" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                          Padding="6,2"
+                                          Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).SaveBorderEdgesCommand}"
+                                          CommandParameter="{Binding}">
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                      <i:Icon Value="fa-solid fa-floppy-disk" FontSize="8" Foreground="#a6e3a1"/>
+                                      <TextBlock Text="Save Edges" FontSize="9"/>
+                                    </StackPanel>
+                                  </Button>
+                                </DockPanel>
 
-          <!-- Doodad brush details -->
-          <StackPanel Spacing="6"
-                      IsVisible="{Binding SelectedBrush.DoodadDef, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="Doodad Brush" FontSize="12" FontWeight="SemiBold" Foreground="#f9e2af"/>
+                                <!-- Visual border edge grid: 12 positions -->
+                                <!--
+                                  Layout concept (like a 3x3 with diagonals around):
+                                  Row 0:  CNW   N    CNE
+                                  Row 1:   W  (center) E
+                                  Row 2:  CSW   S    CSE
+                                  Row 3:  DNW  DNE  DSW  DSE   (diagonal corners)
+                                -->
+                                <ItemsControl ItemsSource="{Binding Edges}">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                      <UniformGrid Columns="4"/>
+                                    </ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BorderEdgeViewModel">
+                                      <Border Background="#181825" CornerRadius="4"
+                                              Margin="2" Padding="4"
+                                              ToolTip.Tip="{Binding IdLabel}">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Spacing="3">
+                                          <!-- Edge label -->
+                                          <TextBlock Text="{Binding Label}" FontSize="9" FontWeight="Bold"
+                                                     Foreground="#89b4fa" HorizontalAlignment="Center"/>
+                                          <!-- Sprite -->
+                                          <Border Width="36" Height="36" Background="#313244" CornerRadius="3"
+                                                  HorizontalAlignment="Center">
+                                            <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                                   RenderOptions.BitmapInterpolationMode="None"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                          </Border>
+                                          <!-- Editable item ID -->
+                                          <TextBox Text="{Binding ItemId}" FontSize="9" MinWidth="56"
+                                                   Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                                   CornerRadius="2" Padding="4,2"
+                                                   HorizontalAlignment="Stretch"
+                                                   HorizontalContentAlignment="Center"/>
+                                        </StackPanel>
+                                      </Border>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <CheckBox IsChecked="{Binding EditDraggable}" Content="Draggable" FontSize="11"
-                        Foreground="#cdd6f4"/>
-              <CheckBox IsChecked="{Binding EditOnBlocking}" Content="On Blocking" FontSize="11"
-                        Foreground="#cdd6f4"/>
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Classes="label" Text="Thickness:"/>
-                <TextBox Text="{Binding EditThickness}" Width="60" FontSize="11"
-                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                         CornerRadius="4" Padding="6,3"/>
-              </StackPanel>
+                              </StackPanel>
+                            </Border>
+
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
             </StackPanel>
 
-            <!-- Items -->
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4">
-                <TextBlock Classes="label" Text="Items" FontWeight="SemiBold"/>
-                <Button Classes="toolbar" Padding="4,2" Command="{Binding AddDoodadItemCommand}">
-                  <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#f9e2af"/>
-                </Button>
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding EditDoodadItems}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
-                    <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="0,1">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="28" Height="28" Background="#313244" CornerRadius="3">
-                          <Image Source="{Binding Sprite}" Width="24" Height="24"
-                                 RenderOptions.BitmapInterpolationMode="None"/>
-                        </Border>
-                        <TextBlock Classes="label" Text="ID:"/>
-                        <TextBox Text="{Binding ServerId}" Width="60" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2"/>
-                        <TextBlock Classes="label" Text="Chance:"/>
-                        <TextBox Text="{Binding Chance}" Width="50" FontSize="10"
-                                 Background="#181825" Foreground="#cdd6f4" BorderBrush="#313244"
-                                 CornerRadius="3" Padding="4,2"/>
-                        <Button Classes="toolbar" Padding="3,1"
-                                Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveDoodadItemCommand}"
-                                CommandParameter="{Binding}">
-                          <i:Icon Value="fa-solid fa-xmark" FontSize="9" Foreground="#f38ba8"/>
-                        </Button>
+            <!-- ════════════ WALL BRUSH ════════════ -->
+            <StackPanel Spacing="6"
+                        IsVisible="{Binding SelectedBrush.WallDef, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+              <Border Background="#89b4fa" CornerRadius="3" Padding="8,3" HorizontalAlignment="Left">
+                <TextBlock Text="WALL" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
+              </Border>
+
+              <Border Classes="card">
+                <StackPanel Spacing="4">
+                  <DockPanel>
+                    <TextBlock Classes="sec" Text="Segments" Foreground="#89b4fa" VerticalAlignment="Center"/>
+                    <Button Classes="tb" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                            Command="{Binding AddWallSegmentCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#89b4fa"/>
+                        <TextBlock Text="Add" FontSize="9"/>
                       </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </DockPanel>
-          </StackPanel>
+                    </Button>
+                  </DockPanel>
 
-          <!-- Creature details -->
-          <StackPanel Spacing="6"
-                      IsVisible="{Binding SelectedBrush.CreatureDef, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="Creature" FontSize="12" FontWeight="SemiBold" Foreground="#cba6f7"/>
-            <TextBlock FontSize="11" Foreground="#a6adc8"
-                       Text="Creatures are read-only in this editor. Edit creatures.xml directly."/>
-          </StackPanel>
+                  <ItemsControl ItemsSource="{Binding EditWallSegments}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:WallSegmentViewModel">
+                        <Border Background="#181825" CornerRadius="5" Padding="6,5" Margin="0,2">
+                          <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                              <TextBlock Text="{Binding SegmentIcon}" FontSize="16" FontWeight="Bold"
+                                         Foreground="#89b4fa" VerticalAlignment="Center" FontFamily="monospace"/>
+                              <ComboBox SelectedItem="{Binding SegmentType}" FontSize="10" Padding="6,3"
+                                        MinHeight="0" MaxHeight="26"
+                                        Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                        CornerRadius="3" VerticalAlignment="Center">
+                                <x:String>horizontal</x:String>
+                                <x:String>vertical</x:String>
+                                <x:String>corner</x:String>
+                                <x:String>pole</x:String>
+                              </ComboBox>
+                            </StackPanel>
+                            <!-- Items tiles -->
+                            <ItemsControl ItemsSource="{Binding Items}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
+                                  <Border Width="38" Height="38" Background="#313244" CornerRadius="3"
+                                          Margin="1" ToolTip.Tip="{Binding Tooltip}">
+                                    <Panel>
+                                      <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                             RenderOptions.BitmapInterpolationMode="None"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                      <TextBlock Text="{Binding IdLabel}" FontSize="7" Foreground="#cdd6f4"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Bottom"/>
+                                    </Panel>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <!-- Doors -->
+                            <ItemsControl ItemsSource="{Binding Doors}" IsVisible="{Binding Doors.Count}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DoorEntryViewModel">
+                                  <Border Width="38" Height="46" Background="#45475a" CornerRadius="3"
+                                          Margin="1" ToolTip.Tip="{Binding DoorType}">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="1">
+                                      <Image Source="{Binding Sprite}" Width="30" Height="30"
+                                             RenderOptions.BitmapInterpolationMode="None"/>
+                                      <TextBlock Text="{Binding DoorType}" FontSize="7" Foreground="#f9e2af"
+                                                 HorizontalAlignment="Center" MaxWidth="36"
+                                                 TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </StackPanel>
 
-          <!-- Export -->
-          <Border Margin="0,12,0,0">
-            <Button Classes="toolbar" Padding="10,6" Command="{Binding ExportAllCommand}"
-                    HorizontalAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <i:Icon Value="fa-solid fa-file-export" FontSize="11" Foreground="#f9e2af"/>
-                <TextBlock Text="Export All Brushes to XML" FontSize="11"/>
+            <!-- ════════════ DOODAD BRUSH ════════════ -->
+            <StackPanel Spacing="6"
+                        IsVisible="{Binding SelectedBrush.DoodadDef, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+              <DockPanel>
+                <Border Background="#f9e2af" CornerRadius="3" Padding="8,3" DockPanel.Dock="Left">
+                  <TextBlock Text="DOODAD" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
+                </Border>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,0,0,0"
+                            VerticalAlignment="Center">
+                  <CheckBox IsChecked="{Binding EditDraggable}" Content="Draggable"
+                            FontSize="10" Foreground="#cdd6f4"/>
+                  <CheckBox IsChecked="{Binding EditOnBlocking}" Content="OnBlocking"
+                            FontSize="10" Foreground="#cdd6f4"/>
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Classes="lbl" Text="Thick:"/>
+                    <TextBox Text="{Binding EditThickness}" Width="50" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="3" Padding="4,2"/>
+                  </StackPanel>
+                </StackPanel>
+              </DockPanel>
+
+              <Border Classes="card">
+                <StackPanel Spacing="4">
+                  <DockPanel>
+                    <TextBlock Classes="sec" Text="Items" Foreground="#f9e2af" VerticalAlignment="Center"/>
+                    <Button Classes="tb" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                            Command="{Binding AddDoodadItemCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <i:Icon Value="fa-solid fa-plus" FontSize="8" Foreground="#f9e2af"/>
+                        <TextBlock Text="Add" FontSize="9"/>
+                      </StackPanel>
+                    </Button>
+                  </DockPanel>
+                  <ItemsControl ItemsSource="{Binding EditDoodadItems}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BrushItemEntryViewModel">
+                        <Border Background="#181825" CornerRadius="4" Padding="6,4" Margin="0,1">
+                          <Grid ColumnDefinitions="34,Auto,Auto,Auto,Auto,*,Auto" MinHeight="32">
+                            <Border Width="30" Height="30" Background="#313244" CornerRadius="3"
+                                    VerticalAlignment="Center">
+                              <Panel>
+                                <Image Source="{Binding Sprite}" Width="26" Height="26"
+                                       RenderOptions.BitmapInterpolationMode="None"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding IdLabel}" FontSize="7" Foreground="#585b70"
+                                           HorizontalAlignment="Center" VerticalAlignment="Bottom"/>
+                              </Panel>
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="lbl" Text="ID:" Margin="6,0,3,0"/>
+                            <TextBox Grid.Column="2" Text="{Binding ServerId}" Width="60" FontSize="10"
+                                     Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                     CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="3" Classes="lbl" Text="Chance:" Margin="8,0,3,0"/>
+                            <TextBox Grid.Column="4" Text="{Binding Chance}" Width="50" FontSize="10"
+                                     Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                     CornerRadius="3" Padding="5,3" VerticalAlignment="Center"/>
+                            <Button Grid.Column="6" Classes="tb" Padding="4,3"
+                                    Command="{Binding $parent[ItemsControl].((vm:BrushEditorViewModel)DataContext).RemoveDoodadItemCommand}"
+                                    CommandParameter="{Binding}" VerticalAlignment="Center">
+                              <i:Icon Value="fa-solid fa-xmark" FontSize="8" Foreground="#f38ba8"/>
+                            </Button>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- ════════════ CREATURE ════════════ -->
+            <StackPanel Spacing="4"
+                        IsVisible="{Binding SelectedBrush.CreatureDef, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <Border Background="#cba6f7" CornerRadius="3" Padding="8,3" HorizontalAlignment="Left">
+                <TextBlock Text="CREATURE" FontSize="10" FontWeight="Bold" Foreground="#1e1e2e"/>
+              </Border>
+              <TextBlock FontSize="10" Foreground="#a6adc8"
+                         Text="Creatures are read-only. Edit creatures.xml directly."/>
+            </StackPanel>
+
+            <!-- Export -->
+            <Button Classes="accent" Margin="0,6,0,0" HorizontalAlignment="Left"
+                    Command="{Binding ExportAllCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <i:Icon Value="fa-solid fa-file-export" FontSize="10" Foreground="#f9e2af"/>
+                <TextBlock Text="Export All to XML" FontSize="10"/>
               </StackPanel>
             </Button>
-          </Border>
 
-        </StackPanel>
-      </ScrollViewer>
+          </StackPanel>
+        </ScrollViewer>
+      </Panel>
     </Border>
   </Grid>
 </Window>
