@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using POriginsItemEditor.OTB;
 
 namespace POriginsItemEditor.App.Controls;
@@ -59,7 +60,8 @@ public sealed class MinimapOverlayControl : Control
     }
 
     /// <summary>Called by the map canvas whenever it repaints, so we update too.</summary>
-    public void OnMapCanvasRendered() => InvalidateVisual();
+    public void OnMapCanvasRendered() =>
+        Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Render);
 
     public override void Render(DrawingContext context)
     {
