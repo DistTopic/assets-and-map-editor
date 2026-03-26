@@ -60,6 +60,44 @@ public partial class MainWindow : Window
 
                 await vm.TryLoadLastSessionAsync();
 
+                // Wire Merge Session menu (dynamic submenu listing other sessions)
+                var mergeMenuItem = this.FindControl<Avalonia.Controls.MenuItem>("MergeSessionMenuItem");
+                if (mergeMenuItem != null)
+                {
+                    mergeMenuItem.SubmenuOpened += (_, _) =>
+                    {
+                        mergeMenuItem.Items.Clear();
+                        var sources = vm.Sessions
+                            .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
+                            .ToList();
+
+                        if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
+                        {
+                            var empty = new Avalonia.Controls.MenuItem
+                            {
+                                Header = vm.ActiveSession?.DatData == null
+                                    ? "Current session has no DAT loaded"
+                                    : "No other sessions with DAT/SPR loaded",
+                                IsEnabled = false,
+                            };
+                            mergeMenuItem.Items.Add(empty);
+                        }
+                        else
+                        {
+                            foreach (var source in sources)
+                            {
+                                var mi = new Avalonia.Controls.MenuItem
+                                {
+                                    Header = $"{source.Name}  ({source.DatData!.Items.Count} items)",
+                                    Tag = source,
+                                };
+                                mi.Click += async (_, _) => await vm.MergeSessionAsync(source);
+                                mergeMenuItem.Items.Add(mi);
+                            }
+                        }
+                    };
+                }
+
                 // Wire confirmation dialog for palette delete operations
                 if (vm.Palette != null)
                     vm.Palette.ConfirmAsync = ShowConfirmDialogAsync;

@@ -292,6 +292,9 @@
         <MenuItem Header="Transplant Item..." Command="{Binding TransplantItemCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-arrow-right-arrow-left" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
         </MenuItem>
+        <MenuItem Header="Merge Session Into Current…" x:Name="MergeSessionMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-code-merge" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+        </MenuItem>
       </MenuItem>
     </Menu>
 

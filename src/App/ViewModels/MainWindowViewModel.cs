@@ -564,6 +564,124 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // ── Full session merge (DAT/SPR) ──
+
+    /// <summary>
+    /// Merge all items from a source session into the current (active) session.
+    /// Detects duplicates by comparing sprite images and shows a batch preview dialog.
+    /// </summary>
+    public async Task MergeSessionAsync(SessionViewModel sourceSession)
+    {
+        if (_datData == null || _sprFile == null)
+        {
+            StatusText = "Current session has no DAT/SPR loaded.";
+            return;
+        }
+        if (sourceSession.DatData == null || sourceSession.SprFile == null)
+        {
+            StatusText = "Source session has no DAT/SPR loaded.";
+            return;
+        }
+
+        var sourceDat = sourceSession.DatData;
+        var sourceSpr = sourceSession.SprFile;
+        var sourceProtocol = sourceDat.ProtocolVersion;
+        var targetProtocol = _datData.ProtocolVersion;
+
+        // Build sprite hash index for the CURRENT session (target) to detect duplicates
+        StatusText = $"Analyzing {sourceDat.Items.Count} source items for duplicates…";
+        var targetSpriteIndex = BuildSpriteHashIndex(_datData, _sprFile);
+
+        // Analyze each item in the source session
+        var entries = new List<TransplantEntry>();
+        foreach (var (id, sourceThing) in sourceDat.Items.OrderBy(x => x.Key))
+        {
+            var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
+            var duplicateId = FindDuplicateByImage(sourceThing, sourceSpr, targetSpriteIndex);
+
+            entries.Add(new TransplantEntry
+            {
+                SourceId = id,
+                SourceThing = sourceThing,
+                Report = report,
+                DuplicateTargetId = duplicateId,
+                Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+            });
+        }
+
+        int dupCount = entries.Count(e => e.DuplicateTargetId.HasValue);
+        StatusText = $"Analyzed {entries.Count} items — {dupCount} duplicates, {entries.Count - dupCount} new.";
+
+        // Reuse the batch transplant dialog but pass source SPR for sprite remapping
+        await ShowMergeDialog(entries, sourceSession, sourceSpr, sourceProtocol, targetProtocol);
+    }
+
+    /// <summary>
+    /// Executes the merge: clones items from sourceSession into the active session.
+    /// </summary>
+    private void ExecuteMerge(
+        List<TransplantEntry> entries,
+        SprFile sourceSpr,
+        int sourceProtocol,
+        int targetProtocol)
+    {
+        if (_datData == null || _sprFile == null) return;
+
+        int transplanted = 0;
+        int replaced = 0;
+        int skipped = 0;
+
+        ushort nextId = (ushort)(_datData.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+
+        foreach (var entry in entries)
+        {
+            if (entry.Action == TransplantAction.Skip)
+            {
+                skipped++;
+                continue;
+            }
+
+            var clone = entry.SourceThing.Clone();
+
+            // Strip unsupported flags for downcast
+            if (sourceProtocol > targetProtocol)
+                StripUnsupportedFlags(clone, targetProtocol);
+
+            // Copy sprites from source SPR → current session's SPR
+            RemapSpritesToTarget(clone, sourceSpr, _sprFile);
+
+            if (entry.Action == TransplantAction.Replace && entry.DuplicateTargetId.HasValue)
+            {
+                clone.Id = entry.DuplicateTargetId.Value;
+                _datData.Items[clone.Id] = clone;
+                replaced++;
+            }
+            else
+            {
+                clone.Id = nextId++;
+                _datData.Items[clone.Id] = clone;
+                transplanted++;
+            }
+
+            entry.NewTargetId = clone.Id;
+        }
+
+        HasUnsavedChanges = true;
+
+        // Rebuild client item list for current session
+        if (_currentSession != null)
+        {
+            _currentSession.DatData = _datData;
+            _currentSession.SprFile = _sprFile;
+            _currentSession.HasUnsavedChanges = true;
+        }
+        BuildClientItemList();
+
+        var msg = $"Merge complete: {transplanted} added, {replaced} replaced, {skipped} skipped.";
+        StatusText = msg;
+        AddMapLog(msg);
+    }
+
     // ── Multi-item cross-version transplanting ──
 
     /// <summary>
@@ -708,6 +826,245 @@ public partial class MainWindowViewModel : ObservableObject
             return matches[0];
 
         return null;
+    }
+
+    /// <summary>
+    /// Shows a merge preview dialog — similar to batch transplant but for merging a full session into the current one.
+    /// </summary>
+    private async Task ShowMergeDialog(
+        List<TransplantEntry> entries,
+        SessionViewModel sourceSession,
+        SprFile sourceSpr,
+        int sourceProtocol,
+        int targetProtocol)
+    {
+        var window = Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow : null;
+        if (window == null) return;
+
+        int dupCount = entries.Count(e => e.DuplicateTargetId.HasValue);
+        int newCount = entries.Count - dupCount;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Merge Session: {entries.Count} items from \"{sourceSession.Name}\" (protocol {sourceProtocol}) → current session (protocol {targetProtocol})");
+        sb.AppendLine();
+        sb.AppendLine($"  ● New items (no match found): {newCount}");
+        sb.AppendLine($"  ● Duplicates detected by sprite image: {dupCount}");
+        sb.AppendLine();
+
+        var anyIgnored = entries.Any(e => e.Report.IgnoredAttributes.Count > 0);
+        var anyMissing = entries.Any(e => e.Report.MissingAttributes.Count > 0);
+        if (anyIgnored)
+        {
+            var ignoredSet = entries.SelectMany(e => e.Report.IgnoredAttributes).Distinct().ToList();
+            sb.AppendLine("⚠ Attributes that will be stripped (not supported in target):");
+            foreach (var attr in ignoredSet)
+                sb.AppendLine($"    • {attr}");
+            sb.AppendLine();
+        }
+        if (anyMissing)
+        {
+            var missingSet = entries.SelectMany(e => e.Report.MissingAttributes).Distinct().ToList();
+            sb.AppendLine("ℹ Attributes missing in source (target supports more):");
+            foreach (var attr in missingSet)
+                sb.AppendLine($"    • {attr}");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("Uncheck items to skip them. Duplicates are auto-skipped (uncheck to include).");
+
+        // Build item rows with sprite previews rendered from source SPR
+        var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
+        foreach (var entry in entries)
+        {
+            var rowGrid = new Avalonia.Controls.Grid
+            {
+                ColumnDefinitions = Avalonia.Controls.ColumnDefinitions.Parse("Auto,38,*,Auto"),
+                Height = 42,
+                Margin = new Avalonia.Thickness(0, 1),
+            };
+
+            var cb = new Avalonia.Controls.CheckBox
+            {
+                IsChecked = entry.Action != TransplantAction.Skip,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(4, 0),
+            };
+            var capturedEntry = entry;
+            cb.IsCheckedChanged += (_, _) =>
+            {
+                capturedEntry.Action = cb.IsChecked == true
+                    ? (capturedEntry.DuplicateTargetId.HasValue ? TransplantAction.Replace : TransplantAction.Add)
+                    : TransplantAction.Skip;
+            };
+            Avalonia.Controls.Grid.SetColumn(cb, 0);
+            rowGrid.Children.Add(cb);
+
+            // Sprite preview (from SOURCE session's SPR)
+            var spriteBorder = new Avalonia.Controls.Border
+            {
+                Background = Avalonia.Media.Brush.Parse("#11111b"),
+                CornerRadius = new Avalonia.CornerRadius(4),
+                Width = 32, Height = 32,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                ClipToBounds = true,
+            };
+            var bmp = ComposeThingBitmapStatic(entry.SourceThing, sourceSpr);
+            if (bmp != null)
+            {
+                var img = new Avalonia.Controls.Image
+                {
+                    Source = bmp, Width = 32, Height = 32,
+                    Stretch = Avalonia.Media.Stretch.Uniform,
+                };
+                Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+                spriteBorder.Child = img;
+            }
+            Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
+            rowGrid.Children.Add(spriteBorder);
+
+            var textBlock = new Avalonia.Controls.TextBlock
+            {
+                Text = $"#{entry.SourceId}  ({entry.SourceThing.Category})",
+                Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+                FontSize = 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(6, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(textBlock, 2);
+            rowGrid.Children.Add(textBlock);
+
+            var statusText = entry.DuplicateTargetId.HasValue
+                ? $"Duplicate → #{entry.DuplicateTargetId}"
+                : "New";
+            var statusColor = entry.DuplicateTargetId.HasValue ? "#f9e2af" : "#a6e3a1";
+            var statusBlock = new Avalonia.Controls.TextBlock
+            {
+                Text = statusText,
+                Foreground = Avalonia.Media.Brush.Parse(statusColor),
+                FontSize = 11,
+                FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(4, 0, 8, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(statusBlock, 3);
+            rowGrid.Children.Add(statusBlock);
+
+            var rowBorder = new Avalonia.Controls.Border
+            {
+                Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+                CornerRadius = new Avalonia.CornerRadius(4),
+                Child = rowGrid,
+            };
+            itemsPanel.Children.Add(rowBorder);
+        }
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Title = $"Merge Session — {sourceSession.Name}",
+            Width = 650,
+            MinHeight = 350,
+            MaxHeight = 750,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Content = new Avalonia.Controls.DockPanel
+            {
+                Margin = new Avalonia.Thickness(16),
+                Children =
+                {
+                    new Avalonia.Controls.StackPanel
+                    {
+                        [Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Bottom,
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Margin = new Avalonia.Thickness(0, 12, 0, 0),
+                    },
+                    new Avalonia.Controls.TextBlock
+                    {
+                        [Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Top,
+                        Text = sb.ToString(),
+                        Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+                        FontSize = 12,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness(0, 0, 0, 8),
+                    },
+                    new Avalonia.Controls.ScrollViewer
+                    {
+                        Content = itemsPanel,
+                    },
+                }
+            }
+        };
+
+        var buttonPanel = (Avalonia.Controls.StackPanel)((Avalonia.Controls.DockPanel)dialog.Content).Children[0];
+
+        var selectAllBtn = new Avalonia.Controls.Button
+        {
+            Content = "Select All",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(12, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+            Margin = new Avalonia.Thickness(0, 0, 8, 0),
+        };
+        selectAllBtn.Click += (_, _) =>
+        {
+            foreach (var row in itemsPanel.Children.OfType<Avalonia.Controls.Border>())
+                if (row.Child is Avalonia.Controls.Grid g)
+                    g.Children.OfType<Avalonia.Controls.CheckBox>().FirstOrDefault()?.SetCurrentValue(Avalonia.Controls.CheckBox.IsCheckedProperty, (bool?)true);
+        };
+
+        var deselectAllBtn = new Avalonia.Controls.Button
+        {
+            Content = "Deselect All",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(12, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        deselectAllBtn.Click += (_, _) =>
+        {
+            foreach (var row in itemsPanel.Children.OfType<Avalonia.Controls.Border>())
+                if (row.Child is Avalonia.Controls.Grid g)
+                    g.Children.OfType<Avalonia.Controls.CheckBox>().FirstOrDefault()?.SetCurrentValue(Avalonia.Controls.CheckBox.IsCheckedProperty, (bool?)false);
+        };
+
+        var spacer = new Avalonia.Controls.Border { Width = 1, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
+
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = "Cancel",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(16, 8),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        var confirmBtn = new Avalonia.Controls.Button
+        {
+            Content = "Merge Selected",
+            Background = Avalonia.Media.Brush.Parse("#cba6f7"),
+            Foreground = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            Padding = new Avalonia.Thickness(16, 8),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+
+        cancelBtn.Click += (_, _) => dialog.Close();
+        confirmBtn.Click += (_, _) =>
+        {
+            ExecuteMerge(entries, sourceSpr, sourceProtocol, targetProtocol);
+            dialog.Close();
+        };
+
+        buttonPanel.Children.Add(selectAllBtn);
+        buttonPanel.Children.Add(deselectAllBtn);
+        buttonPanel.Children.Add(spacer);
+        buttonPanel.Children.Add(cancelBtn);
+        buttonPanel.Children.Add(confirmBtn);
+
+        await dialog.ShowDialog(window);
     }
 
     /// <summary>
