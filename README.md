@@ -124,6 +124,7 @@ Replace `<RID>` with your target runtime: `win-x64`, `win-arm64`, `osx-arm64`, `
 | [Architecture](docs/ARCHITECTURE.md) | Project structure and design decisions |
 | [File Formats](docs/FILE_FORMATS.md) | DAT, SPR, OTB, OTBM, and brush format reference |
 | [Build & Verification](docs/BUILD_AND_VERIFICATION.md) | Reproducing builds and verifying release integrity |
+| [Branching Strategy](docs/BRANCHING_STRATEGY.md) | GitFlow model and branch protection rules |
 | [Changelog](CHANGELOG.md) | Version history with commit references |
 | [Contributing](CONTRIBUTING.md) | How to contribute to the project |
 | [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards |
