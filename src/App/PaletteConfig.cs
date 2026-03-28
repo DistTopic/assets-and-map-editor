@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 /// <summary>
 /// Persistent user-created palette configuration.
@@ -17,7 +17,7 @@ public sealed class PaletteConfig
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "POriginsItemEditor",
+            "AssetsAndMapEditor",
             "palette.json");
 
     private static readonly JsonSerializerOptions JsonOpts = new()

@@ -1,6 +1,6 @@
 using System.Xml.Linq;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 // ═══════════════════════════════════════════════════════════════
 //  Autobordering Brush System — ports the otacademy/RME algorithm

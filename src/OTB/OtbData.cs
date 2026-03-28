@@ -1,4 +1,4 @@
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>Top-level data read from an items.otb file.</summary>
 public sealed class OtbData

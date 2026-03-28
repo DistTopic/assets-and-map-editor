@@ -1,4 +1,4 @@
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>OTB item-node flag bits (from items.otb 4-byte header per node).</summary>
 [Flags]

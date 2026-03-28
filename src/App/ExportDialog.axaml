@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="POriginsItemEditor.App.ExportDialog"
+        x:Class="AssetsAndMapEditor.App.ExportDialog"
         Title="Export"
         Width="420"
         SizeToContent="Height"

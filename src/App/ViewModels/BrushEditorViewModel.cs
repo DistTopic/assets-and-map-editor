@@ -4,7 +4,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace POriginsItemEditor.App.ViewModels;
+namespace AssetsAndMapEditor.App.ViewModels;
 
 /// <summary>Wraps a ChanceItem for data-binding in the brush editor.</summary>
 public partial class BrushItemEntryViewModel : ObservableObject

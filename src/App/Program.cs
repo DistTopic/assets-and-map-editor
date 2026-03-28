@@ -4,7 +4,7 @@ using Projektanker.Icons.Avalonia.FontAwesome;
 using System;
 using System.IO;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 class Program
 {

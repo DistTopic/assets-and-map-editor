@@ -1,9 +1,9 @@
 <Solution>
   <Folder Name="/src/" />
   <Folder Name="/src/App/">
-    <Project Path="src/App/POriginsItemEditor.App.csproj" />
+    <Project Path="src/App/AssetsAndMapEditor.App.csproj" />
   </Folder>
   <Folder Name="/src/OTB/">
-    <Project Path="src/OTB/POriginsItemEditor.OTB.csproj" />
+    <Project Path="src/OTB/AssetsAndMapEditor.OTB.csproj" />
   </Folder>
 </Solution>

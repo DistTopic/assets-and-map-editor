@@ -1,4 +1,4 @@
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Represents a loaded OTBM map with all tiles, towns, and waypoints.

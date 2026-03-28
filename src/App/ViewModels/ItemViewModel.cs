@@ -2,9 +2,9 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App.ViewModels;
+namespace AssetsAndMapEditor.App.ViewModels;
 
 public partial class ItemViewModel : ObservableObject
 {

@@ -1,6 +1,6 @@
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App.ViewModels;
+namespace AssetsAndMapEditor.App.ViewModels;
 
 /// <summary>
 /// Result of comparing attributes between two protocol versions during transplanting.

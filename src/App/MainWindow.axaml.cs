@@ -9,11 +9,11 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
-using POriginsItemEditor.App.Controls;
-using POriginsItemEditor.App.ViewModels;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.App.Controls;
+using AssetsAndMapEditor.App.ViewModels;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 public partial class MainWindow : Window
 {
@@ -88,7 +88,7 @@ public partial class MainWindow : Window
                             {
                                 var mi = new Avalonia.Controls.MenuItem
                                 {
-                                    Header = $"{source.Name}  ({source.DatData!.Items.Count} items)",
+                                    Header = $"{source.Name}  ({source.DatData!.Items.Count + source.DatData.Outfits.Count + source.DatData.Effects.Count + source.DatData.Missiles.Count} things)",
                                     Tag = source,
                                 };
                                 mi.Click += async (_, _) => await vm.MergeSessionAsync(source);
@@ -133,10 +133,108 @@ public partial class MainWindow : Window
         };
     }
 
-    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    private bool _closeConfirmed;
+
+    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (DataContext is MainWindowViewModel vm)
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        if (!_closeConfirmed && (vm.HasUnsavedChanges || vm.MapHasUnsavedChanges))
+        {
+            e.Cancel = true;
+
+            var result = await ShowCloseConfirmDialogAsync();
+
+            if (result == CloseAction.Cancel)
+                return;
+
+            if (result == CloseAction.Save)
+                await vm.SaveAllCommand.ExecuteAsync(null);
+
+            _closeConfirmed = true;
             vm.SaveSessionsToSettings();
+            Close();
+            return;
+        }
+
+        vm.SaveSessionsToSettings();
+    }
+
+    private enum CloseAction { Save, Discard, Cancel }
+
+    private async Task<CloseAction> ShowCloseConfirmDialogAsync()
+    {
+        var tcs = new TaskCompletionSource<CloseAction>();
+
+        var msgBlock = new TextBlock
+        {
+            Text = "You have unsaved changes. What would you like to do?",
+            Foreground = Brush.Parse("#cdd6f4"),
+            FontSize = 14,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var btnPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        DockPanel.SetDock(btnPanel, Dock.Bottom);
+
+        var dock = new DockPanel { Margin = new Thickness(20, 16) };
+        dock.Children.Add(btnPanel);
+        dock.Children.Add(msgBlock);
+
+        var dialog = new Window
+        {
+            Title = "Unsaved Changes",
+            Width = 420, Height = 150,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = Brush.Parse("#1e1e2e"),
+            Content = dock,
+        };
+
+        var discardBtn = new Button
+        {
+            Content = "Discard",
+            Background = Brush.Parse("#f38ba8"),
+            Foreground = Brush.Parse("#1e1e2e"),
+            FontWeight = FontWeight.SemiBold,
+            Padding = new Thickness(16, 6),
+            CornerRadius = new CornerRadius(6),
+        };
+        var cancelBtn = new Button
+        {
+            Content = "Cancel",
+            Background = Brush.Parse("#313244"),
+            Foreground = Brush.Parse("#cdd6f4"),
+            Padding = new Thickness(16, 6),
+            CornerRadius = new CornerRadius(6),
+        };
+        var saveBtn = new Button
+        {
+            Content = "Save & Quit",
+            Background = Brush.Parse("#a6e3a1"),
+            Foreground = Brush.Parse("#1e1e2e"),
+            FontWeight = FontWeight.SemiBold,
+            Padding = new Thickness(16, 6),
+            CornerRadius = new CornerRadius(6),
+        };
+
+        discardBtn.Click += (_, _) => { tcs.TrySetResult(CloseAction.Discard); dialog.Close(); };
+        cancelBtn.Click += (_, _) => { tcs.TrySetResult(CloseAction.Cancel); dialog.Close(); };
+        saveBtn.Click += (_, _) => { tcs.TrySetResult(CloseAction.Save); dialog.Close(); };
+        dialog.Closing += (_, _) => tcs.TrySetResult(CloseAction.Cancel);
+
+        btnPanel.Children.Add(discardBtn);
+        btnPanel.Children.Add(cancelBtn);
+        btnPanel.Children.Add(saveBtn);
+
+        await dialog.ShowDialog(this);
+        return await tcs.Task;
     }
 
     private void OnMinimapSwatchClicked(object? sender, PointerPressedEventArgs e)
@@ -763,7 +861,7 @@ public partial class MainWindow : Window
             else
             {
                 menuItem.IsEnabled = true;
-                menuItem.Header = $"Transplant {selCount} item(s) to...";
+                menuItem.Header = $"Transplant {selCount} thing(s) to...";
 
                 foreach (var target in targets)
                 {

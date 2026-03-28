@@ -6,12 +6,12 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 using System.Collections.ObjectModel;
 
-namespace POriginsItemEditor.App.ViewModels;
+namespace AssetsAndMapEditor.App.ViewModels;
 
-using POriginsItemEditor.App;
+using AssetsAndMapEditor.App;
 
 public partial class MainWindowViewModel : ObservableObject
 {
@@ -416,12 +416,15 @@ public partial class MainWindowViewModel : ObservableObject
         // Build compatibility report
         var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
 
+        // Capture source SPR at call time (before user can switch sessions)
+        var sourceSpr = _sprFile;
+
         // Show transplant dialog
-        await ShowTransplantDialog(report, sourceThing, targetSession, targetDat);
+        await ShowTransplantDialog(report, sourceThing, targetSession, targetDat, sourceSpr);
     }
 
     private async Task ShowTransplantDialog(TransplantReport report, DatThingType sourceThing,
-        SessionViewModel targetSession, DatData targetDat)
+        SessionViewModel targetSession, DatData targetDat, SprFile sourceSpr)
     {
         // Build message
         var sb = new System.Text.StringBuilder();
@@ -523,11 +526,11 @@ public partial class MainWindowViewModel : ObservableObject
             if (report.IsDowncast)
                 StripUnsupportedFlags(clone, report.TargetProtocol);
 
-            targetDat.Items[newId] = clone;
+            // Copy sprites to target session's SPR file (BEFORE adding to DAT)
+            if (targetSession.SprFile != null)
+                RemapSpritesToTarget(clone, sourceSpr, targetSession.SprFile);
 
-            // Copy sprites to target session's SPR file
-            if (_sprFile != null && targetSession.SprFile != null)
-                RemapSpritesToTarget(clone, _sprFile, targetSession.SprFile);
+            targetDat.Items[newId] = clone;
 
             // Rebuild target session's item list so it appears immediately when switching
             targetSession.HasUnsavedChanges = true;
@@ -588,36 +591,50 @@ public partial class MainWindowViewModel : ObservableObject
         var sourceProtocol = sourceDat.ProtocolVersion;
         var targetProtocol = _datData.ProtocolVersion;
 
-        // Build sprite hash index for the CURRENT session (target) to detect duplicates
-        StatusText = $"Analyzing {sourceDat.Items.Count} source items for duplicates…";
-        var targetSpriteIndex = BuildSpriteHashIndex(_datData, _sprFile);
-
-        // Analyze each item in the source session
-        var entries = new List<TransplantEntry>();
-        foreach (var (id, sourceThing) in sourceDat.Items.OrderBy(x => x.Key))
+        var categories = new[]
         {
-            var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
-            var duplicateId = FindDuplicateByImage(sourceThing, sourceSpr, targetSpriteIndex);
+            (ThingCategory.Item,    sourceDat.Items,    _datData.Items),
+            (ThingCategory.Outfit,  sourceDat.Outfits,  _datData.Outfits),
+            (ThingCategory.Effect,  sourceDat.Effects,   _datData.Effects),
+            (ThingCategory.Missile, sourceDat.Missiles,  _datData.Missiles),
+        };
 
-            entries.Add(new TransplantEntry
+        int totalSource = categories.Sum(c => c.Item2.Count);
+        StatusText = $"Analyzing {totalSource} source things for duplicates…";
+
+        // Analyze each category
+        var entries = new List<TransplantEntry>();
+        foreach (var (cat, sourceDict, targetDict) in categories)
+        {
+            if (sourceDict.Count == 0) continue;
+            var targetIndex = BuildSpriteHashIndex(targetDict, _sprFile);
+
+            foreach (var (id, sourceThing) in sourceDict.OrderBy(x => x.Key))
             {
-                SourceId = id,
-                SourceThing = sourceThing,
-                Report = report,
-                DuplicateTargetId = duplicateId,
-                Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
-            });
+                var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
+                var duplicateId = FindDuplicateByImage(sourceThing, sourceSpr, targetIndex);
+
+                entries.Add(new TransplantEntry
+                {
+                    Category = cat,
+                    SourceId = id,
+                    SourceThing = sourceThing,
+                    Report = report,
+                    DuplicateTargetId = duplicateId,
+                    Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+                });
+            }
         }
 
         int dupCount = entries.Count(e => e.DuplicateTargetId.HasValue);
-        StatusText = $"Analyzed {entries.Count} items — {dupCount} duplicates, {entries.Count - dupCount} new.";
+        StatusText = $"Analyzed {entries.Count} things — {dupCount} duplicates, {entries.Count - dupCount} new.";
 
         // Reuse the batch transplant dialog but pass source SPR for sprite remapping
         await ShowMergeDialog(entries, sourceSession, sourceSpr, sourceProtocol, targetProtocol);
     }
 
     /// <summary>
-    /// Executes the merge: clones items from sourceSession into the active session.
+    /// Executes the merge: clones things from sourceSession into the active session.
     /// </summary>
     private void ExecuteMerge(
         List<TransplantEntry> entries,
@@ -630,7 +647,14 @@ public partial class MainWindowViewModel : ObservableObject
         int transplanted = 0;
         int skipped = 0;
 
-        ushort nextId = (ushort)(_datData.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+        // Track next available ID per category
+        var nextIds = new Dictionary<ThingCategory, ushort>
+        {
+            [ThingCategory.Item]    = (ushort)(_datData.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1),
+            [ThingCategory.Outfit]  = (ushort)(_datData.Outfits.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+            [ThingCategory.Effect]  = (ushort)(_datData.Effects.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+            [ThingCategory.Missile] = (ushort)(_datData.Missiles.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+        };
 
         foreach (var entry in entries)
         {
@@ -650,8 +674,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Copy sprites from source SPR → current session's SPR
             RemapSpritesToTarget(clone, sourceSpr, _sprFile);
 
-            clone.Id = nextId++;
-            _datData.Items[clone.Id] = clone;
+            var targetDict = GetCategoryDict(_datData, entry.Category);
+            clone.Id = nextIds[entry.Category]++;
+            targetDict[clone.Id] = clone;
             transplanted++;
 
             entry.NewTargetId = clone.Id;
@@ -676,7 +701,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ── Multi-item cross-version transplanting ──
 
     /// <summary>
-    /// Transplant multiple selected items to a target session with image-based duplicate detection.
+    /// Transplant multiple selected things to a target session with image-based duplicate detection.
     /// </summary>
     public async Task TransplantMultipleItemsAsync(SessionViewModel targetSession)
     {
@@ -698,22 +723,33 @@ public partial class MainWindowViewModel : ObservableObject
         var sourceProtocol = _datData.ProtocolVersion;
         var targetProtocol = targetDat.ProtocolVersion;
 
-        // Build sprite hash index for the target session (for duplicate detection)
-        StatusText = $"Analyzing {selectedItems.Count} items for duplicates...";
-        var targetSpriteIndex = BuildSpriteHashIndex(targetDat, targetSpr);
+        StatusText = $"Analyzing {selectedItems.Count} things for duplicates...";
 
-        // Analyze each selected item
+        // Build per-category hash indexes for duplicate detection
+        var targetIndexes = new Dictionary<ThingCategory, Dictionary<long, List<ushort>>>();
+
+        // Analyze each selected thing
         var entries = new List<TransplantEntry>();
         foreach (var cvm in selectedItems)
         {
-            if (!_datData.Items.TryGetValue(cvm.Id, out var sourceThing))
+            var cat = cvm.Category;
+            var sourceDict = GetCategoryDict(_datData, cat);
+            if (!sourceDict.TryGetValue(cvm.Id, out var sourceThing))
                 continue;
 
+            // Lazily build target index per category
+            if (!targetIndexes.TryGetValue(cat, out var targetIndex))
+            {
+                targetIndex = BuildSpriteHashIndex(GetCategoryDict(targetDat, cat), targetSpr);
+                targetIndexes[cat] = targetIndex;
+            }
+
             var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
-            var duplicateId = FindDuplicateByImage(sourceThing, _sprFile, targetSpriteIndex);
+            var duplicateId = FindDuplicateByImage(sourceThing, _sprFile, targetIndex);
 
             entries.Add(new TransplantEntry
             {
+                Category = cat,
                 SourceId = cvm.Id,
                 SourceThing = sourceThing,
                 Report = report,
@@ -722,22 +758,25 @@ public partial class MainWindowViewModel : ObservableObject
             });
         }
 
-        StatusText = $"Analyzed {entries.Count} items — {entries.Count(e => e.DuplicateTargetId.HasValue)} duplicates found.";
+        StatusText = $"Analyzed {entries.Count} things — {entries.Count(e => e.DuplicateTargetId.HasValue)} duplicates found.";
+
+        // Capture source SPR at call time (before user can switch sessions)
+        var sourceSpr = _sprFile;
 
         // Show the transplant preview dialog
-        await ShowBatchTransplantDialog(entries, targetSession, targetDat, targetSpr, sourceProtocol, targetProtocol);
+        await ShowBatchTransplantDialog(entries, targetSession, targetDat, targetSpr, sourceSpr, sourceProtocol, targetProtocol);
     }
 
     /// <summary>
-    /// Builds a hash index of all sprites in a session for fast duplicate detection.
-    /// Key = xxHash64 of first sprite RGBA, Value = list of item IDs with that hash.
+    /// Builds a hash index of sprites in a dictionary for fast duplicate detection.
+    /// Key = sprite hash, Value = list of thing IDs with that hash.
     /// </summary>
-    private static Dictionary<long, List<ushort>> BuildSpriteHashIndex(DatData datData, SprFile? sprFile)
+    private static Dictionary<long, List<ushort>> BuildSpriteHashIndex(Dictionary<ushort, DatThingType> dict, SprFile? sprFile)
     {
         var index = new Dictionary<long, List<ushort>>();
         if (sprFile == null) return index;
 
-        foreach (var (id, thing) in datData.Items)
+        foreach (var (id, thing) in dict)
         {
             if (thing.FrameGroups.Length == 0) continue;
             var fg = thing.FrameGroups[0];
@@ -838,9 +877,17 @@ public partial class MainWindowViewModel : ObservableObject
         int newCount = entries.Count - dupCount;
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Merge Session: {entries.Count} items from \"{sourceSession.Name}\" (protocol {sourceProtocol}) → current session (protocol {targetProtocol})");
+        sb.AppendLine($"Merge Session: {entries.Count} things from \"{sourceSession.Name}\" (protocol {sourceProtocol}) → current session (protocol {targetProtocol})");
+
+        // Per-category breakdown
+        foreach (var cat in new[] { ThingCategory.Item, ThingCategory.Outfit, ThingCategory.Effect, ThingCategory.Missile })
+        {
+            int catCount = entries.Count(e => e.Category == cat);
+            if (catCount > 0)
+                sb.AppendLine($"    {cat}: {catCount}");
+        }
         sb.AppendLine();
-        sb.AppendLine($"  ● New items (no match found): {newCount}");
+        sb.AppendLine($"  ● New (no match found): {newCount}");
         sb.AppendLine($"  ● Duplicates detected by sprite image: {dupCount}");
         sb.AppendLine();
 
@@ -1072,6 +1119,7 @@ public partial class MainWindowViewModel : ObservableObject
         SessionViewModel targetSession,
         DatData targetDat,
         SprFile? targetSpr,
+        SprFile sourceSpr,
         int sourceProtocol,
         int targetProtocol)
     {
@@ -1085,10 +1133,18 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Build the report text
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Batch Transplant: {entries.Count} items from protocol {sourceProtocol} → {targetProtocol}");
+        sb.AppendLine($"Batch Transplant: {entries.Count} things from protocol {sourceProtocol} → {targetProtocol}");
         sb.AppendLine($"Target session: {targetSession.Name}");
+
+        // Per-category breakdown
+        foreach (var cat in new[] { ThingCategory.Item, ThingCategory.Outfit, ThingCategory.Effect, ThingCategory.Missile })
+        {
+            int catCount = entries.Count(e => e.Category == cat);
+            if (catCount > 0)
+                sb.AppendLine($"    {cat}: {catCount}");
+        }
         sb.AppendLine();
-        sb.AppendLine($"  ● New items (no match found): {newCount}");
+        sb.AppendLine($"  ● New (no match found): {newCount}");
         sb.AppendLine($"  ● Duplicates detected by image: {dupCount}");
         sb.AppendLine();
 
@@ -1310,7 +1366,7 @@ public partial class MainWindowViewModel : ObservableObject
         cancelBtn.Click += (_, _) => dialog.Close();
         confirmBtn.Click += (_, _) =>
         {
-            ExecuteBatchTransplant(entries, targetSession, targetDat, targetSpr, sourceProtocol, targetProtocol);
+            ExecuteBatchTransplant(entries, targetSession, targetDat, targetSpr, sourceSpr, sourceProtocol, targetProtocol);
             dialog.Close();
         };
 
@@ -1324,13 +1380,14 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Executes the batch transplant: clones items, copies sprites, adds to target DAT.
+    /// Executes the batch transplant: clones things, copies sprites, adds to target DAT.
     /// </summary>
     private void ExecuteBatchTransplant(
         List<TransplantEntry> entries,
         SessionViewModel targetSession,
         DatData targetDat,
         SprFile? targetSpr,
+        SprFile sourceSpr,
         int sourceProtocol,
         int targetProtocol)
     {
@@ -1338,7 +1395,14 @@ public partial class MainWindowViewModel : ObservableObject
         int replaced = 0;
         int skipped = 0;
 
-        ushort nextId = (ushort)(targetDat.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+        // Track next available ID per category
+        var nextIds = new Dictionary<ThingCategory, ushort>
+        {
+            [ThingCategory.Item]    = (ushort)(targetDat.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1),
+            [ThingCategory.Outfit]  = (ushort)(targetDat.Outfits.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+            [ThingCategory.Effect]  = (ushort)(targetDat.Effects.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+            [ThingCategory.Missile] = (ushort)(targetDat.Missiles.Keys.DefaultIfEmpty((ushort)0).Max() + 1),
+        };
 
         foreach (var entry in entries)
         {
@@ -1355,28 +1419,30 @@ public partial class MainWindowViewModel : ObservableObject
                 StripUnsupportedFlags(clone, targetProtocol);
 
             // Copy sprites to target SPR
-            if (_sprFile != null && targetSpr != null)
-                RemapSpritesToTarget(clone, _sprFile, targetSpr);
+            if (targetSpr != null)
+                RemapSpritesToTarget(clone, sourceSpr, targetSpr);
+
+            var targetDict = GetCategoryDict(targetDat, entry.Category);
 
             if (entry.Action == TransplantAction.Replace && entry.DuplicateTargetId.HasValue)
             {
-                // Replace existing item keeping same ID
+                // Replace existing thing keeping same ID
                 clone.Id = entry.DuplicateTargetId.Value;
-                targetDat.Items[clone.Id] = clone;
+                targetDict[clone.Id] = clone;
                 replaced++;
             }
             else
             {
-                // Add as new item
-                clone.Id = nextId++;
-                targetDat.Items[clone.Id] = clone;
+                // Add as new thing
+                clone.Id = nextIds[entry.Category]++;
+                targetDict[clone.Id] = clone;
                 transplanted++;
             }
 
             entry.NewTargetId = clone.Id;
         }
 
-        // Rebuild target session's AllClientItems so new items appear when switching
+        // Rebuild target session's AllClientItems so new things appear when switching
         targetSession.DatData = targetDat;
         targetSession.SprFile = targetSpr;
         targetSession.HasUnsavedChanges = true;
@@ -1442,9 +1508,10 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Entry representing one item in a batch transplant operation.</summary>
+    /// <summary>Entry representing one thing in a batch transplant operation.</summary>
     private sealed class TransplantEntry
     {
+        public ThingCategory Category { get; init; }
         public ushort SourceId { get; init; }
         public DatThingType SourceThing { get; init; } = null!;
         public TransplantReport Report { get; init; } = null!;
@@ -1757,6 +1824,898 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // ── Unmapped Client Items Finder ──────────────────────────────────────
+
+    [RelayCommand]
+    private async Task FindUnmappedClientItemsAsync()
+    {
+        if (_datData == null || _otbData == null)
+        {
+            StatusText = "Load both DAT and OTB first.";
+            return;
+        }
+
+        // Build set of client IDs that already have OTB entries
+        var mappedClientIds = new HashSet<ushort>();
+        foreach (var otb in _otbData.Items)
+            mappedClientIds.Add(otb.ClientId);
+
+        // Find DAT items with no OTB mapping
+        var unmapped = new List<DatThingType>();
+        foreach (var kvp in _datData.Items.OrderBy(x => x.Key))
+        {
+            if (!mappedClientIds.Contains(kvp.Key))
+                unmapped.Add(kvp.Value);
+        }
+
+        if (unmapped.Count == 0)
+        {
+            StatusText = "All client items already have OTB entries.";
+            return;
+        }
+
+        StatusText = $"Found {unmapped.Count} unmapped client item(s).";
+
+        // Next server ID
+        ushort nextServerId = (ushort)(_otbData.Items.Count > 0
+            ? _otbData.Items.Max(i => i.ServerId) + 1
+            : 100);
+
+        // Build preview entries
+        var entries = new List<UnmappedItemEntry>();
+        foreach (var dat in unmapped)
+        {
+            var group = InferOtbGroupFromDat(dat);
+            var flags = InferOtbFlagsFromDat(dat);
+            entries.Add(new UnmappedItemEntry
+            {
+                DatThing = dat,
+                Include = true,
+                PreviewServerId = nextServerId++,
+                PreviewGroup = group,
+                PreviewFlags = flags,
+            });
+        }
+
+        await ShowUnmappedItemsDialog(entries);
+    }
+
+    private static OtbGroup InferOtbGroupFromDat(DatThingType dat)
+    {
+        if (dat.IsGround) return OtbGroup.Ground;
+        if (dat.IsContainer) return OtbGroup.Container;
+        if (dat.IsFluidContainer) return OtbGroup.Splash;
+        if (dat.IsFluid) return OtbGroup.Fluid;
+        if (dat.IsWritable || dat.IsWritableOnce) return OtbGroup.Writable;
+        if (dat.IsStackable) return OtbGroup.Ammunition;
+        if (dat.IsPickupable) return OtbGroup.Armor;
+        return OtbGroup.None;
+    }
+
+    private static OtbFlags InferOtbFlagsFromDat(DatThingType dat)
+    {
+        OtbFlags flags = OtbFlags.None;
+        if (dat.IsStackable) flags |= OtbFlags.Stackable;
+        if (dat.IsPickupable) flags |= OtbFlags.Pickupable;
+        if (!dat.IsUnmoveable) flags |= OtbFlags.Moveable;
+        if (dat.IsUnpassable) flags |= OtbFlags.BlockSolid;
+        if (dat.IsBlockMissile) flags |= OtbFlags.BlockProjectile;
+        if (dat.IsBlockPathfind) flags |= OtbFlags.BlockPathFind;
+        if (dat.HasElevation) flags |= OtbFlags.HasHeight;
+        if (dat.IsUsable || dat.IsMultiUse) flags |= OtbFlags.Usable;
+        if (dat.IsHangable) flags |= OtbFlags.Hangable;
+        if (dat.IsRotatable) flags |= OtbFlags.Rotatable;
+        if (dat.IsWritable || dat.IsWritableOnce) flags |= OtbFlags.Readable;
+        if (dat.IsForceUse) flags |= OtbFlags.ForceUse;
+        if (dat.IsFullGround) flags |= OtbFlags.FullGround;
+        if (dat.IsVertical) flags |= OtbFlags.Vertical;
+        if (dat.IsHorizontal) flags |= OtbFlags.Horizontal;
+        return flags;
+    }
+
+    private async Task ShowUnmappedItemsDialog(List<UnmappedItemEntry> entries)
+    {
+        if (Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.MainWindow is null)
+            return;
+
+        var window = desktop.MainWindow;
+
+        // ── Summary row ──
+        var summaryText = new Avalonia.Controls.TextBlock
+        {
+            Text = $"{entries.Count} client items have no OTB mapping. Select which to create:",
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            FontSize = 14,
+            Margin = new Avalonia.Thickness(0, 0, 0, 8),
+        };
+
+        // ── Select All / None buttons ──
+        var selectAllBtn = new Avalonia.Controls.Button
+        {
+            Content = "Select All",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(12, 4),
+            CornerRadius = new Avalonia.CornerRadius(4),
+            Margin = new Avalonia.Thickness(0, 0, 6, 0),
+        };
+        var selectNoneBtn = new Avalonia.Controls.Button
+        {
+            Content = "Select None",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(12, 4),
+            CornerRadius = new Avalonia.CornerRadius(4),
+        };
+        var selBtnPanel = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Margin = new Avalonia.Thickness(0, 0, 0, 8),
+        };
+        selBtnPanel.Children.Add(selectAllBtn);
+        selBtnPanel.Children.Add(selectNoneBtn);
+
+        // ── Header row ──
+        var headerGrid = new Avalonia.Controls.Grid
+        {
+            ColumnDefinitions = Avalonia.Controls.ColumnDefinitions.Parse("30,50,Auto,60,*,80"),
+            Margin = new Avalonia.Thickness(0, 0, 0, 4),
+        };
+        string[] headers = ["", "Sprite", "Client ID", "Server ID", "Group", "Flags"];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var tb = new Avalonia.Controls.TextBlock
+            {
+                Text = headers[i],
+                Foreground = Avalonia.Media.Brush.Parse("#585b70"),
+                FontSize = 11,
+                FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(4, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(tb, i);
+            headerGrid.Children.Add(tb);
+        }
+
+        // ── Scrollable item list ──
+        var listStack = new Avalonia.Controls.StackPanel { Spacing = 2 };
+        var checkboxes = new List<Avalonia.Controls.CheckBox>();
+
+        foreach (var entry in entries)
+        {
+            var rowGrid = new Avalonia.Controls.Grid
+            {
+                ColumnDefinitions = Avalonia.Controls.ColumnDefinitions.Parse("30,50,Auto,60,*,80"),
+                Background = Avalonia.Media.Brush.Parse("#181825"),
+                MinHeight = 36,
+            };
+
+            // Checkbox
+            var cb = new Avalonia.Controls.CheckBox
+            {
+                IsChecked = entry.Include,
+                Margin = new Avalonia.Thickness(4, 0),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            };
+            var capturedEntry = entry;
+            cb.IsCheckedChanged += (_, _) => capturedEntry.Include = cb.IsChecked == true;
+            checkboxes.Add(cb);
+            Avalonia.Controls.Grid.SetColumn(cb, 0);
+            rowGrid.Children.Add(cb);
+
+            // Sprite preview
+            var spriteBorder = new Avalonia.Controls.Border
+            {
+                Background = Avalonia.Media.Brush.Parse("#11111b"),
+                CornerRadius = new Avalonia.CornerRadius(4),
+                Width = 32, Height = 32,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                ClipToBounds = true,
+                Margin = new Avalonia.Thickness(4, 2),
+            };
+            if (_sprFile != null)
+            {
+                var bmp = ComposeThingBitmapStatic(entry.DatThing, _sprFile);
+                if (bmp != null)
+                {
+                    var img = new Avalonia.Controls.Image
+                    {
+                        Source = bmp, Width = 32, Height = 32,
+                        Stretch = Avalonia.Media.Stretch.Uniform,
+                    };
+                    Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+                    spriteBorder.Child = img;
+                }
+            }
+            Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
+            rowGrid.Children.Add(spriteBorder);
+
+            // Client ID
+            var clientIdTb = new Avalonia.Controls.TextBlock
+            {
+                Text = entry.DatThing.Id.ToString(),
+                Foreground = Avalonia.Media.Brush.Parse("#f9e2af"),
+                FontSize = 13,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(8, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(clientIdTb, 2);
+            rowGrid.Children.Add(clientIdTb);
+
+            // Preview Server ID
+            var serverIdTb = new Avalonia.Controls.TextBlock
+            {
+                Text = entry.PreviewServerId.ToString(),
+                Foreground = Avalonia.Media.Brush.Parse("#a6e3a1"),
+                FontSize = 13,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(8, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(serverIdTb, 3);
+            rowGrid.Children.Add(serverIdTb);
+
+            // Group
+            var groupTb = new Avalonia.Controls.TextBlock
+            {
+                Text = entry.PreviewGroup.ToString(),
+                Foreground = Avalonia.Media.Brush.Parse("#89b4fa"),
+                FontSize = 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(8, 0),
+            };
+            Avalonia.Controls.Grid.SetColumn(groupTb, 4);
+            rowGrid.Children.Add(groupTb);
+
+            // Flag count
+            var flagCount = CountSetFlags(entry.PreviewFlags);
+            var flagTb = new Avalonia.Controls.TextBlock
+            {
+                Text = flagCount > 0 ? $"{flagCount} flags" : "—",
+                Foreground = Avalonia.Media.Brush.Parse("#585b70"),
+                FontSize = 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(8, 0),
+            };
+            Avalonia.Controls.ToolTip.SetTip(flagTb, FormatOtbFlags(entry.PreviewFlags));
+            Avalonia.Controls.Grid.SetColumn(flagTb, 5);
+            rowGrid.Children.Add(flagTb);
+
+            listStack.Children.Add(rowGrid);
+        }
+
+        selectAllBtn.Click += (_, _) =>
+        {
+            foreach (var cb in checkboxes) cb.IsChecked = true;
+        };
+        selectNoneBtn.Click += (_, _) =>
+        {
+            foreach (var cb in checkboxes) cb.IsChecked = false;
+        };
+
+        var scrollViewer = new Avalonia.Controls.ScrollViewer
+        {
+            Content = listStack,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+        };
+
+        // ── Bottom buttons ──
+        var countLabel = new Avalonia.Controls.TextBlock
+        {
+            Foreground = Avalonia.Media.Brush.Parse("#a6adc8"),
+            FontSize = 12,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+        void UpdateCount()
+        {
+            var sel = entries.Count(e => e.Include);
+            countLabel.Text = $"{sel} of {entries.Count} selected";
+        }
+        UpdateCount();
+        foreach (var cb in checkboxes)
+            cb.IsCheckedChanged += (_, _) => UpdateCount();
+
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = "Cancel",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(16, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        var createBtn = new Avalonia.Controls.Button
+        {
+            Content = "Create Selected",
+            Background = Avalonia.Media.Brush.Parse("#a6e3a1"),
+            Foreground = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            Padding = new Avalonia.Thickness(16, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+
+        var btnPanel = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        btnPanel.Children.Add(countLabel);
+        btnPanel.Children.Add(cancelBtn);
+        btnPanel.Children.Add(createBtn);
+
+        // ── Layout ──
+        var mainStack = new Avalonia.Controls.DockPanel { Margin = new Avalonia.Thickness(16) };
+        Avalonia.Controls.DockPanel.SetDock(summaryText, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(selBtnPanel, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(headerGrid, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(btnPanel, Avalonia.Controls.Dock.Bottom);
+        mainStack.Children.Add(summaryText);
+        mainStack.Children.Add(selBtnPanel);
+        mainStack.Children.Add(headerGrid);
+        mainStack.Children.Add(btnPanel);
+        mainStack.Children.Add(scrollViewer);
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Title = "Unmapped Client Items",
+            Width = 640, Height = 520,
+            MinWidth = 500, MinHeight = 350,
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            Content = mainStack,
+        };
+
+        cancelBtn.Click += (_, _) => dialog.Close();
+        createBtn.Click += (_, _) =>
+        {
+            var selected = entries.Where(e => e.Include).ToList();
+            if (selected.Count == 0) { dialog.Close(); return; }
+
+            CreateOtbItemsFromUnmapped(selected);
+            dialog.Close();
+        };
+
+        await dialog.ShowDialog(window);
+    }
+
+    private void CreateOtbItemsFromUnmapped(List<UnmappedItemEntry> selected)
+    {
+        if (_otbData == null) return;
+
+        ushort nextServerId = (ushort)(_otbData.Items.Count > 0
+            ? _otbData.Items.Max(i => i.ServerId) + 1
+            : 100);
+
+        int created = 0;
+        foreach (var entry in selected)
+        {
+            var dat = entry.DatThing;
+            var newItem = new OtbItem
+            {
+                ServerId = nextServerId++,
+                ClientId = dat.Id,
+                Group = entry.PreviewGroup,
+                Flags = entry.PreviewFlags,
+                Speed = dat.GroundSpeed,
+                LightLevel = dat.LightLevel,
+                LightColor = dat.LightColor,
+                MinimapColor = dat.MiniMapColor,
+                MaxReadWriteChars = dat.MaxTextLength,
+                Name = dat.MarketName.Length > 0 ? dat.MarketName : null,
+            };
+
+            if (dat.FrameGroups.Length > 0 && dat.FrameGroups[0].Frames > 1)
+                newItem.IsAnimation = true;
+
+            _otbData.Items.Add(newItem);
+
+            var vm = new ItemViewModel(newItem, this);
+            _allItems.Add(vm);
+            created++;
+        }
+
+        TotalItems = _allItems.Count;
+        CrossReferenceDat();
+        LoadAllSprites();
+        ApplyFilter();
+        HasUnsavedChanges = true;
+        StatusText = $"Created {created} OTB item(s) from unmapped client items. Save to persist.";
+    }
+
+    private static int CountSetFlags(OtbFlags flags)
+    {
+        int count = 0;
+        for (var val = (uint)flags; val != 0; val &= val - 1)
+            count++;
+        return count;
+    }
+
+    private static string FormatOtbFlags(OtbFlags flags)
+    {
+        if (flags == OtbFlags.None) return "None";
+        var parts = new List<string>();
+        foreach (OtbFlags f in Enum.GetValues(typeof(OtbFlags)))
+        {
+            if (f != OtbFlags.None && flags.HasFlag(f))
+                parts.Add(f.ToString());
+        }
+        return string.Join(", ", parts);
+    }
+
+    // ── Duplicate Finder (pixel-based) ────────────────────────────────
+
+    [RelayCommand]
+    private async Task FindDuplicateItemsAsync()
+    {
+        if (_datData == null || _sprFile == null)
+        {
+            StatusText = "Load DAT and SPR first.";
+            return;
+        }
+
+        IsLoading = true;
+        StatusText = "Scanning for duplicate items (pixel comparison)…";
+
+        var sprFile = _sprFile;
+        var items = _datData.Items.Values.ToList();
+
+        // Build pixel hashes on background thread
+        var groups = await Task.Run(() =>
+        {
+            var hashToItems = new Dictionary<string, List<DatThingType>>();
+            foreach (var thing in items)
+            {
+                if (thing.FrameGroups.Length == 0) continue;
+                var hash = ComputeThingPixelHash(thing, sprFile);
+                if (hash == null) continue; // fully transparent, skip
+
+                if (!hashToItems.TryGetValue(hash, out var list))
+                {
+                    list = [];
+                    hashToItems[hash] = list;
+                }
+                list.Add(thing);
+            }
+            // Keep only groups with 2+ items
+            return hashToItems.Values.Where(g => g.Count > 1).OrderByDescending(g => g.Count).ToList();
+        });
+
+        IsLoading = false;
+
+        if (groups.Count == 0)
+        {
+            StatusText = "No duplicate items found.";
+            return;
+        }
+
+        int totalDuplicates = groups.Sum(g => g.Count - 1);
+        StatusText = $"Found {groups.Count} duplicate group(s) ({totalDuplicates} redundant items).";
+        await ShowDuplicateItemsDialog(groups);
+    }
+
+    private static string? ComputeThingPixelHash(DatThingType thing, SprFile sprFile)
+    {
+        // Hash all sprite pixels across all frame groups
+        using var hasher = System.Security.Cryptography.SHA256.Create();
+        bool hasAnyPixels = false;
+
+        foreach (var fg in thing.FrameGroups)
+        {
+            foreach (var spriteId in fg.SpriteIndex)
+            {
+                if (spriteId == 0) continue;
+                var rgba = sprFile.GetSpriteRgba(spriteId);
+                if (rgba != null)
+                {
+                    hasher.TransformBlock(rgba, 0, rgba.Length, null, 0);
+                    hasAnyPixels = true;
+                }
+            }
+        }
+
+        if (!hasAnyPixels) return null;
+
+        hasher.TransformFinalBlock([], 0, 0);
+        return Convert.ToHexString(hasher.Hash!);
+    }
+
+    private async Task ShowDuplicateItemsDialog(List<List<DatThingType>> groups)
+    {
+        if (Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.MainWindow is null)
+            return;
+
+        var window = desktop.MainWindow;
+
+        var summaryText = new Avalonia.Controls.TextBlock
+        {
+            Text = $"{groups.Count} duplicate group(s) found. Items in each group have identical pixel data.",
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            FontSize = 14,
+            Margin = new Avalonia.Thickness(0, 0, 0, 12),
+        };
+
+        var listStack = new Avalonia.Controls.StackPanel { Spacing = 8 };
+
+        foreach (var group in groups)
+        {
+            // Group header
+            var groupBorder = new Avalonia.Controls.Border
+            {
+                Background = Avalonia.Media.Brush.Parse("#181825"),
+                CornerRadius = new Avalonia.CornerRadius(6),
+                Padding = new Avalonia.Thickness(10, 8),
+            };
+
+            var groupStack = new Avalonia.Controls.StackPanel { Spacing = 4 };
+
+            var headerTb = new Avalonia.Controls.TextBlock
+            {
+                Text = $"Duplicate group — {group.Count} items with identical sprites",
+                Foreground = Avalonia.Media.Brush.Parse("#cba6f7"),
+                FontSize = 13,
+                FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                Margin = new Avalonia.Thickness(0, 0, 0, 4),
+            };
+            groupStack.Children.Add(headerTb);
+
+            var itemsPanel = new Avalonia.Controls.WrapPanel { Orientation = Avalonia.Layout.Orientation.Horizontal };
+            foreach (var thing in group)
+            {
+                var itemPanel = new Avalonia.Controls.StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Vertical,
+                    Margin = new Avalonia.Thickness(4),
+                    Width = 60,
+                };
+
+                var spriteBorder = new Avalonia.Controls.Border
+                {
+                    Background = Avalonia.Media.Brush.Parse("#11111b"),
+                    CornerRadius = new Avalonia.CornerRadius(4),
+                    Width = 40, Height = 40,
+                    ClipToBounds = true,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                };
+                if (_sprFile != null)
+                {
+                    var bmp = ComposeThingBitmapStatic(thing, _sprFile);
+                    if (bmp != null)
+                    {
+                        var img = new Avalonia.Controls.Image
+                        {
+                            Source = bmp, Width = 40, Height = 40,
+                            Stretch = Avalonia.Media.Stretch.Uniform,
+                        };
+                        Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+                        spriteBorder.Child = img;
+                    }
+                }
+                itemPanel.Children.Add(spriteBorder);
+
+                var idTb = new Avalonia.Controls.TextBlock
+                {
+                    Text = $"ID {thing.Id}",
+                    Foreground = Avalonia.Media.Brush.Parse("#f9e2af"),
+                    FontSize = 11,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                };
+                itemPanel.Children.Add(idTb);
+
+                // Check if has OTB mapping
+                bool hasOtb = _otbData?.Items.Any(o => o.ClientId == thing.Id) == true;
+                var otbTb = new Avalonia.Controls.TextBlock
+                {
+                    Text = hasOtb ? "Has OTB" : "No OTB",
+                    Foreground = Avalonia.Media.Brush.Parse(hasOtb ? "#a6e3a1" : "#585b70"),
+                    FontSize = 10,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                };
+                itemPanel.Children.Add(otbTb);
+
+                itemsPanel.Children.Add(itemPanel);
+            }
+            groupStack.Children.Add(itemsPanel);
+            groupBorder.Child = groupStack;
+            listStack.Children.Add(groupBorder);
+        }
+
+        var scrollViewer = new Avalonia.Controls.ScrollViewer
+        {
+            Content = listStack,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+        };
+
+        var closeBtn = new Avalonia.Controls.Button
+        {
+            Content = "Close",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(16, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+        };
+
+        var mainDock = new Avalonia.Controls.DockPanel { Margin = new Avalonia.Thickness(16) };
+        Avalonia.Controls.DockPanel.SetDock(summaryText, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(closeBtn, Avalonia.Controls.Dock.Bottom);
+        mainDock.Children.Add(summaryText);
+        mainDock.Children.Add(closeBtn);
+        mainDock.Children.Add(scrollViewer);
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Title = "Duplicate Items (Pixel Comparison)",
+            Width = 600, Height = 500,
+            MinWidth = 400, MinHeight = 300,
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            Content = mainDock,
+        };
+
+        closeBtn.Click += (_, _) => dialog.Close();
+        await dialog.ShowDialog(window);
+    }
+
+    // ── Compact Sprites (fill empty slots) ─────────────────────────────
+
+    [RelayCommand]
+    private async Task CompactSpritesAsync()
+    {
+        if (_datData == null || _sprFile == null)
+        {
+            StatusText = "Load DAT and SPR first.";
+            return;
+        }
+
+        IsLoading = true;
+        StatusText = "Analyzing sprite usage…";
+
+        var datData = _datData;
+        var sprFile = _sprFile;
+        var otbData = _otbData;
+
+        var (emptySlots, usedSpriteIds, totalSprites) = await Task.Run(() =>
+        {
+            // Collect all sprite IDs referenced by any item/outfit/effect/missile
+            var used = new HashSet<uint>();
+            void CollectRefs(Dictionary<ushort, DatThingType> dict)
+            {
+                foreach (var thing in dict.Values)
+                    foreach (var fg in thing.FrameGroups)
+                        foreach (var id in fg.SpriteIndex)
+                            if (id != 0) used.Add(id);
+            }
+            CollectRefs(datData.Items);
+            CollectRefs(datData.Outfits);
+            CollectRefs(datData.Effects);
+            CollectRefs(datData.Missiles);
+
+            // Find empty slots: no pixels AND not referenced
+            var empty = new List<uint>();
+            for (uint id = 1; id <= sprFile.SpriteCount; id++)
+            {
+                if (used.Contains(id)) continue;
+                var rgba = sprFile.GetSpriteRgba(id);
+                if (rgba == null) { empty.Add(id); continue; }
+                // Check if all pixels are transparent
+                bool allTransparent = true;
+                for (int i = 3; i < rgba.Length; i += 4)
+                {
+                    if (rgba[i] != 0) { allTransparent = false; break; }
+                }
+                if (allTransparent) empty.Add(id);
+            }
+
+            return (empty, used, sprFile.SpriteCount);
+        });
+
+        IsLoading = false;
+
+        if (emptySlots.Count == 0)
+        {
+            StatusText = "No empty sprite slots found. SPR is already compact.";
+            return;
+        }
+
+        StatusText = $"Found {emptySlots.Count} empty sprite slot(s) out of {totalSprites} total.";
+        await ShowCompactSpritesDialog(emptySlots, usedSpriteIds, totalSprites);
+    }
+
+    private async Task ShowCompactSpritesDialog(List<uint> emptySlots, HashSet<uint> usedSpriteIds, uint totalSprites)
+    {
+        if (Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.MainWindow is null)
+            return;
+
+        var window = desktop.MainWindow;
+
+        var summaryText = new Avalonia.Controls.TextBlock
+        {
+            Text = $"Found {emptySlots.Count} empty sprite slot(s) out of {totalSprites}.\n\n" +
+                   "Compacting will shift sprites to fill empty slots and update all references " +
+                   "in DAT items and OTB client mappings.\n\n" +
+                   "This operation is staged — click Save All (Ctrl+S) to persist.",
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            FontSize = 14,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Margin = new Avalonia.Thickness(0, 0, 0, 12),
+        };
+
+        var previewTb = new Avalonia.Controls.TextBlock
+        {
+            Text = $"After compacting: {totalSprites - (uint)emptySlots.Count} sprites (saving {emptySlots.Count} slots)",
+            Foreground = Avalonia.Media.Brush.Parse("#a6e3a1"),
+            FontSize = 14,
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            Margin = new Avalonia.Thickness(0, 0, 0, 12),
+        };
+
+        var btnPanel = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = "Cancel",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            Padding = new Avalonia.Thickness(16, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        var compactBtn = new Avalonia.Controls.Button
+        {
+            Content = "Compact Now",
+            Background = Avalonia.Media.Brush.Parse("#a6e3a1"),
+            Foreground = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            Padding = new Avalonia.Thickness(16, 6),
+            CornerRadius = new Avalonia.CornerRadius(6),
+        };
+        btnPanel.Children.Add(cancelBtn);
+        btnPanel.Children.Add(compactBtn);
+
+        var mainDock = new Avalonia.Controls.DockPanel { Margin = new Avalonia.Thickness(20, 16) };
+        Avalonia.Controls.DockPanel.SetDock(summaryText, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(previewTb, Avalonia.Controls.Dock.Top);
+        Avalonia.Controls.DockPanel.SetDock(btnPanel, Avalonia.Controls.Dock.Bottom);
+        mainDock.Children.Add(summaryText);
+        mainDock.Children.Add(previewTb);
+        mainDock.Children.Add(btnPanel);
+        mainDock.Children.Add(new Avalonia.Controls.Panel()); // filler
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Title = "Compact Sprites",
+            Width = 480, Height = 260,
+            CanResize = false,
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            Content = mainDock,
+        };
+
+        cancelBtn.Click += (_, _) => dialog.Close();
+        compactBtn.Click += async (_, _) =>
+        {
+            dialog.Close();
+            await ExecuteCompactSprites(emptySlots);
+        };
+
+        await dialog.ShowDialog(window);
+    }
+
+    private async Task ExecuteCompactSprites(List<uint> emptySlots)
+    {
+        if (_datData == null || _sprFile == null) return;
+
+        IsLoading = true;
+        StatusText = "Compacting sprites…";
+
+        var datData = _datData;
+        var sprFile = _sprFile;
+        var otbData = _otbData;
+
+        // Build the old→new mapping on background thread
+        var remapTable = await Task.Run(() =>
+        {
+            var emptySet = new HashSet<uint>(emptySlots);
+
+            // Build sorted list of all sprite IDs (1..count), identify which are empty
+            // We walk from lowest empty slot, and fill it with next non-empty sprite from the end.
+            var sortedEmpty = new SortedSet<uint>(emptySlots);
+            var remap = new Dictionary<uint, uint>(); // old → new
+
+            // Strategy: walk from end, for each non-empty sprite that's after our first empty slot,
+            // remap it to the first available empty slot.
+            uint newCount = sprFile.SpriteCount;
+            foreach (var emptyId in sortedEmpty)
+            {
+                if (emptyId >= newCount) break;
+
+                // Find last non-empty sprite
+                while (newCount > emptyId && emptySet.Contains(newCount))
+                    newCount--;
+
+                if (newCount <= emptyId) break;
+
+                // Move sprite at 'newCount' → 'emptyId'
+                remap[newCount] = emptyId;
+                emptySet.Add(newCount);
+                emptySet.Remove(emptyId);
+                newCount--;
+            }
+
+            return remap;
+        });
+
+        if (remapTable.Count == 0)
+        {
+            IsLoading = false;
+            StatusText = "No sprites to compact.";
+            return;
+        }
+
+        // Apply remapping
+        await Task.Run(() =>
+        {
+            // 1. Move sprite pixel data
+            foreach (var (oldId, newId) in remapTable)
+            {
+                var pixels = sprFile.GetSpriteRgba(oldId);
+                sprFile.SetSpriteRgba(newId, pixels);
+                sprFile.SetSpriteRgba(oldId, null); // blank old slot
+            }
+
+            // 2. Trim trailing empty sprites
+            // After compaction, the effective count is max non-empty ID
+            // RemoveSprite handles trailing trimming
+
+            // 3. Update all DAT sprite references
+            void RemapRefs(Dictionary<ushort, DatThingType> dict)
+            {
+                foreach (var thing in dict.Values)
+                {
+                    foreach (var fg in thing.FrameGroups)
+                    {
+                        var idx = fg.SpriteIndex;
+                        for (int i = 0; i < idx.Length; i++)
+                        {
+                            if (idx[i] != 0 && remapTable.TryGetValue(idx[i], out var newId))
+                                idx[i] = newId;
+                        }
+                    }
+                }
+            }
+            RemapRefs(datData.Items);
+            RemapRefs(datData.Outfits);
+            RemapRefs(datData.Effects);
+            RemapRefs(datData.Missiles);
+
+            // 4. Update OTB client IDs if needed (OTB maps by clientId, not spriteId)
+            // OTB doesn't reference sprite IDs directly, no change needed.
+        });
+
+        // Rebuild UI
+        HasUnsavedChanges = true;
+
+        BuildClientItemList();
+        if (_otbData != null)
+        {
+            CrossReferenceDat();
+            LoadAllSprites();
+            ApplyFilter();
+        }
+
+        IsLoading = false;
+        StatusText = $"Compacted {remapTable.Count} sprite(s). Save to persist changes.";
+    }
+
     public byte[] MapFloors => MapData?.GetFloors() ?? [7];
 
     partial void OnMapCurrentFloorChanged(byte value)
@@ -1965,6 +2924,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private int _mismatchCount;
     [ObservableProperty] private int _filteredCount;
     [ObservableProperty] private bool _hasUnsavedChanges;
+    [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string? _clientFolderPath;
     [ObservableProperty] private bool _isClientLoaded;
     [ObservableProperty] private bool _showDeprecatedOnly;
@@ -2070,7 +3030,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private int _clientTotalPages = 1;
     private const int ClientItemsPerPage = 100;
     private List<ClientItemViewModel> _clientFilteredItems = [];
-    public string[] ClientCategoryOptions { get; } = ["All", "Item", "Outfit", "Effect", "Missile"];
+    public string[] ClientCategoryOptions { get; } = ["All", "Item", "Outfit", "Effect", "Missile", "Mismatch"];
     public ObservableCollection<ClientItemViewModel> ClientItems { get; } = [];
 
     /// <summary>Multi-selection list, bridged from code-behind.</summary>
@@ -2602,9 +3562,18 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             SetupDatDiagLog();
+            IsLoading = true;
+            StatusText = "Loading client files…";
+
             _sprFile?.Dispose();
-            _datData = DatFile.Load(result.DatPath, result.ProtocolVersion);
-            _sprFile = SprFile.Load(result.SprPath, _datData.Extended);
+            var (datData, sprFile) = await Task.Run(() =>
+            {
+                var d = DatFile.Load(result.DatPath, result.ProtocolVersion);
+                var s = SprFile.Load(result.SprPath, d.Extended);
+                return (d, s);
+            });
+            _datData = datData;
+            _sprFile = sprFile;
             ClientFolderPath = result.FolderPath;
             IsClientLoaded = true;
             StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
@@ -2632,6 +3601,10 @@ public partial class MainWindowViewModel : ObservableObject
             StatusText = $"Client load error: {ex.Message}";
             AddMapLog($"[LOAD-RESULT] {ex}");
         }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     /// <summary>Load client from a folder path (auto-detect protocol). Used by TryLoadLastSessionAsync.</summary>
@@ -2647,9 +3620,18 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             SetupDatDiagLog();
+            IsLoading = true;
+            StatusText = "Loading client files…";
+
             _sprFile?.Dispose();
-            _datData = DatFile.Load(datPath);
-            _sprFile = SprFile.Load(sprPath, _datData.Extended);
+            var (datData, sprFile) = await Task.Run(() =>
+            {
+                var d = DatFile.Load(datPath);
+                var s = SprFile.Load(sprPath, d.Extended);
+                return (d, s);
+            });
+            _datData = datData;
+            _sprFile = sprFile;
             ClientFolderPath = folderPath;
             IsClientLoaded = true;
             StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
@@ -2677,6 +3659,10 @@ public partial class MainWindowViewModel : ObservableObject
             StatusText = $"Client load error: {ex.Message}";
             AddMapLog($"[LOAD-FOLDER] {ex}");
         }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     [RelayCommand]
@@ -2691,7 +3677,11 @@ public partial class MainWindowViewModel : ObservableObject
     {
         try
         {
-            _otbData = OtbFile.Load(path);
+            IsLoading = true;
+            StatusText = "Loading OTB…";
+
+            var otbData = await Task.Run(() => OtbFile.Load(path));
+            _otbData = otbData;
             _otbPath = path;
             BuildItemList();
             StatusText = $"OTB loaded: {_otbData.Items.Count} items — {Path.GetFileName(path)}";
@@ -2712,6 +3702,10 @@ public partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = $"OTB load error: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -3001,6 +3995,7 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task SaveAllAsync()
     {
         var saved = new List<string>();
+        IsLoading = true;
         StatusText = "Saving…";
 
         try
@@ -3036,21 +4031,21 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     OtbFile.Save(otbPath, otbData);
                     saved.Add("OTB");
+                }
 
-                    if (datData != null && datFilePath != null)
-                    {
-                        DatFile.Save(datFilePath, datData);
-                        saved.Add("DAT");
-                    }
+                if (datData != null && datFilePath != null)
+                {
+                    DatFile.Save(datFilePath, datData);
+                    saved.Add("DAT");
+                }
 
-                    if (sprFile != null && sprFilePath != null && sprFile.HasChanges)
-                    {
-                        var tempPath = sprFilePath + ".tmp";
-                        sprFile.Save(tempPath);
-                        sprFile.Dispose();
-                        File.Move(tempPath, sprFilePath, overwrite: true);
-                        saved.Add("SPR");
-                    }
+                if (sprFile != null && sprFilePath != null && sprFile.HasChanges)
+                {
+                    var tempPath = sprFilePath + ".tmp";
+                    sprFile.Save(tempPath);
+                    sprFile.Dispose();
+                    File.Move(tempPath, sprFilePath, overwrite: true);
+                    saved.Add("SPR");
                 }
 
                 if (mapData != null && !string.IsNullOrEmpty(mapPath))
@@ -3061,7 +4056,7 @@ public partial class MainWindowViewModel : ObservableObject
             });
 
             // UI-thread updates after background save
-            if (otbData != null && otbPath != null)
+            if (saved.Count > 0)
                 HasUnsavedChanges = false;
 
             // Reload SPR if it was saved (needs re-open for memory-mapped access)
@@ -3086,6 +4081,10 @@ public partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = $"Save error: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -3630,9 +4629,15 @@ public partial class MainWindowViewModel : ObservableObject
         ushort numericId = 0;
         bool isNumericSearch = hasSearch && ushort.TryParse(search, out numericId);
 
+        bool filterMismatch = ClientCategoryFilter == "Mismatch";
+
         foreach (var vm in _allClientItems)
         {
-            if (ClientCategoryFilter != "All")
+            if (filterMismatch)
+            {
+                if (!vm.HasOtbMismatch) continue;
+            }
+            else if (ClientCategoryFilter != "All")
             {
                 if (!vm.CategoryName.Equals(ClientCategoryFilter, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -4184,12 +5189,17 @@ public partial class MainWindowViewModel : ObservableObject
 
     private Dictionary<ushort, DatThingType> GetDatDictForCategory(ThingCategory category)
     {
+        return GetCategoryDict(_datData!, category);
+    }
+
+    private static Dictionary<ushort, DatThingType> GetCategoryDict(DatData data, ThingCategory category)
+    {
         return category switch
         {
-            ThingCategory.Outfit => _datData!.Outfits,
-            ThingCategory.Effect => _datData!.Effects,
-            ThingCategory.Missile => _datData!.Missiles,
-            _ => _datData!.Items,
+            ThingCategory.Outfit => data.Outfits,
+            ThingCategory.Effect => data.Effects,
+            ThingCategory.Missile => data.Missiles,
+            _ => data.Items,
         };
     }
 
@@ -5129,3 +6139,13 @@ public sealed class InspectorSection
 
 /// <summary>A single property row (key → value).</summary>
 public sealed record InspectorProp(string Key, string Value);
+
+/// <summary>Preview entry for the Unmapped Client Items dialog.</summary>
+public sealed class UnmappedItemEntry
+{
+    public required DatThingType DatThing { get; init; }
+    public bool Include { get; set; }
+    public ushort PreviewServerId { get; set; }
+    public OtbGroup PreviewGroup { get; set; }
+    public OtbFlags PreviewFlags { get; set; }
+}

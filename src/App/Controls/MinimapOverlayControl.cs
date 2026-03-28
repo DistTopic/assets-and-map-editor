@@ -4,9 +4,9 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App.Controls;
+namespace AssetsAndMapEditor.App.Controls;
 
 /// <summary>
 /// Floating minimap overlay that shows the full map with a viewport rectangle.

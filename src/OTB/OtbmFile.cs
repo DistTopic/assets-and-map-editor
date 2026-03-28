@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// OTBM map file parser. Reads the escape-encoded node tree format

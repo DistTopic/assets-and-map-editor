@@ -1,9 +1,9 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using POriginsItemEditor.App.ViewModels;
+using AssetsAndMapEditor.App.ViewModels;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 public partial class App : Application
 {

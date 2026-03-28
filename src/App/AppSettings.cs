@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 public class SavedSession
 {
@@ -25,7 +25,7 @@ public class AppSettings
     private static string SettingsFilePath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "POriginsItemEditor",
+            "AssetsAndMapEditor",
             "settings.json");
 
     public static AppSettings Load()

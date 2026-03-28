@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Parsed entry from items.json — one per server ID.

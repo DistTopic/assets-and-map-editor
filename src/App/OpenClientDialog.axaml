@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="POriginsItemEditor.App.OpenClientDialog"
+        x:Class="AssetsAndMapEditor.App.OpenClientDialog"
         Title="Open Asset Files"
         Width="520"
         SizeToContent="Height"

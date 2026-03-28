@@ -1,4 +1,4 @@
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>Represents a single item entry parsed from items.otb.</summary>
 public sealed class OtbItem

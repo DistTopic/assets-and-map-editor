@@ -7,9 +7,9 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App.Controls;
+namespace AssetsAndMapEditor.App.Controls;
 
 /// <summary>
 /// Custom Avalonia control that renders an OTBM map using software bitmap rendering.

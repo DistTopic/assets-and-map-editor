@@ -1,7 +1,7 @@
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace POriginsItemEditor.App.Converters;
+namespace AssetsAndMapEditor.App.Converters;
 
 /// <summary>
 /// Converts a bool (IsExpanded) to a FontAwesome chevron icon string.

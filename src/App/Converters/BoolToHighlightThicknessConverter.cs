@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace POriginsItemEditor.App.Converters;
+namespace AssetsAndMapEditor.App.Converters;
 
 public class BoolToHighlightThicknessConverter : IValueConverter
 {

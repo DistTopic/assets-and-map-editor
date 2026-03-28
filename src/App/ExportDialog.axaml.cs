@@ -2,9 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 public enum ExportFormat { Png, Bmp, Jpg, Obd }
 

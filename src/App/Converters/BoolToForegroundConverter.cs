@@ -2,7 +2,7 @@ using Avalonia.Data.Converters;
 using Avalonia.Media;
 using System.Globalization;
 
-namespace POriginsItemEditor.App.Converters;
+namespace AssetsAndMapEditor.App.Converters;
 
 public class BoolToForegroundConverter : IValueConverter
 {

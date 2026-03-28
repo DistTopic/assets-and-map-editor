@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App.ViewModels;
+namespace AssetsAndMapEditor.App.ViewModels;
 
 public enum SplitMode { None, Right, Down }
 

@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Tibia .spr file parser supporting multiple protocol versions.

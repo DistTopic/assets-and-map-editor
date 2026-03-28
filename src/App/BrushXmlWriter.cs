@@ -1,6 +1,6 @@
 using System.Xml.Linq;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 /// <summary>
 /// Writes the BrushCatalog back to standard Tibia editor XML format.

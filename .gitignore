@@ -2,6 +2,8 @@
 bin/
 obj/
 out/
+publish/
+/tmp/
 
 # IDE
 .vs/
@@ -21,3 +23,6 @@ Thumbs.db
 # Rider
 .idea/
 *.sln.iml
+
+# Python helper scripts (local only)
+*.py

@@ -1,4 +1,4 @@
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Represents a complete thing (item/outfit/effect/missile) loaded from Tibia.dat.

@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Reads and writes items.otb files using the same binary tree format

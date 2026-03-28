@@ -2,9 +2,9 @@ using System.Buffers.Binary;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using POriginsItemEditor.OTB;
+using AssetsAndMapEditor.OTB;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 /// <summary>
 /// Result returned by the OpenClientDialog when the user clicks Load.

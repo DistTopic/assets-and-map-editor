@@ -1,6 +1,6 @@
 using System.Xml.Linq;
 
-namespace POriginsItemEditor.App;
+namespace AssetsAndMapEditor.App;
 
 // ═══════════════════════════════════════════════════════════════════
 // Brush data model — loaded from XML, used by palette + map editor

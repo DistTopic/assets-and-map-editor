@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using SharpCompress.Compressors.LZMA;
 
-namespace POriginsItemEditor.OTB;
+namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Encodes and decodes Object Builder Data (.obd) files.
