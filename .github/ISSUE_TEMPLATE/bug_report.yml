@@ -1,0 +1,81 @@
+name: Bug Report
+description: Report a problem or unexpected behavior
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report this issue. Please fill in the sections below as completely as possible to help us investigate and fix it.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear and concise description of the problem.
+      placeholder: "The application crashes when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps that reliably trigger the issue.
+      placeholder: |
+        1. Open OTB file '...'
+        2. Select item ID '...'
+        3. Click '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened. Include any error messages or exceptions.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Application Version
+      description: Found in the title bar or on the Releases page.
+      placeholder: "v1.0.0-preview"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows x64
+        - Windows ARM64
+        - macOS Apple Silicon (ARM64)
+        - macOS Intel (x64)
+        - Linux x64
+        - Linux ARM64
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Affected Files (optional)
+      description: If the issue relates to specific DAT/SPR/OTB/OTBM files, include the format version and approximate file size. Do not attach game files directly.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, logs, or any other information that might help diagnose the issue.

@@ -84,6 +84,13 @@ jobs:
         with:
           path: artifacts
 
+      - name: Compute SHA-256 checksums
+        run: |
+          cd artifacts
+          find . -name "*.zip" | sort | xargs sha256sum | sed 's|\./||g' > checksums.sha256
+          echo "Generated checksums:"
+          cat checksums.sha256
+
       - name: Extract release notes from changelog
         id: changelog
         run: |
@@ -107,4 +114,6 @@ jobs:
           name: ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, 'preview') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
           body_path: release_notes.md
-          files: artifacts/**/*.zip
+          files: |
+            artifacts/**/*.zip
+            artifacts/checksums.sha256
