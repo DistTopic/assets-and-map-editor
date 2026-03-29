@@ -5,7 +5,7 @@ namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Tibia.dat parser supporting multiple protocol versions.
-/// Supports MetadataFlags6 (1098+), and legacy protocols (854, 860).
+/// Supports MetadataFlags6 (1100, 1098+), and legacy protocols (854, 860).
 /// </summary>
 public static class DatFile
 {
@@ -48,7 +48,7 @@ public static class DatFile
         }
 
         // Fallback: try every other protocol with both extended modes
-        int[] allProtocols = [1098, 1076, 1057, 1050, 960, 860, 854, 810, 800, 790, 780, 770, 760, 750, 740];
+        int[] allProtocols = [1100, 1098, 1076, 1057, 1050, 960, 860, 854, 810, 800, 790, 780, 770, 760, 750, 740];
         foreach (var proto in allProtocols)
         {
             if (proto == primary) continue;
@@ -93,7 +93,8 @@ public static class DatFile
             0x4E97D9D4 => 1057,
             0x500F744E => 1076,
             0x50C5A941 => 1098,
-            _ => 1098,
+            0x51D6A2D3 => 1100,
+            _ => 1100,
         };
     }
 
