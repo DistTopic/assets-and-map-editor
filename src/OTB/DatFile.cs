@@ -21,47 +21,67 @@ public static class DatFile
         DiagLog?.Invoke($"[DAT] File={Path.GetFileName(path)}, size={raw.Length}, sig=0x{sig:X8}, detectedProto={detected}, hint={protocolHint}");
 
         int primary = protocolHint > 0 ? protocolHint : detected;
-        bool primaryExtended = primary >= 960;
 
-        // Try primary protocol with default extended setting
-        try
-        {
-            var result = Parse(raw, primary, primaryExtended);
-            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={primaryExtended}, items={result.ItemCount}");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={primaryExtended}: {ex.Message}");
-        }
-
-        // Try primary protocol with opposite extended setting
-        try
-        {
-            var result = Parse(raw, primary, !primaryExtended);
-            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={!primaryExtended}, items={result.ItemCount}");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={!primaryExtended}: {ex.Message}");
-        }
-
-        // Fallback: try every other protocol with both extended modes
+        // Build protocol list: primary first, then fallbacks.
+        var protocols = new List<int> { primary };
         int[] allProtocols = [1098, 1076, 1057, 1050, 960, 860, 854, 810, 800, 790, 780, 770, 760, 750, 740];
-        foreach (var proto in allProtocols)
+        foreach (var p in allProtocols)
+            if (p != primary) protocols.Add(p);
+
+        // Feature flag combinations (like PStory's tryLoadDatWithFallbacks):
+        // extended (U32 sprites), enhancedAnimations, frameGroups — all independent.
+        var featureCombos = new (bool ext, bool anim, bool fg)[]
         {
-            if (proto == primary) continue;
-            foreach (var ext in new[] { true, false })
+            (false, false, false), // version-default for <=854
+            (true,  false, false), // SpritesU32 only
+            (true,  true,  false), // SpritesU32 + EnhancedAnimations
+            (true,  true,  true),  // SpritesU32 + EnhancedAnimations + IdleAnimations
+            (false, true,  false), // EnhancedAnimations only
+            (false, false, true),  // IdleAnimations only
+            (false, true,  true),  // EnhancedAnimations + IdleAnimations
+            (true,  false, true),  // SpritesU32 + IdleAnimations
+        };
+
+        DatData? bestResult = null;
+        int bestTotal = -1;
+
+        foreach (var proto in protocols)
+        {
+            foreach (var (ext, anim, fg) in featureCombos)
             {
+                DatData result;
                 try
                 {
-                    var result = Parse(raw, proto, ext);
-                    DiagLog?.Invoke($"[DAT] Fallback OK: proto={proto}, extended={ext}, items={result.ItemCount}");
-                    return result;
+                    result = Parse(raw, proto, ext, anim, fg);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    DiagLog?.Invoke($"[DAT] Parse FAILED: proto={proto}, ext={ext}, anim={anim}, fg={fg}: {ex.Message}");
+                    continue;
+                }
+
+                int total = result.Items.Count + result.Outfits.Count + result.Effects.Count + result.Missiles.Count;
+                int expected = result.ItemCount + result.OutfitCount + result.EffectCount + result.MissileCount;
+
+                DiagLog?.Invoke($"[DAT] Parse OK: proto={proto}, ext={ext}, anim={anim}, fg={fg}, things={total}/{expected} (items={result.Items.Count}, outfits={result.Outfits.Count}, effects={result.Effects.Count}, missiles={result.Missiles.Count})");
+
+                // Perfect parse — return immediately
+                if (total == expected)
+                    return result;
+
+                // Track the best partial result
+                if (total > bestTotal)
+                {
+                    bestTotal = total;
+                    bestResult = result;
+                }
             }
+        }
+
+        if (bestResult != null)
+        {
+            DiagLog?.Invoke($"[DAT] Using best partial result: {bestTotal} things parsed.");
+            return bestResult;
         }
 
         throw new InvalidOperationException(
@@ -97,7 +117,7 @@ public static class DatFile
         };
     }
 
-    private static DatData Parse(byte[] raw, int protocolHint, bool extended)
+    private static DatData Parse(byte[] raw, int protocolHint, bool extended, bool enhancedAnimations, bool frameGroups)
     {
         var r = new DatReader(raw);
 
@@ -124,7 +144,7 @@ public static class DatFile
         {
             try
             {
-                var thing = ParseThing(r, (ushort)id, ThingCategory.Item, protocol, extended);
+                var thing = ParseThing(r, (ushort)id, ThingCategory.Item, protocol, extended, enhancedAnimations, frameGroups);
                 items[(ushort)id] = thing;
             }
             catch (Exception ex)
@@ -134,26 +154,47 @@ public static class DatFile
             }
         }
 
-        // Parse outfits/effects/missiles independently — don't let failures block items
-        bool secondaryFailed = false;
+        // Parse outfits/effects/missiles independently — each category gets its own
+        // try/catch so a failure in one doesn't blank out the others.
+        // Partial results are KEPT (e.g. 4970/5030 outfits is better than 0).
+
         try
         {
             for (int id = 1; id <= numOutfits; id++)
-                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit, protocol, extended);
-
-            for (int id = 1; id <= numEffects; id++)
-                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect, protocol, extended);
-
-            for (int id = 1; id <= numMissiles; id++)
-                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile, protocol, extended);
+                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit, protocol, extended, enhancedAnimations, frameGroups);
+            DiagLog?.Invoke($"[DAT] Outfits OK: {outfits.Count}/{numOutfits}, readerPos={r.Position}");
         }
-        catch
+        catch (Exception ex)
         {
-            secondaryFailed = true;
+            DiagLog?.Invoke($"[DAT] Outfits FAILED at {outfits.Count}/{numOutfits}, readerPos={r.Position}: {ex.Message}");
         }
 
-        // If outfit/effect/missile parsing failed AND most of the file is unread,
+        try
+        {
+            for (int id = 1; id <= numEffects; id++)
+                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect, protocol, extended, enhancedAnimations, frameGroups);
+            DiagLog?.Invoke($"[DAT] Effects OK: {effects.Count}/{numEffects}, readerPos={r.Position}");
+        }
+        catch (Exception ex)
+        {
+            DiagLog?.Invoke($"[DAT] Effects FAILED at {effects.Count}/{numEffects}, readerPos={r.Position}: {ex.Message}");
+        }
+
+        try
+        {
+            for (int id = 1; id <= numMissiles; id++)
+                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile, protocol, extended, enhancedAnimations, frameGroups);
+            DiagLog?.Invoke($"[DAT] Missiles OK: {missiles.Count}/{numMissiles}, readerPos={r.Position}");
+        }
+        catch (Exception ex)
+        {
+            DiagLog?.Invoke($"[DAT] Missiles FAILED at {missiles.Count}/{numMissiles}, readerPos={r.Position}: {ex.Message}");
+        }
+
+        // If ALL secondary categories failed AND most of the file is unread,
         // the protocol is almost certainly wrong — reject so fallback tries the next one.
+        bool secondaryFailed = outfits.Count == 0 && effects.Count == 0 && missiles.Count == 0
+                               && (numOutfits + numEffects + numMissiles) > 0;
         if (secondaryFailed)
         {
             int remaining = raw.Length - r.Position;
@@ -168,6 +209,8 @@ public static class DatFile
             Signature = signature,
             ProtocolVersion = protocol,
             Extended = extended,
+            EnhancedAnimations = enhancedAnimations,
+            FrameGroups = frameGroups,
             ItemCount = (ushort)numItems,
             OutfitCount = (ushort)numOutfits,
             EffectCount = (ushort)numEffects,
@@ -179,7 +222,7 @@ public static class DatFile
         };
     }
 
-    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category, int protocol, bool extended)
+    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category, int protocol, bool extended, bool enhancedAnimations, bool frameGroups)
     {
         var thing = new DatThingType { Id = id, Category = category };
 
@@ -187,15 +230,15 @@ public static class DatFile
         ParseFlags(r, thing, protocol);
 
         // ── Parse frame groups ──
-        // Frame groups exist for outfits in protocol >= 1050
+        // Frame groups only apply to outfits/creatures when the feature is enabled.
         bool isOutfit = category == ThingCategory.Outfit;
-        int groupCount = (isOutfit && protocol >= 1050) ? r.U8() : 1;
+        int groupCount = (isOutfit && frameGroups) ? r.U8() : 1;
         var groups = new FrameGroup[groupCount];
 
         for (int g = 0; g < groupCount; g++)
         {
             var fg = new FrameGroup();
-            if (isOutfit && protocol >= 1050)
+            if (isOutfit && frameGroups)
                 fg.Type = (FrameGroupType)r.U8();
 
             fg.Width = r.U8();
@@ -209,8 +252,8 @@ public static class DatFile
             fg.PatternZ = r.U8();
             fg.Frames = r.U8();
 
-            // Improved animations (protocol >= 1050)
-            if (fg.Frames > 1 && protocol >= 1050)
+            // Enhanced/improved animations — independent feature flag
+            if (fg.Frames > 1 && enhancedAnimations)
             {
                 fg.AnimationMode = (AnimationMode)r.U8();
                 fg.LoopCount = r.S32();
@@ -475,64 +518,64 @@ public static class DatFile
         for (int id = 100; id <= lastItemId; id++)
         {
             if (data.Items.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, data.Extended, data.EnhancedAnimations, data.FrameGroups);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, data.Extended);
         }
 
         // Outfits: 1..lastOutfitId
         for (int id = 1; id <= lastOutfitId; id++)
         {
             if (data.Outfits.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, data.Extended, data.EnhancedAnimations, data.FrameGroups);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, data.Extended);
         }
 
         // Effects: 1..lastEffectId
         for (int id = 1; id <= lastEffectId; id++)
         {
             if (data.Effects.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, data.Extended, data.EnhancedAnimations, data.FrameGroups);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, data.Extended);
         }
 
         // Missiles: 1..lastMissileId
         for (int id = 1; id <= lastMissileId; id++)
         {
             if (data.Missiles.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, data.Extended, data.EnhancedAnimations, data.FrameGroups);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, data.Extended);
         }
 
         File.WriteAllBytes(path, w.ToArray());
     }
 
-    private static void WriteEmptyThing(DatWriter w)
+    private static void WriteEmptyThing(DatWriter w, bool extended)
     {
         w.U8(0xFF); // end flags
-        // 1 frame group: 1x1, exactSize=32, 1 layer, 1x1x1 pattern, 1 frame, 1 sprite (id=0)
+        // 1 frame group: 1x1, 1 layer, 1x1x1 pattern, 1 frame, 1 sprite (id=0)
         w.U8(1); w.U8(1); // width, height
         w.U8(1); // layers
         w.U8(1); w.U8(1); w.U8(1); // patternX/Y/Z
         w.U8(1); // frames
-        w.U32(0); // sprite id
+        if (extended) w.U32(0); else w.U16(0); // sprite id
     }
 
-    private static void WriteThing(DatWriter w, DatThingType thing)
+    private static void WriteThing(DatWriter w, DatThingType thing, bool extended, bool enhancedAnimations, bool frameGroups)
     {
         WriteFlags(w, thing);
 
         bool isOutfit = thing.Category == ThingCategory.Outfit;
-        if (isOutfit)
+        if (isOutfit && frameGroups)
             w.U8((byte)thing.FrameGroups.Length);
 
         for (int g = 0; g < thing.FrameGroups.Length; g++)
         {
             var fg = thing.FrameGroups[g];
-            if (isOutfit)
+            if (isOutfit && frameGroups)
                 w.U8((byte)fg.Type);
 
             w.U8(fg.Width);
@@ -546,7 +589,7 @@ public static class DatFile
             w.U8(fg.PatternZ);
             w.U8(fg.Frames);
 
-            if (fg.Frames > 1)
+            if (fg.Frames > 1 && enhancedAnimations)
             {
                 w.U8((byte)fg.AnimationMode);
                 w.S32(fg.LoopCount);
@@ -563,7 +606,10 @@ public static class DatFile
 
             int totalSprites = fg.SpriteCount;
             for (int i = 0; i < totalSprites; i++)
-                w.U32(i < fg.SpriteIndex.Length ? fg.SpriteIndex[i] : 0);
+            {
+                uint sid = i < fg.SpriteIndex.Length ? fg.SpriteIndex[i] : 0;
+                if (extended) w.U32(sid); else w.U16((ushort)sid);
+            }
         }
     }
 
@@ -670,6 +716,8 @@ public static class DatFile
         public int Remaining => data.Length - _pos;
         public int Position => _pos;
 
+        public void Seek(int position) => _pos = position;
+
         private void EnsureAvailable(int bytes)
         {
             if (_pos + bytes > data.Length)
@@ -741,6 +789,10 @@ public sealed class DatData
     public int ProtocolVersion { get; init; }
     /// <summary>True if sprite indices are U32 (extended). False if U16.</summary>
     public bool Extended { get; init; }
+    /// <summary>True if enhanced animation durations are present in the DAT.</summary>
+    public bool EnhancedAnimations { get; init; }
+    /// <summary>True if outfit/creature frame groups are present in the DAT.</summary>
+    public bool FrameGroups { get; init; }
     public ushort ItemCount { get; init; }
     public ushort OutfitCount { get; init; }
     public ushort EffectCount { get; init; }
