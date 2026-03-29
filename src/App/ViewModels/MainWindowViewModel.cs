@@ -2795,6 +2795,294 @@ public partial class MainWindowViewModel : ObservableObject
             MapActionLog.RemoveAt(MapActionLog.Count - 1);
     }
 
+    // ── Map Properties & Operations ──
+
+    [RelayCommand]
+    private async Task OpenMapPropertiesAsync()
+    {
+        if (MapData == null) return;
+
+        var dialog = new MapPropertiesDialog
+        {
+            MapDescription = MapData.Description,
+            MapWidth = MapData.Width,
+            MapHeight = MapData.Height,
+            MapHouseFile = MapData.HouseFile,
+            MapSpawnFile = MapData.SpawnFile,
+            OtbmVersion = MapData.Version.ToString(),
+            OtbVersion = $"{MapData.OtbMajorVersion}.{MapData.OtbMinorVersion}",
+            TileCount = MapData.Tiles.Count,
+        };
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+        else return;
+
+        if (dialog.Result == null) return;
+
+        var r = dialog.Result;
+        bool changed = false;
+
+        if (MapData.Description != r.Description)
+        { MapData.Description = r.Description; changed = true; }
+        if (MapData.HouseFile != r.HouseFile)
+        { MapData.HouseFile = r.HouseFile; changed = true; }
+        if (MapData.SpawnFile != r.SpawnFile)
+        { MapData.SpawnFile = r.SpawnFile; changed = true; }
+
+        bool resized = MapData.Width != r.Width || MapData.Height != r.Height;
+        if (resized)
+        {
+            int removed = 0;
+            var toRemove = new List<MapPosition>();
+            foreach (var pos in MapData.Tiles.Keys)
+            {
+                if (pos.X >= r.Width || pos.Y >= r.Height)
+                    toRemove.Add(pos);
+            }
+            foreach (var pos in toRemove)
+            {
+                MapData.Tiles.Remove(pos);
+                removed++;
+            }
+
+            MapData.Width = r.Width;
+            MapData.Height = r.Height;
+            changed = true;
+
+            MapTileCount = MapData.Tiles.Count;
+            AddMapLog($"Map resized to {r.Width}×{r.Height} — {removed} tile(s) removed");
+        }
+
+        if (changed)
+        {
+            MarkMapDirty();
+            MapStatusText = $"Map properties updated — {MapData.Tiles.Count:N0} tiles";
+            if (!resized) AddMapLog("Map properties updated");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowMapStatisticsAsync()
+    {
+        if (MapData == null) return;
+
+        var dialog = new MapStatisticsDialog();
+        dialog.Populate(MapData);
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+        else
+        {
+            dialog.Show();
+        }
+    }
+
+    [RelayCommand]
+    private void MapCleanupInvalidItems()
+    {
+        if (MapData == null || _otbData == null) return;
+
+        var validIds = new HashSet<ushort>(_otbData.Items.Select(i => i.ServerId));
+        int removedItems = 0;
+        var emptyTiles = new List<MapPosition>();
+
+        foreach (var (pos, tile) in MapData.Tiles)
+        {
+            int before = tile.Items.Count;
+            tile.Items.RemoveAll(item => item.Id > 0 && !validIds.Contains(item.Id));
+            removedItems += before - tile.Items.Count;
+
+            if (tile.Items.Count == 0)
+                emptyTiles.Add(pos);
+        }
+
+        foreach (var pos in emptyTiles)
+            MapData.Tiles.Remove(pos);
+
+        if (removedItems > 0 || emptyTiles.Count > 0)
+        {
+            MarkMapDirty();
+            MapTileCount = MapData.Tiles.Count;
+            var msg = $"Cleanup: removed {removedItems} invalid item(s), {emptyTiles.Count} empty tile(s)";
+            MapStatusText = msg;
+            AddMapLog(msg);
+        }
+        else
+        {
+            AddMapLog("Cleanup: no invalid items found");
+            MapStatusText = "No invalid items found";
+        }
+    }
+
+    [RelayCommand]
+    private async Task MapRemoveItemsByIdAsync()
+    {
+        if (MapData == null) return;
+
+        // Build a simple input dialog inline
+        var tcs = new TaskCompletionSource<ushort?>();
+        var input = new Avalonia.Controls.TextBox
+        {
+            Watermark = "Item Server ID (e.g. 2148)",
+            Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            BorderBrush = Avalonia.Media.Brush.Parse("#45475a"),
+            CornerRadius = new Avalonia.CornerRadius(4),
+            Padding = new Avalonia.Thickness(6, 4),
+            FontSize = 12,
+        };
+        var okBtn = new Avalonia.Controls.Button
+        {
+            Content = "Remove", Background = Avalonia.Media.Brush.Parse("#f38ba8"),
+            Foreground = Avalonia.Media.Brush.Parse("#1e1e2e"), FontWeight = FontWeight.SemiBold,
+            CornerRadius = new Avalonia.CornerRadius(4), Padding = new Avalonia.Thickness(14, 6),
+        };
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = "Cancel", Background = Avalonia.Media.Brush.Parse("#313244"),
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"),
+            CornerRadius = new Avalonia.CornerRadius(4), Padding = new Avalonia.Thickness(14, 6),
+        };
+
+        var btnPanel = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Margin = new Avalonia.Thickness(0, 10, 0, 0),
+        };
+        btnPanel.Children.Add(cancelBtn);
+        btnPanel.Children.Add(okBtn);
+
+        var panel = new Avalonia.Controls.StackPanel { Spacing = 8, Margin = new Avalonia.Thickness(20) };
+        panel.Children.Add(new Avalonia.Controls.TextBlock
+        {
+            Text = "Enter the Server ID of the item to remove from the entire map:",
+            Foreground = Avalonia.Media.Brush.Parse("#cdd6f4"), FontSize = 12,
+        });
+        panel.Children.Add(input);
+        panel.Children.Add(btnPanel);
+
+        var dlg = new Avalonia.Controls.Window
+        {
+            Title = "Remove Items by ID",
+            Width = 380, SizeToContent = Avalonia.Controls.SizeToContent.Height,
+            CanResize = false, WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Background = Avalonia.Media.Brush.Parse("#1e1e2e"),
+            Content = panel,
+        };
+
+        okBtn.Click += (_, _) =>
+        {
+            if (ushort.TryParse(input.Text?.Trim(), out var id) && id > 0)
+            { tcs.TrySetResult(id); dlg.Close(); }
+        };
+        cancelBtn.Click += (_, _) => { tcs.TrySetResult(null); dlg.Close(); };
+        dlg.Closing += (_, _) => tcs.TrySetResult(null);
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dlg.ShowDialog(desktop.MainWindow);
+        }
+        else return;
+
+        var targetId = await tcs.Task;
+        if (targetId == null) return;
+
+        int removed = RemoveItemIdFromMap(MapData, targetId.Value);
+        if (removed > 0)
+        {
+            MarkMapDirty();
+            MapTileCount = MapData.Tiles.Count;
+            var msg = $"Removed {removed} instance(s) of item #{targetId.Value}";
+            MapStatusText = msg;
+            AddMapLog(msg);
+        }
+        else
+        {
+            AddMapLog($"Item #{targetId.Value} not found on map");
+            MapStatusText = $"Item #{targetId.Value} not found";
+        }
+    }
+
+    private static int RemoveItemIdFromMap(MapData map, ushort id)
+    {
+        int removed = 0;
+        var emptyTiles = new List<MapPosition>();
+
+        foreach (var (pos, tile) in map.Tiles)
+        {
+            int before = tile.Items.Count;
+            tile.Items.RemoveAll(i => i.Id == id);
+            removed += before - tile.Items.Count;
+
+            // Also remove from container contents
+            foreach (var item in tile.Items)
+                removed += RemoveItemIdFromContents(item.Contents, id);
+
+            if (tile.Items.Count == 0)
+                emptyTiles.Add(pos);
+        }
+
+        foreach (var pos in emptyTiles)
+            map.Tiles.Remove(pos);
+
+        return removed;
+    }
+
+    private static int RemoveItemIdFromContents(List<MapItem> contents, ushort id)
+    {
+        int removed = 0;
+        int before = contents.Count;
+        contents.RemoveAll(i => i.Id == id);
+        removed += before - contents.Count;
+
+        foreach (var item in contents)
+            removed += RemoveItemIdFromContents(item.Contents, id);
+
+        return removed;
+    }
+
+    [RelayCommand]
+    private void MapRemoveEmptyTiles()
+    {
+        if (MapData == null) return;
+
+        var toRemove = new List<MapPosition>();
+        foreach (var (pos, tile) in MapData.Tiles)
+        {
+            if (tile.Items.Count == 0)
+                toRemove.Add(pos);
+        }
+
+        foreach (var pos in toRemove)
+            MapData.Tiles.Remove(pos);
+
+        if (toRemove.Count > 0)
+        {
+            MarkMapDirty();
+            MapTileCount = MapData.Tiles.Count;
+            var msg = $"Removed {toRemove.Count} empty tile(s)";
+            MapStatusText = msg;
+            AddMapLog(msg);
+        }
+        else
+        {
+            AddMapLog("No empty tiles found");
+            MapStatusText = "No empty tiles found";
+        }
+    }
+
     /// <summary>Called by MapCanvasControl.SelectedTileChanged event.</summary>
     public void OnSelectedTileChanged(MapPosition? pos)
     {

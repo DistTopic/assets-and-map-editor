@@ -276,6 +276,24 @@
         <Separator/>
         <MenuItem Header="Highlight Items" ToggleType="CheckBox" IsChecked="{Binding ViewHighlightItems, Mode=TwoWay}"/>
       </MenuItem>
+      <MenuItem Header="_Map" IsVisible="{Binding IsMapEditorActive}">
+        <MenuItem Header="Map Properties…" Command="{Binding OpenMapPropertiesCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-sliders" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Map Statistics…" Command="{Binding ShowMapStatisticsCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-chart-bar" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="Cleanup Invalid Items" Command="{Binding MapCleanupInvalidItemsCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-broom" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Remove Items by ID…" Command="{Binding MapRemoveItemsByIdCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-trash-can" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Remove Empty Tiles" Command="{Binding MapRemoveEmptyTilesCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-eraser" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
+        </MenuItem>
+      </MenuItem>
       <MenuItem Header="_Tools">
         <MenuItem Header="Brush Editor" Command="{Binding OpenBrushEditorCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-paintbrush" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
