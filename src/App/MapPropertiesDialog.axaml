@@ -1,0 +1,127 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:i="https://github.com/projektanker/icons.avalonia"
+        x:Class="AssetsAndMapEditor.App.MapPropertiesDialog"
+        Title="Map Properties"
+        Width="500"
+        SizeToContent="Height"
+        MinHeight="300"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="#f38ba8"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.section">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="20">
+
+        <!-- Map Description -->
+        <Border Classes="section">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Description" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                <TextBox x:Name="DescriptionBox" AcceptsReturn="True"
+                         TextWrapping="Wrap" Height="60"
+                         Watermark="Map description..."/>
+            </StackPanel>
+        </Border>
+
+        <!-- Dimensions -->
+        <Border Classes="section">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Dimensions" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,6,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Width" Opacity="0.7"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Height" Opacity="0.7"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="0" x:Name="WidthSpin"
+                                   Minimum="64" Maximum="65000" Increment="256"
+                                   FormatString="N0" HorizontalContentAlignment="Center"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="2" x:Name="HeightSpin"
+                                   Minimum="64" Maximum="65000" Increment="256"
+                                   FormatString="N0" HorizontalContentAlignment="Center"/>
+                </Grid>
+                <TextBlock Text="Tiles outside the new dimensions will be removed."
+                           FontSize="10" Opacity="0.5" Foreground="#f9e2af"/>
+            </StackPanel>
+        </Border>
+
+        <!-- External Files -->
+        <Border Classes="section">
+            <StackPanel Spacing="6">
+                <TextBlock Text="External Files" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,6,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="House File" VerticalAlignment="Center" Opacity="0.7"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="HouseFileBox"
+                             Watermark="e.g. map-house.xml"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Spawn File" VerticalAlignment="Center" Opacity="0.7"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="SpawnFileBox"
+                             Watermark="e.g. map-spawn.xml"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- OTBM Version Info (read-only) -->
+        <Border Classes="section">
+            <StackPanel Spacing="4">
+                <TextBlock Text="OTBM Info" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,4,Auto,4,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="OTBM Version" Opacity="0.7"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="OtbmVersionText"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="OTB Version" Opacity="0.7"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="OtbVersionText"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Tile Count" Opacity="0.7"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TileCountText"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+            <Button Content="Cancel" Click="OnCancel"/>
+            <Button Classes="primary" Content="Apply" Click="OnApply"/>
+        </StackPanel>
+
+    </StackPanel>
+</Window>

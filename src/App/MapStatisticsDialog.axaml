@@ -1,0 +1,111 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AssetsAndMapEditor.App.MapStatisticsDialog"
+        Title="Map Statistics"
+        Width="480"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="Opacity" Value="0.6"/>
+        </Style>
+        <Style Selector="TextBlock.value">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="FontFamily" Value="JetBrains Mono, Cascadia Code, Consolas, monospace"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Border.section">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="20">
+
+        <!-- Tiles -->
+        <Border Classes="section">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Tiles" FontWeight="SemiBold" Foreground="#89b4fa"/>
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Total tiles"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="TotalTilesText"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Unique positions"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="UniquePositionsText"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Floors used"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="FloorsText"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Tiles with house ID"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="HouseTilesText"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Items -->
+        <Border Classes="section">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Items" FontWeight="SemiBold" Foreground="#a6e3a1"/>
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Total items on map"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="TotalItemsText"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Unique item IDs"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="UniqueItemsText"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Items with Action ID"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="ActionIdItemsText"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Items with Unique ID"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="UniqueIdItemsText"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="Teleport items"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" x:Name="TeleportItemsText"/>
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="label" Text="Depot items"/>
+                    <TextBlock Grid.Row="5" Grid.Column="1" Classes="value" x:Name="DepotItemsText"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Towns & Waypoints -->
+        <Border Classes="section">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Towns &amp; Waypoints" FontWeight="SemiBold" Foreground="#f9e2af"/>
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Towns"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="TownsText"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Waypoints"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="WaypointsText"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Dimensions -->
+        <Border Classes="section">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Dimensions" FontWeight="SemiBold" Foreground="#cba6f7"/>
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Header size (W × H)"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="HeaderSizeText"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Actual bounds (X range)"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="BoundsXText"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Actual bounds (Y range)"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="BoundsYText"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Button Content="Close" HorizontalAlignment="Right" Click="OnClose"/>
+
+    </StackPanel>
+</Window>
