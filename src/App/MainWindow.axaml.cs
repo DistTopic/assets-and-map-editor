@@ -631,7 +631,11 @@ public partial class MainWindow : Window
             && DataContext is MainWindowViewModel vm)
         {
             vm.BrushServerId = item.ServerId;
-            if (vm.Palette != null) vm.Palette.SelectedBrush = null;
+            if (vm.Palette != null)
+            {
+                vm.Palette.SelectedBrush = null;
+                vm.Palette.HighlightCatalogItem(item.ServerId);
+            }
 
             // Ground/doodad brush → populate BrushItemIds so auto-bordering runs
             if (vm.BrushCatalog?.GroundsByName.TryGetValue(item.Name, out var ground) == true

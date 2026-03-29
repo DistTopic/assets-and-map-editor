@@ -1177,7 +1177,7 @@ public partial class PaletteViewModel : ObservableObject
     }
 
     /// <summary>Clear highlight on all catalog items and set it on the matching one.</summary>
-    private void HighlightCatalogItem(ushort serverId)
+    public void HighlightCatalogItem(ushort serverId)
     {
         foreach (var item in CatalogResults)
             item.IsHighlighted = item.ServerId == serverId;

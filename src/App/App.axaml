@@ -10,6 +10,7 @@
         <conv:BoolToTabBackgroundConverter x:Key="ActiveTabBackgroundConverter"/>
         <conv:ExpandIconConverter x:Key="ExpandIconConverter"/>
         <conv:BoolToHighlightThicknessConverter x:Key="BoolToHighlightThickness"/>
+        <conv:BoolToHighlightBoxShadowConverter x:Key="BoolToHighlightBoxShadow"/>
     </Application.Resources>
 
     <Application.Styles>

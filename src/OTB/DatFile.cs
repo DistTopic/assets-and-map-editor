@@ -75,8 +75,11 @@ public static class DatFile
     public static int DetectProtocol(uint signature)
     {
         // Well-known Tibia.dat signatures (from Object Builder / OTClient sources)
+        // Pre-10.71: full 4-byte signatures (e.g. 0x4A10DC35)
+        // 10.71+: only lower 2 bytes are significant (e.g. 0x0000334F)
         return signature switch
         {
+            // Legacy 4-byte signatures (7.40 – 10.70)
             0x439D5A33 => 740,
             0x41BF05F4 => 750,
             0x41BF05F5 => 760,
@@ -94,6 +97,27 @@ public static class DatFile
             0x500F744E => 1076,
             0x50C5A941 => 1098,
             0x51D6A2D3 => 1100,
+
+            // Short 2-byte signatures (10.71+ / format 10.57)
+            // From 10.71 onwards the upper 2 bytes of the DAT signature are zero.
+            0x334F => 1071,
+            0x3729 => 1072,
+            0x374D => 1073,
+            0x375E => 1074,
+            0x3775 => 1075,
+            0x37DF => 1076,
+            0x38DE => 1077,
+            0x3F26 => 1090,
+            0x3F81 => 1091,
+            0x4086 => 1092,
+            0x40FF => 1093,  // 10.93 test
+            0x413F => 1093,
+            0x41E5 => 1094,
+            0x41F3 => 1095,
+            0x42A3 => 1098,
+            0x4347 => 1099,
+            0x4A10 => 1100,  // 12.71+ clients (format 10.57, protocol 1100)
+
             _ => 1100,
         };
     }
