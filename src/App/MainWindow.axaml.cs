@@ -60,43 +60,11 @@ public partial class MainWindow : Window
 
                 await vm.TryLoadLastSessionAsync();
 
-                // Wire Merge Session menu (dynamic submenu listing other sessions)
-                var mergeMenuItem = this.FindControl<Avalonia.Controls.MenuItem>("MergeSessionMenuItem");
-                if (mergeMenuItem != null)
-                {
-                    mergeMenuItem.SubmenuOpened += (_, _) =>
-                    {
-                        mergeMenuItem.Items.Clear();
-                        var sources = vm.Sessions
-                            .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
-                            .ToList();
-
-                        if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
-                        {
-                            var empty = new Avalonia.Controls.MenuItem
-                            {
-                                Header = vm.ActiveSession?.DatData == null
-                                    ? "Current session has no DAT loaded"
-                                    : "No other sessions with DAT/SPR loaded",
-                                IsEnabled = false,
-                            };
-                            mergeMenuItem.Items.Add(empty);
-                        }
-                        else
-                        {
-                            foreach (var source in sources)
-                            {
-                                var mi = new Avalonia.Controls.MenuItem
-                                {
-                                    Header = $"{source.Name}  ({source.DatData!.Items.Count + source.DatData.Outfits.Count + source.DatData.Effects.Count + source.DatData.Missiles.Count} things)",
-                                    Tag = source,
-                                };
-                                mi.Click += async (_, _) => await vm.MergeSessionAsync(source);
-                                mergeMenuItem.Items.Add(mi);
-                            }
-                        }
-                    };
-                }
+                // Wire per-category Import menus (dynamic submenus listing other sessions)
+                WireImportMenu("ImportItemsMenuItem", ThingCategory.Item, vm);
+                WireImportMenu("ImportOutfitsMenuItem", ThingCategory.Outfit, vm);
+                WireImportMenu("ImportEffectsMenuItem", ThingCategory.Effect, vm);
+                WireImportMenu("ImportMissilesMenuItem", ThingCategory.Missile, vm);
 
                 // Wire confirmation dialog for palette delete operations
                 if (vm.Palette != null)
@@ -128,6 +96,46 @@ public partial class MainWindow : Window
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
                     };
+                }
+            }
+        };
+    }
+
+    private void WireImportMenu(string controlName, ThingCategory category, MainWindowViewModel vm)
+    {
+        var menuItem = this.FindControl<Avalonia.Controls.MenuItem>(controlName);
+        if (menuItem == null) return;
+
+        menuItem.SubmenuOpened += (_, _) =>
+        {
+            menuItem.Items.Clear();
+            var sources = vm.Sessions
+                .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
+                .ToList();
+
+            if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
+            {
+                var empty = new Avalonia.Controls.MenuItem
+                {
+                    Header = vm.ActiveSession?.DatData == null
+                        ? "Current session has no DAT loaded"
+                        : "No other sessions with DAT/SPR loaded",
+                    IsEnabled = false,
+                };
+                menuItem.Items.Add(empty);
+            }
+            else
+            {
+                foreach (var source in sources)
+                {
+                    var dict = MainWindowViewModel.GetCategoryDict(source.DatData!, category);
+                    var mi = new Avalonia.Controls.MenuItem
+                    {
+                        Header = $"{source.Name}  ({dict.Count} {category.ToString().ToLowerInvariant()}s)",
+                        Tag = source,
+                    };
+                    mi.Click += async (_, _) => await vm.MergeSessionAsync(source, category);
+                    menuItem.Items.Add(mi);
                 }
             }
         };

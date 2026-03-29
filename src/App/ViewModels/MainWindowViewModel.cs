@@ -570,10 +570,11 @@ public partial class MainWindowViewModel : ObservableObject
     // ── Full session merge (DAT/SPR) ──
 
     /// <summary>
-    /// Merge all items from a source session into the current (active) session.
+    /// Import things from a source session into the current (active) session.
+    /// When <paramref name="categoryFilter"/> is specified, only that category is imported.
     /// Detects duplicates by comparing sprite images and shows a batch preview dialog.
     /// </summary>
-    public async Task MergeSessionAsync(SessionViewModel sourceSession)
+    public async Task MergeSessionAsync(SessionViewModel sourceSession, ThingCategory? categoryFilter = null)
     {
         if (_datData == null || _sprFile == null)
         {
@@ -591,7 +592,7 @@ public partial class MainWindowViewModel : ObservableObject
         var sourceProtocol = sourceDat.ProtocolVersion;
         var targetProtocol = _datData.ProtocolVersion;
 
-        var categories = new[]
+        var allCategories = new[]
         {
             (ThingCategory.Item,    sourceDat.Items,    _datData.Items),
             (ThingCategory.Outfit,  sourceDat.Outfits,  _datData.Outfits),
@@ -599,8 +600,13 @@ public partial class MainWindowViewModel : ObservableObject
             (ThingCategory.Missile, sourceDat.Missiles,  _datData.Missiles),
         };
 
+        var categories = categoryFilter.HasValue
+            ? allCategories.Where(c => c.Item1 == categoryFilter.Value).ToArray()
+            : allCategories;
+
         int totalSource = categories.Sum(c => c.Item2.Count);
-        StatusText = $"Analyzing {totalSource} source things for duplicates…";
+        var label = categoryFilter?.ToString().ToLowerInvariant() ?? "thing";
+        StatusText = $"Analyzing {totalSource} source {label}s for duplicates…";
 
         // Analyze each category
         var entries = new List<TransplantEntry>();
@@ -5192,7 +5198,7 @@ public partial class MainWindowViewModel : ObservableObject
         return GetCategoryDict(_datData!, category);
     }
 
-    private static Dictionary<ushort, DatThingType> GetCategoryDict(DatData data, ThingCategory category)
+    public static Dictionary<ushort, DatThingType> GetCategoryDict(DatData data, ThingCategory category)
     {
         return category switch
         {

@@ -303,8 +303,20 @@
         <MenuItem Header="Transplant Item..." Command="{Binding TransplantItemCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-arrow-right-arrow-left" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
         </MenuItem>
-        <MenuItem Header="Merge Session Into Current…" x:Name="MergeSessionMenuItem">
-          <MenuItem.Icon><i:Icon Value="fa-solid fa-code-merge" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+        <MenuItem Header="Import Items from other session" x:Name="ImportItemsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-cube" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Import Outfits from other session" x:Name="ImportOutfitsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-shirt" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Import Effects from other session" x:Name="ImportEffectsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-wand-magic-sparkles" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Import Missiles from other session" x:Name="ImportMissilesMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-location-arrow" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
           <MenuItem Header="Loading…" IsEnabled="False"/>
         </MenuItem>
       </MenuItem>
