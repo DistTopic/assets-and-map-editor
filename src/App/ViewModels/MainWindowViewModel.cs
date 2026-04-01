@@ -995,6 +995,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Build item rows with sprite previews rendered from source SPR
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
+
+        // Track animated entries for the dialog's animation timer
+        var animatedEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int currentFrame)>();
+
         foreach (var entry in entries)
         {
             var rowGrid = new Avalonia.Controls.Grid
@@ -1032,15 +1036,21 @@ public partial class MainWindowViewModel : ObservableObject
                 ClipToBounds = true,
             };
             var bmp = ComposeThingBitmapStatic(entry.SourceThing, sourceSpr);
+            Avalonia.Controls.Image? spriteImg = null;
             if (bmp != null)
             {
-                var img = new Avalonia.Controls.Image
+                spriteImg = new Avalonia.Controls.Image
                 {
                     Source = bmp, Width = 32, Height = 32,
                     Stretch = Avalonia.Media.Stretch.Uniform,
                 };
-                Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
-                spriteBorder.Child = img;
+                Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(spriteImg, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+                spriteBorder.Child = spriteImg;
+
+                // Register for animation if thing has multiple frames
+                var fg0 = entry.SourceThing.FrameGroups.Length > 0 ? entry.SourceThing.FrameGroups[0] : null;
+                if (fg0 != null && fg0.Frames > 1)
+                    animatedEntries.Add((spriteImg, entry.SourceThing, fg0.Frames, 0));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -1189,6 +1199,37 @@ public partial class MainWindowViewModel : ObservableObject
         buttonPanel.Children.Add(cancelBtn);
         buttonPanel.Children.Add(confirmBtn);
 
+        // Animation timer for sprite previews in the merge dialog
+        DispatcherTimer? mergeAnimTimer = null;
+        if (animatedEntries.Count > 0)
+        {
+            var animState = animatedEntries.Select(e => new { e.img, e.thing, e.frames, frame = new int[] { 0 } }).ToList();
+            int tickCounter = 0;
+            mergeAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            mergeAnimTimer.Tick += (_, _) =>
+            {
+                tickCounter++;
+                foreach (var s in animState)
+                {
+                    int divisor = s.thing.Category switch
+                    {
+                        ThingCategory.Effect => 1,
+                        ThingCategory.Missile => 1,
+                        ThingCategory.Outfit => 3,
+                        _ => 5,
+                    };
+                    if (tickCounter % divisor != 0) continue;
+                    s.frame[0] = (s.frame[0] + 1) % s.frames;
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0]);
+                    if (newBmp != null)
+                        s.img.Source = newBmp;
+                }
+            };
+            mergeAnimTimer.Start();
+        }
+
+        dialog.Closed += (_, _) => mergeAnimTimer?.Stop();
+
         await dialog.ShowDialog(window);
     }
 
@@ -1251,6 +1292,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Build the item list with sprite previews
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
+
+        // Track animated entries for the dialog's animation timer
+        var batchAnimEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int currentFrame)>();
+
         foreach (var entry in entries)
         {
             var rowGrid = new Avalonia.Controls.Grid
@@ -1286,7 +1331,7 @@ public partial class MainWindowViewModel : ObservableObject
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 ClipToBounds = true,
             };
-            var bmp = ComposeThingBitmap(entry.SourceThing);
+            var bmp = ComposeThingBitmapStatic(entry.SourceThing, sourceSpr);
             if (bmp != null)
             {
                 var img = new Avalonia.Controls.Image
@@ -1296,6 +1341,10 @@ public partial class MainWindowViewModel : ObservableObject
                 };
                 Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
                 spriteBorder.Child = img;
+
+                var fg0 = entry.SourceThing.FrameGroups.Length > 0 ? entry.SourceThing.FrameGroups[0] : null;
+                if (fg0 != null && fg0.Frames > 1)
+                    batchAnimEntries.Add((img, entry.SourceThing, fg0.Frames, 0));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -1456,6 +1505,37 @@ public partial class MainWindowViewModel : ObservableObject
         buttonPanel.Children.Add(spacer);
         buttonPanel.Children.Add(cancelBtn);
         buttonPanel.Children.Add(confirmBtn);
+
+        // Animation timer for sprite previews in the batch transplant dialog
+        DispatcherTimer? batchAnimTimer = null;
+        if (batchAnimEntries.Count > 0)
+        {
+            var animState = batchAnimEntries.Select(e => new { e.img, e.thing, e.frames, frame = new int[] { 0 } }).ToList();
+            int tickCounter = 0;
+            batchAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            batchAnimTimer.Tick += (_, _) =>
+            {
+                tickCounter++;
+                foreach (var s in animState)
+                {
+                    int divisor = s.thing.Category switch
+                    {
+                        ThingCategory.Effect => 1,
+                        ThingCategory.Missile => 1,
+                        ThingCategory.Outfit => 3,
+                        _ => 5,
+                    };
+                    if (tickCounter % divisor != 0) continue;
+                    s.frame[0] = (s.frame[0] + 1) % s.frames;
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0]);
+                    if (newBmp != null)
+                        s.img.Source = newBmp;
+                }
+            };
+            batchAnimTimer.Start();
+        }
+
+        dialog.Closed += (_, _) => batchAnimTimer?.Stop();
 
         await dialog.ShowDialog(window);
     }
@@ -6293,7 +6373,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// Static version of ComposeThingBitmap that takes an explicit SprFile.
     /// Used for composing sprites in a target session context (e.g. after transplant).
     /// </summary>
-    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile)
+    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile, int frame = 0)
     {
         if (thing.FrameGroups.Length == 0) return null;
 
@@ -6302,13 +6382,15 @@ public partial class MainWindowViewModel : ObservableObject
         int h = fg.Height;
         if (w == 0 || h == 0) return null;
 
+        int clampedFrame = Math.Clamp(frame, 0, Math.Max(0, fg.Frames - 1));
+
         // Single 1×1 item
         if (w == 1 && h == 1 && fg.Layers == 1)
         {
             int px = 0;
             if (thing.Category == ThingCategory.Outfit && fg.PatternX > 2)
                 px = 2;
-            uint sprId = fg.GetSpriteId(0, 0, 0, px, 0, 0, 0);
+            uint sprId = fg.GetSpriteId(0, 0, 0, px, 0, 0, clampedFrame);
             var rgba = sprFile.GetSpriteRgba(sprId);
             if (rgba == null) return null;
             try
@@ -6340,7 +6422,7 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 for (int th = 0; th < h; th++)
                 {
-                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, 0);
+                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, clampedFrame);
                     var rgba = sprFile.GetSpriteRgba(sprId);
                     if (rgba == null) continue;
 
