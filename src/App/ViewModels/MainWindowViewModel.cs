@@ -860,10 +860,8 @@ public partial class MainWindowViewModel : ObservableObject
         foreach (var (id, thing) in dict)
         {
             if (thing.FrameGroups.Length == 0) continue;
-            var fg = thing.FrameGroups[0];
-            if (fg.SpriteIndex.Length == 0) continue;
 
-            long hash = ComputeSpriteHash(fg, sprFile);
+            long hash = ComputeSpriteHash(thing.FrameGroups, sprFile);
             if (!index.TryGetValue(hash, out var list))
             {
                 list = [];
@@ -876,42 +874,65 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Computes a hash of the composed sprite data for a frame group.
-    /// Uses all sprites in the first frame to produce a unique fingerprint.
+    /// Computes a hash of the composed sprite data for all frame groups and all frames.
+    /// Produces a unique fingerprint that considers the full visual identity of a thing.
     /// </summary>
-    private static long ComputeSpriteHash(FrameGroup fg, SprFile sprFile)
+    private static long ComputeSpriteHash(FrameGroup[] frameGroups, SprFile sprFile)
     {
-        // Hash all sprites from frame 0 for the item's visual identity
-        int w = fg.Width, h = fg.Height;
-        int layers = fg.Layers;
         long hash = 17;
 
-        for (int l = 0; l < layers; l++)
+        for (int fgi = 0; fgi < frameGroups.Length; fgi++)
         {
-            for (int tw = 0; tw < w; tw++)
-            {
-                for (int th = 0; th < h; th++)
-                {
-                    uint sprId = fg.GetSpriteId(tw, th, l, 0, 0, 0, 0);
-                    var rgba = sprFile.GetSpriteRgba(sprId);
-                    if (rgba == null)
-                    {
-                        hash = hash * 31 + sprId;
-                        continue;
-                    }
+            var fg = frameGroups[fgi];
+            if (fg.SpriteIndex.Length == 0) continue;
 
-                    // FNV-1a style hash over RGBA bytes
-                    for (int i = 0; i < rgba.Length; i += 16)
+            int w = fg.Width, h = fg.Height;
+            int layers = fg.Layers;
+            int frames = fg.Frames;
+            int patX = fg.PatternX, patY = fg.PatternY, patZ = fg.PatternZ;
+
+            // Mix in frame group index to distinguish idle vs walking
+            hash = hash * 31 + fgi;
+
+            for (int f = 0; f < frames; f++)
+            {
+                for (int pz = 0; pz < patZ; pz++)
+                {
+                    for (int py = 0; py < patY; py++)
                     {
-                        long v = rgba[i] | ((long)rgba[i + 1] << 8)
-                                         | ((long)rgba[i + 4] << 16)
-                                         | ((long)rgba[i + 5] << 24)
-                                         | ((long)rgba[i + 8] << 32)
-                                         | ((long)rgba[i + 9] << 40)
-                                         | ((long)rgba[i + 12] << 48)
-                                         | ((long)rgba[i + 13] << 56);
-                        hash ^= v;
-                        hash *= unchecked((long)0x100000001B3);
+                        for (int px = 0; px < patX; px++)
+                        {
+                            for (int l = 0; l < layers; l++)
+                            {
+                                for (int tw = 0; tw < w; tw++)
+                                {
+                                    for (int th = 0; th < h; th++)
+                                    {
+                                        uint sprId = fg.GetSpriteId(tw, th, l, px, py, pz, f);
+                                        var rgba = sprFile.GetSpriteRgba(sprId);
+                                        if (rgba == null)
+                                        {
+                                            hash = hash * 31 + sprId;
+                                            continue;
+                                        }
+
+                                        // FNV-1a style hash over RGBA bytes
+                                        for (int i = 0; i < rgba.Length; i += 16)
+                                        {
+                                            long v = rgba[i] | ((long)rgba[i + 1] << 8)
+                                                             | ((long)rgba[i + 4] << 16)
+                                                             | ((long)rgba[i + 5] << 24)
+                                                             | ((long)rgba[i + 8] << 32)
+                                                             | ((long)rgba[i + 9] << 40)
+                                                             | ((long)rgba[i + 12] << 48)
+                                                             | ((long)rgba[i + 13] << 56);
+                                            hash ^= v;
+                                            hash *= unchecked((long)0x100000001B3);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -929,10 +950,8 @@ public partial class MainWindowViewModel : ObservableObject
         Dictionary<long, List<ushort>> targetIndex)
     {
         if (source.FrameGroups.Length == 0) return null;
-        var fg = source.FrameGroups[0];
-        if (fg.SpriteIndex.Length == 0) return null;
 
-        long hash = ComputeSpriteHash(fg, sourceSpr);
+        long hash = ComputeSpriteHash(source.FrameGroups, sourceSpr);
         if (targetIndex.TryGetValue(hash, out var matches) && matches.Count > 0)
             return matches[0];
 
