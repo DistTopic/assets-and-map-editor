@@ -379,7 +379,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (Sessions.Count < 2)
         {
-            StatusText = "Need at least 2 sessions open to transplant items.";
+            StatusText = "Need at least 2 sessions open to transplant.";
             return;
         }
 
@@ -406,10 +406,11 @@ public partial class MainWindowViewModel : ObservableObject
         var targetDat = targetSession.DatData!;
         var targetProtocol = targetDat.ProtocolVersion;
 
-        // Get the thing type from the source
-        if (!_datData.Items.TryGetValue(sourceItem.Id, out var sourceThing))
+        // Get the thing type from the correct category dictionary
+        var sourceDict = GetCategoryDict(_datData, sourceItem.Category);
+        if (!sourceDict.TryGetValue(sourceItem.Id, out var sourceThing))
         {
-            StatusText = $"Client item {sourceItem.Id} not found in DAT.";
+            StatusText = $"Client {sourceItem.Category} {sourceItem.Id} not found in DAT.";
             return;
         }
 
@@ -426,9 +427,11 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task ShowTransplantDialog(TransplantReport report, DatThingType sourceThing,
         SessionViewModel targetSession, DatData targetDat, SprFile sourceSpr)
     {
+        var categoryLabel = sourceThing.Category.ToString().ToLowerInvariant();
+
         // Build message
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Transplant item {sourceThing.Id} from protocol {report.SourceProtocol} → {report.TargetProtocol}");
+        sb.AppendLine($"Transplant {categoryLabel} {sourceThing.Id} from protocol {report.SourceProtocol} → {report.TargetProtocol}");
         sb.AppendLine();
 
         if (report.PreservedAttributes.Count > 0)
@@ -517,27 +520,32 @@ public partial class MainWindowViewModel : ObservableObject
         cancelBtn.Click += (_, _) => dialog.Close();
         confirmBtn.Click += (_, _) =>
         {
-            // Perform the transplant: clone item and add to target DAT
+            // Perform the transplant: clone thing and add to correct target category
             var clone = sourceThing.Clone();
-            ushort newId = (ushort)(targetDat.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+            var targetDict = GetCategoryDict(targetDat, sourceThing.Category);
+            ushort baseId = sourceThing.Category == ThingCategory.Item ? (ushort)99 : (ushort)0;
+            ushort newId = (ushort)(targetDict.Keys.DefaultIfEmpty(baseId).Max() + 1);
             clone.Id = newId;
 
             // Strip unsupported flags for downcast
             if (report.IsDowncast)
                 StripUnsupportedFlags(clone, report.TargetProtocol);
 
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, report.SourceProtocol, report.TargetProtocol);
+
             // Copy sprites to target session's SPR file (BEFORE adding to DAT)
             if (targetSession.SprFile != null)
                 RemapSpritesToTarget(clone, sourceSpr, targetSession.SprFile);
 
-            targetDat.Items[newId] = clone;
+            targetDict[newId] = clone;
 
             // Rebuild target session's item list so it appears immediately when switching
             targetSession.HasUnsavedChanges = true;
             RebuildSessionClientItems(targetSession);
 
-            StatusText = $"Transplanted item {sourceThing.Id} → {newId} in {targetSession.Name}";
-            AddMapLog($"Transplanted: #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
+            StatusText = $"Transplanted {categoryLabel} {sourceThing.Id} → {newId} in {targetSession.Name}";
+            AddMapLog($"Transplanted: {categoryLabel} #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
             dialog.Close();
         };
         buttonPanel.Children.Add(cancelBtn);
@@ -548,32 +556,97 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static void StripUnsupportedFlags(DatThingType thing, int targetProtocol)
     {
-        if (targetProtocol < 860)
+        // Strip flags not present in the target version (per OB MetadataFlags).
+        // The write methods already only write version-appropriate flags,
+        // but stripping keeps the in-memory model clean.
+        if (targetProtocol <= 986) // V5 and below: no V6-only flags
         {
-            // Remove tier-2 flags not supported in legacy protocols
-            thing.IsMiniMap = false; thing.MiniMapColor = 0;
-            thing.IsLensHelp = false; thing.LensHelp = 0;
-            thing.IsFullGround = false;
-            thing.IsIgnoreLook = false;
-            thing.IsCloth = false; thing.ClothSlot = 0;
-            thing.IsMarketItem = false; thing.MarketCategory = 0; thing.MarketTradeAs = 0;
-            thing.MarketShowAs = 0; thing.MarketName = string.Empty;
-            thing.MarketRestrictProfession = 0; thing.MarketRestrictLevel = 0;
+            thing.IsNoMoveAnimation = false;
             thing.HasDefaultAction = false; thing.DefaultAction = 0;
             thing.IsWrappable = false;
             thing.IsUnwrappable = false;
             thing.IsTopEffect = false;
             thing.IsUsable = false;
         }
+        if (targetProtocol <= 854) // V4 and below: no V5-only flags
+        {
+            thing.IsTranslucent = false;
+            thing.IsCloth = false; thing.ClothSlot = 0;
+            thing.IsMarketItem = false; thing.MarketCategory = 0; thing.MarketTradeAs = 0;
+            thing.MarketShowAs = 0; thing.MarketName = string.Empty;
+            thing.MarketRestrictProfession = 0; thing.MarketRestrictLevel = 0;
+        }
+        if (targetProtocol <= 772) // V3 and below: no V4-only flags
+        {
+            thing.HasCharges = false;
+            thing.IsDontHide = false;
+            thing.IsIgnoreLook = false;
+        }
+    }
+
+    /// <summary>
+    /// Adapts frame group structure when transplanting between protocols with different
+    /// frame group support. Protocol &gt;= 1057 uses frame groups (idle/walking) for outfits;
+    /// protocol &gt;= 1050 uses enhanced animations (frameDurations).
+    /// </summary>
+    private static void AdaptFrameGroups(DatThingType thing, int sourceProtocol, int targetProtocol)
+    {
+        if (thing.Category != ThingCategory.Outfit) return;
+        if (thing.FrameGroups.Length == 0) return;
+
+        bool sourceHasGroups = sourceProtocol >= 1057;
+        bool targetHasGroups = targetProtocol >= 1057;
+        bool sourceHasAnimData = sourceProtocol >= 1050;
+        bool targetHasAnimData = targetProtocol >= 1050;
+
+        // Frame group adaptation (1057 boundary)
+        if (sourceHasGroups && !targetHasGroups)
+        {
+            // Downcast frame groups: keep only the first group
+            thing.FrameGroups = [thing.FrameGroups[0]];
+            thing.FrameGroups[0].Type = FrameGroupType.Default;
+        }
+        else if (!sourceHasGroups && targetHasGroups)
+        {
+            // Upcast frame groups: ensure Type = Default
+            thing.FrameGroups[0].Type = FrameGroupType.Default;
+        }
+
+        // Improved animation adaptation (1050 boundary)
+        if (!sourceHasAnimData && targetHasAnimData)
+        {
+            // Upcast: populate FrameDurations with defaults for animated groups
+            foreach (var fg in thing.FrameGroups)
+            {
+                if (fg.Frames > 1 && (fg.FrameDurations == null || fg.FrameDurations.Length != fg.Frames))
+                {
+                    fg.FrameDurations = new FrameDuration[fg.Frames];
+                    for (int i = 0; i < fg.Frames; i++)
+                        fg.FrameDurations[i] = new FrameDuration { Minimum = 100, Maximum = 100 };
+                }
+            }
+        }
+        else if (sourceHasAnimData && !targetHasAnimData)
+        {
+            // Downcast: strip enhanced animation metadata
+            foreach (var fg in thing.FrameGroups)
+            {
+                fg.AnimationMode = AnimationMode.Async;
+                fg.LoopCount = 0;
+                fg.StartFrame = 0;
+                fg.FrameDurations = [];
+            }
+        }
     }
 
     // ── Full session merge (DAT/SPR) ──
 
     /// <summary>
-    /// Merge all items from a source session into the current (active) session.
+    /// Merge things from a source session into the current (active) session.
+    /// When categoryFilter is null, merges all categories; otherwise only the specified one.
     /// Detects duplicates by comparing sprite images and shows a batch preview dialog.
     /// </summary>
-    public async Task MergeSessionAsync(SessionViewModel sourceSession)
+    public async Task MergeSessionAsync(SessionViewModel sourceSession, ThingCategory? categoryFilter = null)
     {
         if (_datData == null || _sprFile == null)
         {
@@ -591,7 +664,7 @@ public partial class MainWindowViewModel : ObservableObject
         var sourceProtocol = sourceDat.ProtocolVersion;
         var targetProtocol = _datData.ProtocolVersion;
 
-        var categories = new[]
+        var allCategories = new[]
         {
             (ThingCategory.Item,    sourceDat.Items,    _datData.Items),
             (ThingCategory.Outfit,  sourceDat.Outfits,  _datData.Outfits),
@@ -599,8 +672,13 @@ public partial class MainWindowViewModel : ObservableObject
             (ThingCategory.Missile, sourceDat.Missiles,  _datData.Missiles),
         };
 
+        var categories = categoryFilter.HasValue
+            ? allCategories.Where(c => c.Item1 == categoryFilter.Value).ToArray()
+            : allCategories;
+
         int totalSource = categories.Sum(c => c.Item2.Count);
-        StatusText = $"Analyzing {totalSource} source things for duplicates…";
+        var filterLabel = categoryFilter?.ToString().ToLowerInvariant() ?? "all";
+        StatusText = $"Analyzing {totalSource} source {filterLabel} things for duplicates…";
 
         // Analyze each category
         var entries = new List<TransplantEntry>();
@@ -670,6 +748,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Strip unsupported flags for downcast
             if (sourceProtocol > targetProtocol)
                 StripUnsupportedFlags(clone, targetProtocol);
+
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, sourceProtocol, targetProtocol);
 
             // Copy sprites from source SPR → current session's SPR
             RemapSpritesToTarget(clone, sourceSpr, _sprFile);
@@ -1417,6 +1498,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Strip unsupported flags for downcast
             if (sourceProtocol > targetProtocol)
                 StripUnsupportedFlags(clone, targetProtocol);
+
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, sourceProtocol, targetProtocol);
 
             // Copy sprites to target SPR
             if (targetSpr != null)
@@ -3856,15 +3940,21 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile?.Dispose();
             var (datData, sprFile) = await Task.Run(() =>
             {
-                var d = DatFile.Load(result.DatPath, result.ProtocolVersion);
-                var s = SprFile.Load(result.SprPath, d.Extended);
+                var d = DatFile.Load(result.DatPath, result.ProtocolVersion,
+                    result.Extended, result.ImprovedAnimations, result.FrameGroups);
+                var s = SprFile.Load(result.SprPath, d.Extended, result.Transparency);
                 return (d, s);
             });
             _datData = datData;
             _sprFile = sprFile;
             ClientFolderPath = result.FolderPath;
             IsClientLoaded = true;
-            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
+            var features = new List<string>();
+            if (_datData.Extended) features.Add("Ext");
+            if (_datData.ImprovedAnimations) features.Add("Anim");
+            if (_datData.FrameGroups) features.Add("FG");
+            var featureStr = features.Count > 0 ? $" [{string.Join("+", features)}]" : "";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}{featureStr}";
 
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
@@ -3922,7 +4012,12 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile = sprFile;
             ClientFolderPath = folderPath;
             IsClientLoaded = true;
-            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
+            var features2 = new List<string>();
+            if (_datData.Extended) features2.Add("Ext");
+            if (_datData.ImprovedAnimations) features2.Add("Anim");
+            if (_datData.FrameGroups) features2.Add("FG");
+            var featureStr2 = features2.Count > 0 ? $" [{string.Join("+", features2)}]" : "";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}{featureStr2}";
 
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));

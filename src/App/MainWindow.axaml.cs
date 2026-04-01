@@ -60,43 +60,12 @@ public partial class MainWindow : Window
 
                 await vm.TryLoadLastSessionAsync();
 
-                // Wire Merge Session menu (dynamic submenu listing other sessions)
-                var mergeMenuItem = this.FindControl<Avalonia.Controls.MenuItem>("MergeSessionMenuItem");
-                if (mergeMenuItem != null)
-                {
-                    mergeMenuItem.SubmenuOpened += (_, _) =>
-                    {
-                        mergeMenuItem.Items.Clear();
-                        var sources = vm.Sessions
-                            .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
-                            .ToList();
-
-                        if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
-                        {
-                            var empty = new Avalonia.Controls.MenuItem
-                            {
-                                Header = vm.ActiveSession?.DatData == null
-                                    ? "Current session has no DAT loaded"
-                                    : "No other sessions with DAT/SPR loaded",
-                                IsEnabled = false,
-                            };
-                            mergeMenuItem.Items.Add(empty);
-                        }
-                        else
-                        {
-                            foreach (var source in sources)
-                            {
-                                var mi = new Avalonia.Controls.MenuItem
-                                {
-                                    Header = $"{source.Name}  ({source.DatData!.Items.Count + source.DatData.Outfits.Count + source.DatData.Effects.Count + source.DatData.Missiles.Count} things)",
-                                    Tag = source,
-                                };
-                                mi.Click += async (_, _) => await vm.MergeSessionAsync(source);
-                                mergeMenuItem.Items.Add(mi);
-                            }
-                        }
-                    };
-                }
+                // Wire Merge Session menus (dynamic submenus listing other sessions)
+                WireMergeMenu(vm, "MergeSessionMenuItem", null);     // All categories
+                WireMergeMenu(vm, "MergeItemsMenuItem", OTB.ThingCategory.Item);
+                WireMergeMenu(vm, "MergeOutfitsMenuItem", OTB.ThingCategory.Outfit);
+                WireMergeMenu(vm, "MergeEffectsMenuItem", OTB.ThingCategory.Effect);
+                WireMergeMenu(vm, "MergeMissilesMenuItem", OTB.ThingCategory.Missile);
 
                 // Wire confirmation dialog for palette delete operations
                 if (vm.Palette != null)
@@ -1032,6 +1001,57 @@ public partial class MainWindow : Window
         { brush.CommitRenameCommand.Execute(null); vm.Palette.SaveAfterRename(); e.Handled = true; }
         else if (e.Key == Avalonia.Input.Key.Escape)
         { brush.CancelRenameCommand.Execute(null); e.Handled = true; }
+    }
+
+    private void WireMergeMenu(ViewModels.MainWindowViewModel vm, string menuName, OTB.ThingCategory? categoryFilter)
+    {
+        var menuItem = this.FindControl<Avalonia.Controls.MenuItem>(menuName);
+        if (menuItem == null) return;
+
+        menuItem.SubmenuOpened += (_, _) =>
+        {
+            menuItem.Items.Clear();
+            var sources = vm.Sessions
+                .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
+                .ToList();
+
+            if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
+            {
+                var empty = new Avalonia.Controls.MenuItem
+                {
+                    Header = vm.ActiveSession?.DatData == null
+                        ? "Current session has no DAT loaded"
+                        : "No other sessions with DAT/SPR loaded",
+                    IsEnabled = false,
+                };
+                menuItem.Items.Add(empty);
+            }
+            else
+            {
+                foreach (var source in sources)
+                {
+                    int count = categoryFilter switch
+                    {
+                        OTB.ThingCategory.Item => source.DatData!.Items.Count,
+                        OTB.ThingCategory.Outfit => source.DatData!.Outfits.Count,
+                        OTB.ThingCategory.Effect => source.DatData!.Effects.Count,
+                        OTB.ThingCategory.Missile => source.DatData!.Missiles.Count,
+                        _ => source.DatData!.Items.Count + source.DatData.Outfits.Count
+                             + source.DatData.Effects.Count + source.DatData.Missiles.Count,
+                    };
+                    var label = categoryFilter.HasValue ? categoryFilter.Value.ToString().ToLowerInvariant() + "s" : "things";
+                    var mi = new Avalonia.Controls.MenuItem
+                    {
+                        Header = $"{source.Name}  ({count} {label})",
+                        Tag = source,
+                    };
+                    var capturedSource = source;
+                    var capturedFilter = categoryFilter;
+                    mi.Click += async (_, _) => await vm.MergeSessionAsync(capturedSource, capturedFilter);
+                    menuItem.Items.Add(mi);
+                }
+            }
+        };
     }
 
     private async Task<bool> ShowConfirmDialogAsync(string title, string message)

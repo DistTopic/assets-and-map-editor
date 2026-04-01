@@ -321,11 +321,27 @@
           <MenuItem.Icon><i:Icon Value="fa-solid fa-xmark" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
         </MenuItem>
         <Separator/>
-        <MenuItem Header="Transplant Item..." Command="{Binding TransplantItemCommand}">
+        <MenuItem Header="Transplant Selected..." Command="{Binding TransplantItemCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-arrow-right-arrow-left" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
         </MenuItem>
-        <MenuItem Header="Merge Session Into Current…" x:Name="MergeSessionMenuItem">
+        <MenuItem Header="Merge All Into Current…" x:Name="MergeSessionMenuItem">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-code-merge" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Items Into Current…" x:Name="MergeItemsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-cube" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Outfits Into Current…" x:Name="MergeOutfitsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-shirt" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Effects Into Current…" x:Name="MergeEffectsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-wand-magic-sparkles" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Missiles Into Current…" x:Name="MergeMissilesMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-meteor" FontSize="14" Foreground="#fab387"/></MenuItem.Icon>
           <MenuItem Header="Loading…" IsEnabled="False"/>
         </MenuItem>
       </MenuItem>
