@@ -27,6 +27,8 @@ public partial class OpenClientDialog : Window
     private string? _sprPath;
     private int _detectedProtocol;
     private bool _detectedExtended;
+    private bool _detectedImprovedAnimations;
+    private bool _detectedFrameGroups;
 
     public OpenClientResult? Result { get; private set; }
 
@@ -87,14 +89,20 @@ public partial class OpenClientDialog : Window
             bool detectedExtended = detectedFromSig >= 960;
             try
             {
-                var testData = DatFile.Load(datPath);
+                // Pass the signature-detected protocol as hint so the parser tries it first
+                // and doesn't fall back to a wrong protocol like 1100
+                var testData = DatFile.Load(datPath, detectedFromSig);
                 _detectedProtocol = testData.ProtocolVersion;
                 _detectedExtended = testData.Extended;
+                _detectedImprovedAnimations = testData.ImprovedAnimations;
+                _detectedFrameGroups = testData.FrameGroups;
             }
             catch
             {
                 _detectedProtocol = detectedFromSig;
                 _detectedExtended = detectedExtended;
+                _detectedImprovedAnimations = detectedFromSig >= 1050;
+                _detectedFrameGroups = detectedFromSig >= 1057;
             }
 
             // Read SPR header — extended uses 8-byte header (U32 count), legacy uses 6-byte (U16 count)
@@ -132,17 +140,17 @@ public partial class OpenClientDialog : Window
             SprSignatureLabel.Text = sprSignature.ToString("X8");
             SpritesCountLabel.Text = spriteCount.ToString();
 
-            // Auto-set features based on detected format
+            // Auto-set features based on detected format (from actual parse, not protocol number)
             ExtendedCheckBox.IsChecked = _detectedExtended;
             ExtendedCheckBox.IsEnabled = !_detectedExtended;
 
             TransparencyCheckBox.IsEnabled = true;
-            TransparencyCheckBox.IsChecked = false;
+            TransparencyCheckBox.IsChecked = _detectedExtended;
 
-            ImprovedAnimationsCheckBox.IsChecked = _detectedProtocol >= 1050;
-            ImprovedAnimationsCheckBox.IsEnabled = _detectedProtocol < 1050;
+            ImprovedAnimationsCheckBox.IsChecked = _detectedImprovedAnimations;
+            ImprovedAnimationsCheckBox.IsEnabled = !_detectedImprovedAnimations;
 
-            FrameGroupsCheckBox.IsChecked = _detectedProtocol >= 1057;
+            FrameGroupsCheckBox.IsChecked = _detectedFrameGroups;
             FrameGroupsCheckBox.IsEnabled = true;
 
             LoadButton.IsEnabled = true;
