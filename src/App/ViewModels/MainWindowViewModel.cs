@@ -691,6 +691,7 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
                 var duplicateId = FindDuplicateByImage(sourceThing, sourceSpr, targetIndex);
+                bool empty = IsThingEmpty(sourceThing);
 
                 entries.Add(new TransplantEntry
                 {
@@ -699,13 +700,15 @@ public partial class MainWindowViewModel : ObservableObject
                     SourceThing = sourceThing,
                     Report = report,
                     DuplicateTargetId = duplicateId,
-                    Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+                    IsEmpty = empty,
+                    Action = (duplicateId.HasValue || empty) ? TransplantAction.Skip : TransplantAction.Add,
                 });
             }
         }
 
         int dupCount = entries.Count(e => e.DuplicateTargetId.HasValue);
-        StatusText = $"Analyzed {entries.Count} things — {dupCount} duplicates, {entries.Count - dupCount} new.";
+        int emptyCount = entries.Count(e => e.IsEmpty);
+        StatusText = $"Analyzed {entries.Count} things — {dupCount} duplicates, {emptyCount} empty, {entries.Count - dupCount - emptyCount} new.";
 
         // Reuse the batch transplant dialog but pass source SPR for sprite remapping
         await ShowMergeDialog(entries, sourceSession, sourceSpr, sourceProtocol, targetProtocol);
@@ -736,8 +739,8 @@ public partial class MainWindowViewModel : ObservableObject
 
         foreach (var entry in entries)
         {
-            // Duplicates are always skipped — never copied
-            if (entry.Action == TransplantAction.Skip || entry.DuplicateTargetId.HasValue)
+            // Duplicates and empty things are always skipped — never copied
+            if (entry.Action == TransplantAction.Skip || entry.DuplicateTargetId.HasValue || entry.IsEmpty)
             {
                 skipped++;
                 continue;
@@ -774,7 +777,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         BuildClientItemList();
 
-        var msg = $"Merge complete: {transplanted} added, {skipped} skipped (duplicates excluded).";
+        var msg = $"Merge complete: {transplanted} added, {skipped} skipped (duplicates/empty excluded).";
         StatusText = msg;
         AddMapLog(msg);
     }
@@ -827,6 +830,7 @@ public partial class MainWindowViewModel : ObservableObject
 
             var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
             var duplicateId = FindDuplicateByImage(sourceThing, _sprFile, targetIndex);
+            bool empty = IsThingEmpty(sourceThing);
 
             entries.Add(new TransplantEntry
             {
@@ -835,7 +839,8 @@ public partial class MainWindowViewModel : ObservableObject
                 SourceThing = sourceThing,
                 Report = report,
                 DuplicateTargetId = duplicateId,
-                Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+                IsEmpty = empty,
+                Action = (duplicateId.HasValue || empty) ? TransplantAction.Skip : TransplantAction.Add,
             });
         }
 
@@ -987,8 +992,11 @@ public partial class MainWindowViewModel : ObservableObject
                 sb.AppendLine($"    {cat}: {catCount}");
         }
         sb.AppendLine();
-        sb.AppendLine($"  ● New (no match found): {newCount}");
+        int emptyCount = entries.Count(e => e.IsEmpty);
+        sb.AppendLine($"  ● New (no match found): {newCount - emptyCount}");
         sb.AppendLine($"  ● Duplicates detected by sprite image: {dupCount}");
+        if (emptyCount > 0)
+            sb.AppendLine($"  ● Empty (no sprites): {emptyCount}");
         sb.AppendLine();
 
         var anyIgnored = entries.Any(e => e.Report.IgnoredAttributes.Count > 0);
@@ -1010,7 +1018,7 @@ public partial class MainWindowViewModel : ObservableObject
             sb.AppendLine();
         }
 
-        sb.AppendLine("Uncheck items to skip them. Duplicates are automatically excluded.");
+        sb.AppendLine("Uncheck items to skip them. Duplicates and empty sprites are automatically excluded.");
 
         // Build item rows with sprite previews rendered from source SPR
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
@@ -1028,10 +1036,11 @@ public partial class MainWindowViewModel : ObservableObject
             };
 
             var isDuplicate = entry.DuplicateTargetId.HasValue;
+            var isAutoSkip = isDuplicate || entry.IsEmpty;
             var cb = new Avalonia.Controls.CheckBox
             {
-                IsChecked = !isDuplicate && entry.Action != TransplantAction.Skip,
-                IsEnabled = !isDuplicate,
+                IsChecked = !isAutoSkip && entry.Action != TransplantAction.Skip,
+                IsEnabled = !isAutoSkip,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Margin = new Avalonia.Thickness(4, 0),
             };
@@ -1094,10 +1103,23 @@ public partial class MainWindowViewModel : ObservableObject
             Avalonia.Controls.Grid.SetColumn(textBlock, 2);
             rowGrid.Children.Add(textBlock);
 
-            var statusText = entry.DuplicateTargetId.HasValue
-                ? $"Duplicate → #{entry.DuplicateTargetId}"
-                : "New";
-            var statusColor = entry.DuplicateTargetId.HasValue ? "#f9e2af" : "#a6e3a1";
+            string statusText;
+            string statusColor;
+            if (entry.DuplicateTargetId.HasValue)
+            {
+                statusText = $"Duplicate → #{entry.DuplicateTargetId}";
+                statusColor = "#f9e2af";
+            }
+            else if (entry.IsEmpty)
+            {
+                statusText = "Empty";
+                statusColor = "#6c7086";
+            }
+            else
+            {
+                statusText = "New";
+                statusColor = "#a6e3a1";
+            }
             var statusBlock = new Avalonia.Controls.TextBlock
             {
                 Text = statusText,
@@ -1334,9 +1356,11 @@ public partial class MainWindowViewModel : ObservableObject
             };
 
             // Checkbox to toggle action
+            var isAutoSkipBatch = entry.DuplicateTargetId.HasValue || entry.IsEmpty;
             var cb = new Avalonia.Controls.CheckBox
             {
-                IsChecked = entry.Action != TransplantAction.Skip || !entry.DuplicateTargetId.HasValue,
+                IsChecked = !isAutoSkipBatch && entry.Action != TransplantAction.Skip,
+                IsEnabled = !entry.IsEmpty,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Margin = new Avalonia.Thickness(4, 0),
             };
@@ -1399,10 +1423,23 @@ public partial class MainWindowViewModel : ObservableObject
             rowGrid.Children.Add(textBlock);
 
             // Status badge
-            var statusText = entry.DuplicateTargetId.HasValue
-                ? $"Duplicate → #{entry.DuplicateTargetId}"
-                : "New";
-            var statusColor = entry.DuplicateTargetId.HasValue ? "#f9e2af" : "#a6e3a1";
+            string statusText;
+            string statusColor;
+            if (entry.DuplicateTargetId.HasValue)
+            {
+                statusText = $"Duplicate → #{entry.DuplicateTargetId}";
+                statusColor = "#f9e2af";
+            }
+            else if (entry.IsEmpty)
+            {
+                statusText = "Empty";
+                statusColor = "#6c7086";
+            }
+            else
+            {
+                statusText = "New";
+                statusColor = "#a6e3a1";
+            }
             var statusBlock = new Avalonia.Controls.TextBlock
             {
                 Text = statusText,
@@ -1717,8 +1754,25 @@ public partial class MainWindowViewModel : ObservableObject
         public DatThingType SourceThing { get; init; } = null!;
         public TransplantReport Report { get; init; } = null!;
         public ushort? DuplicateTargetId { get; init; }
+        public bool IsEmpty { get; init; }
         public TransplantAction Action { get; set; }
         public ushort? NewTargetId { get; set; }
+    }
+
+    /// <summary>
+    /// Returns true if the thing has no visible sprites (all sprite IDs are 0 across all frame groups).
+    /// </summary>
+    private static bool IsThingEmpty(DatThingType thing)
+    {
+        if (thing.FrameGroups.Length == 0) return true;
+        foreach (var fg in thing.FrameGroups)
+        {
+            foreach (uint sprId in fg.SpriteIndex)
+            {
+                if (sprId != 0) return false;
+            }
+        }
+        return true;
     }
 
     private enum TransplantAction { Skip, Add, Replace }
