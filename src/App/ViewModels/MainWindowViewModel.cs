@@ -997,7 +997,7 @@ public partial class MainWindowViewModel : ObservableObject
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
 
         // Track animated entries for the dialog's animation timer
-        var animatedEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int currentFrame)>();
+        var animatedEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int fgIndex)>();
 
         foreach (var entry in entries)
         {
@@ -1047,10 +1047,19 @@ public partial class MainWindowViewModel : ObservableObject
                 Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(spriteImg, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
                 spriteBorder.Child = spriteImg;
 
-                // Register for animation if thing has multiple frames
-                var fg0 = entry.SourceThing.FrameGroups.Length > 0 ? entry.SourceThing.FrameGroups[0] : null;
-                if (fg0 != null && fg0.Frames > 1)
-                    animatedEntries.Add((spriteImg, entry.SourceThing, fg0.Frames, 0));
+                // Register for animation — pick the frame group with most frames
+                int bestFgIdx = 0;
+                int bestFrames = 0;
+                for (int i = 0; i < entry.SourceThing.FrameGroups.Length; i++)
+                {
+                    if (entry.SourceThing.FrameGroups[i].Frames > bestFrames)
+                    {
+                        bestFrames = entry.SourceThing.FrameGroups[i].Frames;
+                        bestFgIdx = i;
+                    }
+                }
+                if (bestFrames > 1)
+                    animatedEntries.Add((spriteImg, entry.SourceThing, bestFrames, bestFgIdx));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -1203,7 +1212,7 @@ public partial class MainWindowViewModel : ObservableObject
         DispatcherTimer? mergeAnimTimer = null;
         if (animatedEntries.Count > 0)
         {
-            var animState = animatedEntries.Select(e => new { e.img, e.thing, e.frames, frame = new int[] { 0 } }).ToList();
+            var animState = animatedEntries.Select(e => new { e.img, e.thing, e.frames, e.fgIndex, frame = new int[] { 0 } }).ToList();
             int tickCounter = 0;
             mergeAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
             mergeAnimTimer.Tick += (_, _) =>
@@ -1220,7 +1229,7 @@ public partial class MainWindowViewModel : ObservableObject
                     };
                     if (tickCounter % divisor != 0) continue;
                     s.frame[0] = (s.frame[0] + 1) % s.frames;
-                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0]);
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0], s.fgIndex);
                     if (newBmp != null)
                         s.img.Source = newBmp;
                 }
@@ -1294,7 +1303,7 @@ public partial class MainWindowViewModel : ObservableObject
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
 
         // Track animated entries for the dialog's animation timer
-        var batchAnimEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int currentFrame)>();
+        var batchAnimEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int fgIndex)>();
 
         foreach (var entry in entries)
         {
@@ -1342,9 +1351,18 @@ public partial class MainWindowViewModel : ObservableObject
                 Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
                 spriteBorder.Child = img;
 
-                var fg0 = entry.SourceThing.FrameGroups.Length > 0 ? entry.SourceThing.FrameGroups[0] : null;
-                if (fg0 != null && fg0.Frames > 1)
-                    batchAnimEntries.Add((img, entry.SourceThing, fg0.Frames, 0));
+                int bestBatchFgIdx = 0;
+                int bestBatchFrames = 0;
+                for (int i = 0; i < entry.SourceThing.FrameGroups.Length; i++)
+                {
+                    if (entry.SourceThing.FrameGroups[i].Frames > bestBatchFrames)
+                    {
+                        bestBatchFrames = entry.SourceThing.FrameGroups[i].Frames;
+                        bestBatchFgIdx = i;
+                    }
+                }
+                if (bestBatchFrames > 1)
+                    batchAnimEntries.Add((img, entry.SourceThing, bestBatchFrames, bestBatchFgIdx));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -1510,7 +1528,7 @@ public partial class MainWindowViewModel : ObservableObject
         DispatcherTimer? batchAnimTimer = null;
         if (batchAnimEntries.Count > 0)
         {
-            var animState = batchAnimEntries.Select(e => new { e.img, e.thing, e.frames, frame = new int[] { 0 } }).ToList();
+            var animState = batchAnimEntries.Select(e => new { e.img, e.thing, e.frames, e.fgIndex, frame = new int[] { 0 } }).ToList();
             int tickCounter = 0;
             batchAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
             batchAnimTimer.Tick += (_, _) =>
@@ -1527,7 +1545,7 @@ public partial class MainWindowViewModel : ObservableObject
                     };
                     if (tickCounter % divisor != 0) continue;
                     s.frame[0] = (s.frame[0] + 1) % s.frames;
-                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0]);
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0], s.fgIndex);
                     if (newBmp != null)
                         s.img.Source = newBmp;
                 }
@@ -6373,11 +6391,12 @@ public partial class MainWindowViewModel : ObservableObject
     /// Static version of ComposeThingBitmap that takes an explicit SprFile.
     /// Used for composing sprites in a target session context (e.g. after transplant).
     /// </summary>
-    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile, int frame = 0)
+    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile, int frame = 0, int frameGroupIndex = 0)
     {
         if (thing.FrameGroups.Length == 0) return null;
 
-        var fg = thing.FrameGroups[0];
+        int fgIdx = Math.Clamp(frameGroupIndex, 0, thing.FrameGroups.Length - 1);
+        var fg = thing.FrameGroups[fgIdx];
         int w = fg.Width;
         int h = fg.Height;
         if (w == 0 || h == 0) return null;
