@@ -204,6 +204,10 @@ public partial class PaletteViewModel : ObservableObject
     // ── Display items for the active sub-collection ─────────────
     public ObservableCollection<PaletteItemViewModel> DisplayedItems { get; } = [];
 
+    // ── Collection tab: live reference to the selected collection's items ──
+    [ObservableProperty] private ObservableCollection<PaletteItemViewModel>? _collectionViewSource;
+    [ObservableProperty] private int _catalogTabIndex;
+
     // ── South panel state: catalog or sub-collection view ────────
     [ObservableProperty] private bool _isViewingSubCollection;
     [ObservableProperty] private string _viewingSubCollectionName = string.Empty;
@@ -322,6 +326,7 @@ public partial class PaletteViewModel : ObservableObject
             CatalogPage = 0;
             SearchCatalog();
         }
+        UpdateCollectionViewSource();
     }
 
     partial void OnSelectedCollectionChanged(PaletteCollectionViewModel? value)
@@ -336,6 +341,17 @@ public partial class PaletteViewModel : ObservableObject
     {
         CatalogPage = 0;
         SearchCatalog();
+        UpdateCollectionViewSource();
+    }
+
+    private void UpdateCollectionViewSource()
+    {
+        if (SelectedSubSubCollection != null)
+            CollectionViewSource = SelectedSubSubCollection.Items;
+        else if (SelectedSubCollection != null && SelectedSubCollection != OthersSubCollection && !SelectedSubCollection.IsBuiltIn)
+            CollectionViewSource = SelectedSubCollection.Items;
+        else
+            CollectionViewSource = null;
     }
 
     partial void OnIsViewingSubCollectionChanged(bool value)
@@ -736,6 +752,7 @@ public partial class PaletteViewModel : ObservableObject
         sub.Items.Add(vm);
         if (SelectedSubCollection == sub)
             SearchCatalog();
+        CatalogTabIndex = 1; // switch to Collection tab
         SaveToConfig();
     }
 
@@ -754,6 +771,7 @@ public partial class PaletteViewModel : ObservableObject
         // Auto-navigate to the new sub-collection so the user sees the item
         SelectedCollection = col;
         SelectedSubCollection = sub;
+        CatalogTabIndex = 1; // switch to Collection tab
     }
 
     /// <summary>Add a catalog item to a specific sub-sub-collection (from context menu).</summary>
@@ -765,6 +783,7 @@ public partial class PaletteViewModel : ObservableObject
         subsub.Items.Add(vm);
         if (SelectedSubSubCollection == subsub)
             SearchCatalog();
+        CatalogTabIndex = 1; // switch to Collection tab
         SaveToConfig();
     }
 
@@ -774,6 +793,17 @@ public partial class PaletteViewModel : ObservableObject
         if (item == null || SelectedSubCollection == null) return;
         SelectedSubCollection.Items.Remove(item);
         DisplayedItems.Remove(item);
+        SaveToConfig();
+    }
+
+    /// <summary>Remove an item from the currently displayed collection view (Collection tab).</summary>
+    public void RemoveItemFromCollectionView(PaletteItemViewModel item)
+    {
+        // Try sub-sub-collection first, then sub-collection
+        if (SelectedSubSubCollection != null)
+            SelectedSubSubCollection.Items.Remove(item);
+        else
+            SelectedSubCollection?.Items.Remove(item);
         SaveToConfig();
     }
 

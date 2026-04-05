@@ -2094,74 +2094,150 @@
                 </TabControl>
               </Border>
 
-              <!-- Row 6: Items grid (unified catalog + search) -->
-              <Grid Grid.Row="6" RowDefinitions="Auto,*,Auto">
-                <TextBox Grid.Row="0" Watermark="Search items..."
-                         Text="{Binding CatalogSearchText}" FontSize="10"
-                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                         CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
-                <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
-                  <ScrollViewer>
-                    <ItemsControl ItemsSource="{Binding CatalogResults}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <WrapPanel/>
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PaletteItemViewModel">
-                          <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
-                                  ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
-                                  BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
-                                  BorderBrush="#ff44ff"
-                                  BoxShadow="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightBoxShadow}}"
-                                  DoubleTapped="OnCatalogItemDoubleTapped"
-                                  PointerPressed="OnCatalogItemPressed">
-                            <Border.ContextMenu>
-                              <ContextMenu Opening="OnCatalogContextMenuOpening">
-                                <MenuItem Header="Add to Collection"/>
-                                <Separator/>
-                                <MenuItem Header="Add to Brush"
-                                          Click="OnAddCatalogItemToBrush"/>
-                              </ContextMenu>
-                            </Border.ContextMenu>
-                            <Image Source="{Binding Sprite}" Width="32" Height="32"
-                                   RenderOptions.BitmapInterpolationMode="None"/>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </Border>
-                <DockPanel Grid.Row="2" Margin="0,4,0,0">
-                  <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogFirstPageCommand}"
-                            ToolTip.Tip="First page">
-                      <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
-                    </Button>
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogPreviousPageCommand}"
-                            ToolTip.Tip="Previous page">
-                      <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
-                    </Button>
-                  </StackPanel>
-                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogNextPageCommand}"
-                            ToolTip.Tip="Next page">
-                      <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
-                    </Button>
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogLastPageCommand}"
-                            ToolTip.Tip="Last page">
-                      <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
-                    </Button>
-                  </StackPanel>
-                  <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </DockPanel>
-              </Grid>
+              <!-- Row 6: Catalog + Collection tabs -->
+              <TabControl Grid.Row="6" SelectedIndex="{Binding CatalogTabIndex}"
+                          TabStripPlacement="Top" Padding="0" Margin="0"
+                          FontSize="10" Background="Transparent">
+                <TabControl.Styles>
+                  <Style Selector="TabItem">
+                    <Setter Property="Padding" Value="8,3"/>
+                    <Setter Property="FontSize" Value="10"/>
+                    <Setter Property="Foreground" Value="#585b70"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                  </Style>
+                  <Style Selector="TabItem:selected">
+                    <Setter Property="Foreground" Value="#cdd6f4"/>
+                  </Style>
+                </TabControl.Styles>
+
+                <!-- Tab 0: Catalog -->
+                <TabItem>
+                  <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <i:Icon Value="fa-solid fa-magnifying-glass" FontSize="9" Foreground="#89b4fa"/>
+                      <TextBlock Text="Catalog"/>
+                    </StackPanel>
+                  </TabItem.Header>
+                  <Grid RowDefinitions="Auto,*,Auto">
+                    <TextBox Grid.Row="0" Watermark="Search items..."
+                             Text="{Binding CatalogSearchText}" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="4" Padding="6,4" Margin="0,4,0,4"/>
+                    <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
+                      <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding CatalogResults}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                      BorderBrush="#ff44ff"
+                                      BoxShadow="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightBoxShadow}}"
+                                      DoubleTapped="OnCatalogItemDoubleTapped"
+                                      PointerPressed="OnCatalogItemPressed">
+                                <Border.ContextMenu>
+                                  <ContextMenu Opening="OnCatalogContextMenuOpening">
+                                    <MenuItem Header="Add to Collection"/>
+                                    <Separator/>
+                                    <MenuItem Header="Add to Brush"
+                                              Click="OnAddCatalogItemToBrush"/>
+                                  </ContextMenu>
+                                </Border.ContextMenu>
+                                <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                       RenderOptions.BitmapInterpolationMode="None"/>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
+                    </Border>
+                    <DockPanel Grid.Row="2" Margin="0,4,0,0">
+                      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogFirstPageCommand}"
+                                ToolTip.Tip="First page">
+                          <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogPreviousPageCommand}"
+                                ToolTip.Tip="Previous page">
+                          <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogNextPageCommand}"
+                                ToolTip.Tip="Next page">
+                          <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogLastPageCommand}"
+                                ToolTip.Tip="Last page">
+                          <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
+                      <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </Grid>
+                </TabItem>
+
+                <!-- Tab 1: Collection items -->
+                <TabItem>
+                  <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <i:Icon Value="fa-solid fa-layer-group" FontSize="9" Foreground="#a6e3a1"/>
+                      <TextBlock Text="Collection"/>
+                    </StackPanel>
+                  </TabItem.Header>
+                  <Grid RowDefinitions="*">
+                    <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="0,4,0,0">
+                      <Panel>
+                        <!-- Empty state -->
+                        <TextBlock Text="Select a user collection to view its items"
+                                   FontSize="10" Foreground="#585b70" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   IsVisible="{Binding CollectionViewSource, Converter={x:Static ObjectConverters.IsNull}}"/>
+                        <!-- Items grid -->
+                        <ScrollViewer IsVisible="{Binding CollectionViewSource, Converter={x:Static ObjectConverters.IsNotNull}}">
+                          <ItemsControl ItemsSource="{Binding CollectionViewSource}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel/>
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                                <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                        ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                        BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                        BorderBrush="#ff44ff"
+                                        BoxShadow="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightBoxShadow}}"
+                                        DoubleTapped="OnCatalogItemDoubleTapped"
+                                        PointerPressed="OnCatalogItemPressed">
+                                  <Border.ContextMenu>
+                                    <ContextMenu>
+                                      <MenuItem Header="Remove from Collection"
+                                                Click="OnRemoveCollectionItem"/>
+                                    </ContextMenu>
+                                  </Border.ContextMenu>
+                                  <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                         RenderOptions.BitmapInterpolationMode="None"/>
+                                </Border>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </ScrollViewer>
+                      </Panel>
+                    </Border>
+                  </Grid>
+                </TabItem>
+              </TabControl>
             </Grid>
           </Border>
 

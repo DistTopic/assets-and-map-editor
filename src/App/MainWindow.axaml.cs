@@ -778,6 +778,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnRemoveCollectionItem(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.DataContext is PaletteItemViewModel item
+            && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
+        {
+            palette.RemoveItemFromCollectionView(item);
+        }
+    }
+
     private void OnClientItemSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb && DataContext is MainWindowViewModel vm)

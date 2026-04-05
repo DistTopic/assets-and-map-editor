@@ -351,7 +351,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         MapTileCount = MapData?.Tiles.Count ?? 0;
-        RefreshFilteredTowns();
+        Dispatcher.UIThread.Post(RefreshFilteredTowns);
 
         // Restore map viewport state
         MapCurrentFloor = session.MapCurrentFloor;
@@ -3072,7 +3072,8 @@ public partial class MainWindowViewModel : ObservableObject
             MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns, {MapData.Spawns.Count} spawns, {MapData.Houses.Count} houses — {Path.GetFileName(path)}";
             MapHasUnsavedChanges = false;
             AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
-            RefreshFilteredTowns();
+            // Defer town refresh so the Properties panel ListBox is realized first
+            Dispatcher.UIThread.Post(RefreshFilteredTowns);
             OnPropertyChanged(nameof(MapFloors));
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
