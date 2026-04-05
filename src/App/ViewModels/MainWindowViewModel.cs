@@ -351,6 +351,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         MapTileCount = MapData?.Tiles.Count ?? 0;
+        RefreshFilteredTowns();
 
         // Restore map viewport state
         MapCurrentFloor = session.MapCurrentFloor;
@@ -3071,6 +3072,7 @@ public partial class MainWindowViewModel : ObservableObject
             MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns, {MapData.Spawns.Count} spawns, {MapData.Houses.Count} houses — {Path.GetFileName(path)}";
             MapHasUnsavedChanges = false;
             AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
+            RefreshFilteredTowns();
             OnPropertyChanged(nameof(MapFloors));
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
@@ -3667,6 +3669,32 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void MapGoTo() => _mapGoToRequested?.Invoke((ushort)MapGoToX, (ushort)MapGoToY, (byte)MapGoToZ);
+
+    // ── Town navigation ──
+    [ObservableProperty] private string _townSearchText = string.Empty;
+    [ObservableProperty] private ObservableCollection<MapTown> _filteredTowns = [];
+
+    partial void OnTownSearchTextChanged(string value) => RefreshFilteredTowns();
+
+    public void RefreshFilteredTowns()
+    {
+        var towns = MapData?.Towns;
+        if (towns == null || towns.Count == 0) { FilteredTowns.Clear(); return; }
+
+        var query = TownSearchText?.Trim() ?? string.Empty;
+        var sorted = towns
+            .Where(t => string.IsNullOrEmpty(query) || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+
+        FilteredTowns = new ObservableCollection<MapTown>(sorted);
+    }
+
+    [RelayCommand]
+    private void GoToTown(MapTown? town)
+    {
+        if (town == null) return;
+        _mapGoToRequested?.Invoke(town.TempleX, town.TempleY, town.TempleZ);
+    }
 
     // Events for the View to hook into (for MapCanvasControl interaction)
     internal Action? _mapCenterRequested;

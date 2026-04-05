@@ -5,6 +5,7 @@
         xmlns:vm="using:AssetsAndMapEditor.App.ViewModels"
         xmlns:i="https://github.com/projektanker/icons.avalonia"
         xmlns:ctrl="using:AssetsAndMapEditor.App.Controls"
+        xmlns:otb="using:AssetsAndMapEditor.OTB"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="AssetsAndMapEditor.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -286,6 +287,10 @@
         </MenuItem>
         <MenuItem Header="Map Statistics…" Command="{Binding ShowMapStatisticsCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-chart-bar" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="Edit Towns…" InputGesture="Ctrl+T" Click="OnEditTownsMenuClick">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-city" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
         </MenuItem>
         <Separator/>
         <MenuItem Header="Cleanup Invalid Items" Command="{Binding MapCleanupInvalidItemsCommand}">
@@ -2361,6 +2366,36 @@
                             Margin="0,2,0,0"
                             Command="{Binding MapGoToCommand}"/>
                   </Grid>
+
+                  <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                  <!-- Towns -->
+                  <TextBlock Text="Towns" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                  <TextBox x:Name="TownSearchBox" Watermark="Search town…" FontSize="11"
+                           Text="{Binding TownSearchText, Mode=TwoWay}"
+                           Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                           CornerRadius="4" Padding="6,4" Margin="0,2,0,4"/>
+                  <ListBox ItemsSource="{Binding FilteredTowns}" MaxHeight="180"
+                           Background="Transparent" BorderThickness="0" Padding="0"
+                           DoubleTapped="OnTownDoubleClick">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="otb:MapTown">
+                        <StackPanel Spacing="1" Margin="2,2">
+                          <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#cdd6f4" FontWeight="Medium"/>
+                          <TextBlock FontSize="9" Foreground="#585b70">
+                            <TextBlock.Text>
+                              <MultiBinding StringFormat="ID {0}  —  {1}, {2}, {3}">
+                                <Binding Path="Id"/>
+                                <Binding Path="TempleX"/>
+                                <Binding Path="TempleY"/>
+                                <Binding Path="TempleZ"/>
+                              </MultiBinding>
+                            </TextBlock.Text>
+                          </TextBlock>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
 
                   <Separator Background="#313244" Height="1" Margin="0,4"/>
 

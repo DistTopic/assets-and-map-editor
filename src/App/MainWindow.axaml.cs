@@ -1067,6 +1067,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnTownDoubleClick(object? sender, TappedEventArgs e)
+    {
+        if (sender is not ListBox lb || DataContext is not MainWindowViewModel vm) return;
+        if (lb.SelectedItem is MapTown town)
+            vm.GoToTownCommand.Execute(town);
+    }
+
+    private void OnEditTownsMenuClick(object? sender, RoutedEventArgs e)
+    {
+        var box = this.FindControl<TextBox>("TownSearchBox");
+        box?.Focus();
+    }
+
     private void OnAddHouseClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
