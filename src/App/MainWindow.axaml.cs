@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -8,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using AssetsAndMapEditor.App.Controls;
 using AssetsAndMapEditor.App.ViewModels;
@@ -88,6 +90,8 @@ public partial class MainWindow : Window
                             mapCanvas.BrushCatalog = vm.BrushCatalog;
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
+                        if (args.PropertyName == nameof(vm.MapData))
+                            RefreshHouseComboBox();
                     };
                 }
                 else
@@ -96,6 +100,8 @@ public partial class MainWindow : Window
                     {
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
+                        if (args.PropertyName == nameof(vm.MapData))
+                            RefreshHouseComboBox();
                     };
                 }
             }
@@ -573,6 +579,7 @@ public partial class MainWindow : Window
         {
             palette.SelectedPaletteItem = item;
             vm.BrushServerId = item.ServerId;
+            vm.IsBorderRemoverActive = false;
         }
     }
 
@@ -600,6 +607,7 @@ public partial class MainWindow : Window
             && DataContext is MainWindowViewModel vm)
         {
             vm.BrushServerId = item.ServerId;
+            vm.IsBorderRemoverActive = false;
             if (vm.Palette != null)
             {
                 vm.Palette.SelectedBrush = null;
@@ -958,6 +966,206 @@ public partial class MainWindow : Window
         {
             // Toggle: if already active, deactivate
             vm.ActiveZoneBrush = vm.ActiveZoneBrush == zone ? 0 : zone;
+            vm.IsBorderRemoverActive = false;
+        }
+    }
+
+    private void OnBorderRemoverClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.IsBorderRemoverActive = !vm.IsBorderRemoverActive;
+            if (vm.IsBorderRemoverActive)
+            {
+                // Deactivate other tools
+                vm.ActiveZoneBrush = 0;
+                vm.BrushServerId = 0;
+                vm.BrushItemIds = null;
+                vm.DeactivateSpawnHouseBrushes();
+            }
+        }
+    }
+
+    // ── Spawn/House brush handlers ──
+
+    private void OnSpawnBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsSpawnBrushActive)
+            {
+                vm.IsSpawnBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateSpawnBrush();
+            }
+        }
+    }
+
+    private void OnCreatureBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsCreatureBrushActive)
+            {
+                vm.IsCreatureBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateCreatureBrush();
+            }
+        }
+    }
+
+    private void OnHouseBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsHouseBrushActive)
+            {
+                vm.IsHouseBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateHouseBrush();
+            }
+        }
+    }
+
+    private void OnHouseExitBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsHouseExitBrushActive)
+            {
+                vm.IsHouseExitBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateHouseExitBrush();
+            }
+        }
+    }
+
+    private void OnHouseSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is HouseComboItem item)
+        {
+            vm.SelectedHouseId = item.Id;
+        }
+    }
+
+    private void OnHouseTownFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is TownComboItem item)
+        {
+            vm.SelectedHouseTownFilter = item.Id;
+            RefreshHouseComboBox();
+        }
+    }
+
+    private void OnAddHouseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+        uint townId = vm.SelectedHouseTownFilter;
+        if (townId == 0 && vm.MapData.Towns.Count > 0)
+            townId = vm.MapData.Towns[0].Id;
+        vm.AddNewHouse(townId);
+        RefreshHouseComboBox();
+    }
+
+    private async void OnEditHouseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+        var house = vm.MapData.Houses.FirstOrDefault(h => h.Id == vm.SelectedHouseId);
+        if (house == null) return;
+
+        var dialog = new EditHouseDialog(house, vm.MapData.Towns);
+        await dialog.ShowDialog(this);
+        RefreshHouseComboBox();
+        vm.MarkMapDirty();
+    }
+
+    /// <summary>Refreshes house/town combo boxes from current MapData.</summary>
+    private bool _refreshingHouseCombo;
+    internal void RefreshHouseComboBox()
+    {
+        if (_refreshingHouseCombo) return;
+        _refreshingHouseCombo = true;
+        try
+        {
+            if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+
+            // Town filter
+            var townCb = this.FindControl<ComboBox>("HouseTownComboBox");
+            if (townCb != null)
+            {
+                var townItems = new List<TownComboItem> { new(0, "All Towns") };
+                foreach (var town in vm.MapData.Towns.OrderBy(t => t.Id))
+                    townItems.Add(new(town.Id, $"{town.Name} (#{town.Id})"));
+                townCb.ItemsSource = townItems;
+                townCb.SelectedItem = townItems.FirstOrDefault(t => t.Id == vm.SelectedHouseTownFilter) ?? townItems[0];
+            }
+
+            // House list
+            var houseCb = this.FindControl<ComboBox>("HouseComboBox");
+            if (houseCb != null)
+            {
+                var houses = vm.GetFilteredHouses();
+                var houseItems = houses.Select(h => new HouseComboItem(h.Id, $"{h.Name} (#{h.Id})")).ToList();
+                houseCb.ItemsSource = houseItems;
+                houseCb.SelectedItem = houseItems.FirstOrDefault(h => h.Id == vm.SelectedHouseId);
+            }
+        }
+        finally
+        {
+            _refreshingHouseCombo = false;
+        }
+    }
+
+    // ── Creature handlers ──
+
+    private void OnCreatureFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is ComboBoxItem item && item.Content is string filter)
+            vm.CreatureFilter = filter;
+    }
+
+    private void OnCreatureSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListBox lb || DataContext is not MainWindowViewModel vm) return;
+        if (lb.SelectedItem is CreatureEntry entry)
+            vm.SelectCreature(entry);
+    }
+
+    private async void OnLoadCreaturesClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        // Try auto-detect first
+        var xmlPath = CreatureDatabase.FindCreaturesXml(vm.MapFilePath, vm.ClientFolderPath);
+        if (xmlPath != null)
+        {
+            vm.LoadCreatureDatabase(xmlPath);
+            return;
+        }
+
+        // Manual file picker
+        var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Select creatures.xml",
+            AllowMultiple = false,
+            FileTypeFilter = [new("XML Files") { Patterns = ["*.xml"] }]
+        });
+        if (files.Count > 0)
+        {
+            var path = files[0].TryGetLocalPath();
+            if (path != null)
+                vm.LoadCreatureDatabase(path);
         }
     }
 
@@ -1116,4 +1324,15 @@ public partial class MainWindow : Window
         await dialog.ShowDialog(this);
         return await tcs.Task;
     }
+}
+
+// Simple record types for ComboBox items
+internal record HouseComboItem(uint Id, string Name)
+{
+    public override string ToString() => Name;
+}
+
+internal record TownComboItem(uint Id, string Name)
+{
+    public override string ToString() => Name;
 }

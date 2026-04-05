@@ -2971,6 +2971,58 @@ public partial class MainWindowViewModel : ObservableObject
         StatusText = $"Compacted {remapTable.Count} sprite(s). Save to persist changes.";
     }
 
+    // ── Compare DAT ↔ OTB ───────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task CompareDatOtbAsync()
+    {
+        if (_otbData == null || _datData == null)
+        {
+            StatusText = "Load both OTB and DAT files first.";
+            return;
+        }
+
+        StatusText = "Comparing DAT ↔ OTB properties…";
+        var divergent = await Task.Run(() => DatOtbComparer.FindDivergentItems(_otbData, _datData));
+
+        if (divergent.Count == 0)
+        {
+            StatusText = "All OTB items match their DAT counterparts — no differences found.";
+            return;
+        }
+
+        StatusText = $"Found {divergent.Count} divergent item(s). Review and apply…";
+
+        var dialog = new DatOtbSyncWindow(divergent, _datData, _sprFile);
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+
+        if (dialog.Result == null)
+        {
+            StatusText = "DAT ↔ OTB compare cancelled.";
+            return;
+        }
+
+        var r = dialog.Result;
+        if (r.OtbPropertiesChanged > 0 || r.DatPropertiesChanged > 0)
+        {
+            HasUnsavedChanges = true;
+            var parts = new List<string>();
+            if (r.OtbPropertiesChanged > 0) parts.Add($"{r.OtbPropertiesChanged} → OTB");
+            if (r.DatPropertiesChanged > 0) parts.Add($"{r.DatPropertiesChanged} → DAT");
+            StatusText = $"Applied {string.Join(", ", parts)} across {r.ItemsAffected} item(s). Save to persist.";
+        }
+        else
+        {
+            StatusText = "No changes applied.";
+        }
+    }
+
     public byte[] MapFloors => MapData?.GetFloors() ?? [7];
 
     partial void OnMapCurrentFloorChanged(byte value)
@@ -2993,14 +3045,39 @@ public partial class MainWindowViewModel : ObservableObject
         {
             MapData = OtbmFile.Load(path);
             MapFilePath = path;
+            var mapDir = Path.GetDirectoryName(path) ?? ".";
+
+            // Load external spawn file
+            if (!string.IsNullOrEmpty(MapData.SpawnFile))
+            {
+                var spawnPath = Path.Combine(mapDir, MapData.SpawnFile);
+                var spawns = SpawnHouseXml.LoadSpawns(spawnPath);
+                MapData.Spawns.Clear();
+                MapData.Spawns.AddRange(spawns);
+                AddMapLog($"Spawns loaded: {spawns.Count} zones from {MapData.SpawnFile}");
+            }
+
+            // Load external house file
+            if (!string.IsNullOrEmpty(MapData.HouseFile))
+            {
+                var housePath = Path.Combine(mapDir, MapData.HouseFile);
+                var houses = SpawnHouseXml.LoadHouses(housePath);
+                MapData.Houses.Clear();
+                MapData.Houses.AddRange(houses);
+                AddMapLog($"Houses loaded: {houses.Count} houses from {MapData.HouseFile}");
+            }
+
             MapTileCount = MapData.Tiles.Count;
-            MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns — {Path.GetFileName(path)}";
+            MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns, {MapData.Spawns.Count} spawns, {MapData.Houses.Count} houses — {Path.GetFileName(path)}";
             MapHasUnsavedChanges = false;
             AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
             OnPropertyChanged(nameof(MapFloors));
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
             OnPropertyChanged(nameof(ExposedOtbData));
+
+            // Auto-load creature database
+            LoadCreatureDatabaseAuto();
 
             // Auto-select floor 7 if available
             var floors = MapData.GetFloors();
@@ -3022,6 +3099,24 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             OtbmFile.Save(MapFilePath, MapData);
+            var mapDir = Path.GetDirectoryName(MapFilePath) ?? ".";
+
+            // Save external spawn file
+            if (!string.IsNullOrEmpty(MapData.SpawnFile))
+            {
+                var spawnPath = Path.Combine(mapDir, MapData.SpawnFile);
+                SpawnHouseXml.SaveSpawns(spawnPath, MapData.Spawns);
+                AddMapLog($"Spawns saved: {MapData.Spawns.Count} zones");
+            }
+
+            // Save external house file
+            if (!string.IsNullOrEmpty(MapData.HouseFile))
+            {
+                var housePath = Path.Combine(mapDir, MapData.HouseFile);
+                SpawnHouseXml.SaveHouses(housePath, MapData.Houses);
+                AddMapLog($"Houses saved: {MapData.Houses.Count} houses");
+            }
+
             MapTileCount = MapData.Tiles.Count;
             MapHasUnsavedChanges = false;
             MapStatusText = $"Map saved: {MapTileCount:N0} tiles — {Path.GetFileName(MapFilePath)}";
@@ -3039,6 +3134,158 @@ public partial class MainWindowViewModel : ObservableObject
     {
         MapHasUnsavedChanges = true;
         MapTileCount = MapData?.Tiles.Count ?? 0;
+    }
+
+    // ── Spawn/House management ──
+
+    /// <summary>Deactivates all spawn/house brush modes.</summary>
+    public void DeactivateSpawnHouseBrushes()
+    {
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+    }
+
+    /// <summary>Activates spawn brush mode (exclusive with other brushes).</summary>
+    public void ActivateSpawnBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsSpawnBrushActive = true;
+    }
+
+    /// <summary>Activates creature brush mode (exclusive with other brushes).</summary>
+    public void ActivateCreatureBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsCreatureBrushActive = true;
+    }
+
+    /// <summary>Activates house brush mode (exclusive with other brushes).</summary>
+    public void ActivateHouseBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsHouseBrushActive = true;
+    }
+
+    /// <summary>Activates house exit brush mode (exclusive with other brushes).</summary>
+    public void ActivateHouseExitBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = true;
+    }
+
+    /// <summary>Creates a new house and selects it.</summary>
+    public MapHouse? AddNewHouse(uint townId)
+    {
+        if (MapData == null) return null;
+
+        uint newId = 1;
+        var usedIds = new HashSet<uint>(MapData.Houses.Select(h => h.Id));
+        while (usedIds.Contains(newId)) newId++;
+
+        var house = new MapHouse
+        {
+            Id = newId,
+            Name = $"Unnamed House #{newId}",
+            TownId = townId,
+        };
+        MapData.Houses.Add(house);
+        SelectedHouseId = newId;
+        MarkMapDirty();
+        AddMapLog($"House #{newId} created (Town {townId})");
+        return house;
+    }
+
+    /// <summary>Removes a house and clears all tiles belonging to it.</summary>
+    public void RemoveHouse(uint houseId)
+    {
+        if (MapData == null) return;
+        var house = MapData.Houses.FirstOrDefault(h => h.Id == houseId);
+        if (house == null) return;
+
+        // Clear house from tiles
+        foreach (var tile in MapData.Tiles.Values)
+        {
+            if (tile.HouseId == houseId)
+            {
+                tile.HouseId = 0;
+                // Remove PZ flag
+                tile.Flags &= ~1u; // TILESTATE_PROTECTIONZONE = 0x01
+            }
+        }
+
+        MapData.Houses.Remove(house);
+        if (SelectedHouseId == houseId) SelectedHouseId = 0;
+        MarkMapDirty();
+        AddMapLog($"House #{houseId} removed");
+    }
+
+    /// <summary>Gets a list of houses filtered by selected town.</summary>
+    public List<MapHouse> GetFilteredHouses()
+    {
+        if (MapData == null) return [];
+        if (SelectedHouseTownFilter == 0)
+            return MapData.Houses.OrderBy(h => h.Id).ToList();
+        return MapData.Houses.Where(h => h.TownId == SelectedHouseTownFilter).OrderBy(h => h.Id).ToList();
+    }
+
+    /// <summary>Creates a new spawn at the specified position.</summary>
+    public MapSpawn AddNewSpawn(ushort x, ushort y, byte z, int radius)
+    {
+        var spawn = new MapSpawn { CenterX = x, CenterY = y, CenterZ = z, Radius = radius };
+        MapData?.Spawns.Add(spawn);
+        MarkMapDirty();
+        AddMapLog($"Spawn created at ({x}, {y}, {z}) r={radius}");
+        return spawn;
+    }
+
+    /// <summary>Removes a spawn.</summary>
+    public void RemoveSpawn(MapSpawn spawn)
+    {
+        if (MapData == null) return;
+        MapData.Spawns.Remove(spawn);
+        MarkMapDirty();
+        AddMapLog($"Spawn removed at ({spawn.CenterX}, {spawn.CenterY}, {spawn.CenterZ})");
+    }
+
+    /// <summary>Finds the spawn covering a given position.</summary>
+    public MapSpawn? FindSpawnAt(ushort x, ushort y, byte z)
+    {
+        if (MapData == null) return null;
+        foreach (var spawn in MapData.Spawns)
+        {
+            if (spawn.CenterZ != z) continue;
+            int dx = Math.Abs(x - spawn.CenterX);
+            int dy = Math.Abs(y - spawn.CenterY);
+            if (dx <= spawn.Radius && dy <= spawn.Radius)
+                return spawn;
+        }
+        return null;
     }
 
     /// <summary>Called by MapCanvasControl.ActionLogged event.</summary>
@@ -3441,6 +3688,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _viewShowSpecial = true;
     [ObservableProperty] private bool _viewShowZones = true;
     [ObservableProperty] private bool _viewShowHouses = true;
+    [ObservableProperty] private bool _viewShowSpawns = true;
     [ObservableProperty] private bool _viewShowWaypoints = true;
     [ObservableProperty] private bool _viewShowTowns;
     [ObservableProperty] private bool _viewShowPathing;
@@ -3456,8 +3704,68 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private int _brushSize;       // 0=1x1, 1=3x3, 2=5x5, 3=7x7, 4=9x9, 5=11x11, 6=13x13
     [ObservableProperty] private bool _brushCircle;    // false=square, true=circle
     [ObservableProperty] private int _activeZoneBrush; // 0=none, 1=PZ, 2=NoLogout, 4=NoPvP, 8=PvPZone
+    [ObservableProperty] private bool _isBorderRemoverActive; // border remover tool
     [ObservableProperty] private IList<ushort>? _brushItemIds; // custom brush: random pick from this list
     [ObservableProperty] private bool _useAutomagic = true; // Border Automagic toggle (A key)
+
+    // ── Spawn brush ──
+    [ObservableProperty] private bool _isSpawnBrushActive;
+    [ObservableProperty] private bool _isCreatureBrushActive;
+    [ObservableProperty] private int _spawnBrushRadius = 5;
+    [ObservableProperty] private int _creatureSpawnTime = 60;
+    [ObservableProperty] private string _selectedCreatureName = string.Empty;
+    [ObservableProperty] private bool _selectedCreatureIsNpc;
+
+    // ── House brush ──
+    [ObservableProperty] private bool _isHouseBrushActive;
+    [ObservableProperty] private bool _isHouseExitBrushActive;
+    [ObservableProperty] private uint _selectedHouseId;
+    [ObservableProperty] private uint _selectedHouseTownFilter; // 0 = all towns
+
+    // ── Creature database ──
+    private List<CreatureEntry> _allCreatures = [];
+    [ObservableProperty] private string _creatureSearchText = string.Empty;
+    [ObservableProperty] private string _creatureFilter = "All"; // All, Monsters, NPCs
+    public ObservableCollection<CreatureEntry> FilteredCreatures { get; } = [];
+
+    partial void OnCreatureSearchTextChanged(string value) => RefreshFilteredCreatures();
+    partial void OnCreatureFilterChanged(string value) => RefreshFilteredCreatures();
+
+    public void LoadCreatureDatabase(string xmlPath)
+    {
+        _allCreatures = CreatureDatabase.LoadFromXml(xmlPath);
+        RefreshFilteredCreatures();
+        AddMapLog($"Creatures loaded: {_allCreatures.Count} entries from {Path.GetFileName(xmlPath)}");
+    }
+
+    public void LoadCreatureDatabaseAuto()
+    {
+        var xmlPath = CreatureDatabase.FindCreaturesXml(MapFilePath, ClientFolderPath);
+        if (xmlPath != null)
+            LoadCreatureDatabase(xmlPath);
+    }
+
+    public void RefreshFilteredCreatures()
+    {
+        FilteredCreatures.Clear();
+        var search = CreatureSearchText.Trim();
+        foreach (var c in _allCreatures)
+        {
+            if (CreatureFilter == "Monsters" && c.IsNpc) continue;
+            if (CreatureFilter == "NPCs" && !c.IsNpc) continue;
+            if (!string.IsNullOrEmpty(search) &&
+                c.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            FilteredCreatures.Add(c);
+        }
+    }
+
+    public void SelectCreature(CreatureEntry entry)
+    {
+        SelectedCreatureName = entry.Name;
+        SelectedCreatureIsNpc = entry.IsNpc;
+        if (!IsCreatureBrushActive)
+            ActivateCreatureBrush();
+    }
 
     [ObservableProperty] private string _statusText = "Select the client folder to begin";
     [ObservableProperty] private string _searchText = string.Empty;
@@ -4294,6 +4602,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (vs.TryGetValue(nameof(ViewShowSpecial), out v)) ViewShowSpecial = v;
         if (vs.TryGetValue(nameof(ViewShowZones), out v)) ViewShowZones = v;
         if (vs.TryGetValue(nameof(ViewShowHouses), out v)) ViewShowHouses = v;
+        if (vs.TryGetValue(nameof(ViewShowSpawns), out v)) ViewShowSpawns = v;
         if (vs.TryGetValue(nameof(ViewShowWaypoints), out v)) ViewShowWaypoints = v;
         if (vs.TryGetValue(nameof(ViewShowTowns), out v)) ViewShowTowns = v;
         if (vs.TryGetValue(nameof(ViewShowPathing), out v)) ViewShowPathing = v;
@@ -4341,6 +4650,7 @@ public partial class MainWindowViewModel : ObservableObject
             [nameof(ViewShowSpecial)] = ViewShowSpecial,
             [nameof(ViewShowZones)] = ViewShowZones,
             [nameof(ViewShowHouses)] = ViewShowHouses,
+            [nameof(ViewShowSpawns)] = ViewShowSpawns,
             [nameof(ViewShowWaypoints)] = ViewShowWaypoints,
             [nameof(ViewShowTowns)] = ViewShowTowns,
             [nameof(ViewShowPathing)] = ViewShowPathing,
