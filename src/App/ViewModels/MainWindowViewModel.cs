@@ -3684,9 +3684,12 @@ public partial class MainWindowViewModel : ObservableObject
         var query = TownSearchText?.Trim() ?? string.Empty;
         var sorted = towns
             .Where(t => string.IsNullOrEmpty(query) || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        FilteredTowns = new ObservableCollection<MapTown>(sorted);
+        FilteredTowns.Clear();
+        foreach (var t in sorted)
+            FilteredTowns.Add(t);
     }
 
     [RelayCommand]

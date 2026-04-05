@@ -723,7 +723,7 @@ public partial class PaletteViewModel : ObservableObject
         if (vm == null) return;
 
         SelectedSubCollection.Items.Add(vm);
-        RefreshDisplayedItems();
+        SearchCatalog();
         SaveToConfig();
     }
 
@@ -735,8 +735,25 @@ public partial class PaletteViewModel : ObservableObject
         if (vm == null) return;
         sub.Items.Add(vm);
         if (SelectedSubCollection == sub)
-            RefreshDisplayedItems();
+            SearchCatalog();
         SaveToConfig();
+    }
+
+    /// <summary>Add a catalog item to a collection that has no sub-collections — auto-creates a "General" sub.</summary>
+    public void AddItemToCollectionRoot(PaletteCollectionViewModel col, ushort serverId)
+    {
+        // Find or create a default "General" sub-collection
+        var sub = col.SubCollections.FirstOrDefault();
+        if (sub == null)
+        {
+            sub = new PaletteSubCollectionViewModel { Name = "General", Parent = col };
+            col.SubCollections.Add(sub);
+        }
+        AddItemToSubCollection(sub, serverId);
+
+        // Auto-navigate to the new sub-collection so the user sees the item
+        SelectedCollection = col;
+        SelectedSubCollection = sub;
     }
 
     /// <summary>Add a catalog item to a specific sub-sub-collection (from context menu).</summary>
@@ -747,7 +764,7 @@ public partial class PaletteViewModel : ObservableObject
         if (vm == null) return;
         subsub.Items.Add(vm);
         if (SelectedSubSubCollection == subsub)
-            RefreshDisplayedItems();
+            SearchCatalog();
         SaveToConfig();
     }
 

@@ -2375,7 +2375,7 @@
                            Text="{Binding TownSearchText, Mode=TwoWay}"
                            Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
                            CornerRadius="4" Padding="6,4" Margin="0,2,0,4"/>
-                  <ListBox ItemsSource="{Binding FilteredTowns}" MaxHeight="180"
+                  <ListBox ItemsSource="{Binding FilteredTowns}" MinHeight="160" MaxHeight="180"
                            Background="Transparent" BorderThickness="0" Padding="0"
                            DoubleTapped="OnTownDoubleClick">
                     <ListBox.ItemTemplate>
