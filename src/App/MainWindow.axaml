@@ -1425,8 +1425,9 @@
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" RowSpacing="4">
                       <TextBlock Grid.Column="0" Classes="label" Text="DAT Phases" VerticalAlignment="Center"/>
                       <TextBlock Grid.Column="1" Text="{Binding SelectedItem.DatAnimPhases}" FontWeight="Bold" Foreground="#cba6f7" VerticalAlignment="Center"/>
-                      <TextBlock Grid.Column="2" Classes="label" Text="Animate Always" VerticalAlignment="Center"/>
-                      <TextBlock Grid.Column="3" Text="{Binding SelectedItem.DatAnimateAlways}" Foreground="#585b70" VerticalAlignment="Center"/>
+                      <CheckBox Grid.Column="2" Grid.ColumnSpan="2" Content="Animate Always"
+                                IsChecked="{Binding SelectedItem.DatAnimateAlways}"
+                                VerticalAlignment="Center"/>
                     </Grid>
                     <TextBlock Text="{Binding SelectedItem.MismatchDetail}" Foreground="#f38ba8" FontSize="11" TextWrapping="Wrap"
                                IsVisible="{Binding SelectedItem.HasMismatch}"/>
@@ -2192,7 +2193,7 @@
                   <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="4">
                       <i:Icon Value="fa-solid fa-layer-group" FontSize="9" Foreground="#a6e3a1"/>
-                      <TextBlock Text="Collection"/>
+                      <TextBlock Text="{Binding CollectionTabHeader}"/>
                     </StackPanel>
                   </TabItem.Header>
                   <Grid RowDefinitions="*">

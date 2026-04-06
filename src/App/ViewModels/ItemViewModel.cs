@@ -170,6 +170,12 @@ public partial class ItemViewModel : ObservableObject
     // Notify mismatch detail when relevant properties change
     partial void OnHasMismatchChanged(bool value) => OnPropertyChanged(nameof(MismatchDetail));
     partial void OnDatAnimPhasesChanged(int value) => OnPropertyChanged(nameof(MismatchDetail));
+    partial void OnDatAnimateAlwaysChanged(bool value)
+    {
+        if (DatThingType != null)
+            DatThingType.IsAnimateAlways = value;
+        _parent.MarkDirty();
+    }
     partial void OnGroupChanged(OtbGroup value)
     {
         _parent.MarkDirty();
