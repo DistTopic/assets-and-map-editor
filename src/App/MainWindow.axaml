@@ -518,10 +518,10 @@
           <Grid RowDefinitions="*,Auto">
 
             <!-- ── Top: 3-column layout ── -->
-            <Grid Grid.Row="0" ColumnDefinitions="220,*,260">
+            <Grid Grid.Row="0" ColumnDefinitions="220,Auto,*,Auto,260">
 
             <!-- ── LEFT: Client item list + pagination ── -->
-            <DockPanel Grid.Column="0" Margin="0,0,6,0">
+            <DockPanel Grid.Column="0" Margin="0,0,0,0">
               <!-- Top: search + category filter -->
               <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                 <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ClientCategoryOptions}"
@@ -644,8 +644,13 @@
               </ListBox>
             </DockPanel>
 
+            <!-- Column splitter: Left | Center -->
+            <GridSplitter Grid.Column="1" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          Cursor="SizeWestEast"/>
+
             <!-- ── CENTER: Split top (client editor) / bottom (OTB detail) ── -->
-            <Grid Grid.Column="1" RowDefinitions="*,*" Margin="0,0,6,0">
+            <Grid Grid.Column="2" RowDefinitions="*,Auto,*" Margin="0,0,0,0">
 
             <!-- ── TOP: Thing Type Editor (OB two-tab layout) ── -->
             <TabControl Grid.Row="0">
@@ -1296,8 +1301,14 @@
               </TabItem>
             </TabControl>
 
+            <!-- Row splitter: Editor | OTB Detail -->
+            <GridSplitter Grid.Row="1" Height="6" Background="Transparent"
+                          ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                          IsVisible="{Binding IsOtbItemEditing}"
+                          Cursor="SizeNorthSouth"/>
+
             <!-- ── BOTTOM: OTB Item Detail (double-click to open) ── -->
-            <ScrollViewer Grid.Row="1" IsVisible="{Binding IsOtbItemEditing}" Margin="0,6,0,0">
+            <ScrollViewer Grid.Row="2" IsVisible="{Binding IsOtbItemEditing}" Margin="0,0,0,0">
               <StackPanel Spacing="10" IsVisible="{Binding SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}">
 
                 <!-- OTB Appearance Card -->
@@ -1439,8 +1450,13 @@
 
             </Grid><!-- end center split grid -->
 
+            <!-- Column splitter: Center | Right -->
+            <GridSplitter Grid.Column="3" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          Cursor="SizeWestEast"/>
+
             <!-- ── RIGHT: OTB Server Items List ── -->
-            <DockPanel Grid.Column="2" Margin="6,0,0,0">
+            <DockPanel Grid.Column="4" Margin="0,0,0,0">
               <TextBlock DockPanel.Dock="Top" Text="OTB Items" Classes="heading" Margin="0,0,0,4"/>
               <!-- Search -->
               <TextBox DockPanel.Dock="Top" Classes="search" Watermark="Buscar Server/Client ID..."
