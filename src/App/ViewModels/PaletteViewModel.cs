@@ -204,6 +204,11 @@ public partial class PaletteViewModel : ObservableObject
     // ── Display items for the active sub-collection ─────────────
     public ObservableCollection<PaletteItemViewModel> DisplayedItems { get; } = [];
 
+    // ── Collection tab: live reference to the selected collection's items ──
+    [ObservableProperty] private ObservableCollection<PaletteItemViewModel>? _collectionViewSource;
+    [ObservableProperty] private string _collectionTabHeader = "Collection";
+    [ObservableProperty] private int _catalogTabIndex;
+
     // ── South panel state: catalog or sub-collection view ────────
     [ObservableProperty] private bool _isViewingSubCollection;
     [ObservableProperty] private string _viewingSubCollectionName = string.Empty;
@@ -322,6 +327,7 @@ public partial class PaletteViewModel : ObservableObject
             CatalogPage = 0;
             SearchCatalog();
         }
+        UpdateCollectionViewSource();
     }
 
     partial void OnSelectedCollectionChanged(PaletteCollectionViewModel? value)
@@ -336,6 +342,26 @@ public partial class PaletteViewModel : ObservableObject
     {
         CatalogPage = 0;
         SearchCatalog();
+        UpdateCollectionViewSource();
+    }
+
+    private void UpdateCollectionViewSource()
+    {
+        if (SelectedSubSubCollection != null)
+        {
+            CollectionViewSource = SelectedSubSubCollection.Items;
+            CollectionTabHeader = SelectedSubSubCollection.Name;
+        }
+        else if (SelectedSubCollection != null && SelectedSubCollection != OthersSubCollection)
+        {
+            CollectionViewSource = SelectedSubCollection.Items;
+            CollectionTabHeader = SelectedSubCollection.Name;
+        }
+        else
+        {
+            CollectionViewSource = null;
+            CollectionTabHeader = "Collection";
+        }
     }
 
     partial void OnIsViewingSubCollectionChanged(bool value)
@@ -433,19 +459,18 @@ public partial class PaletteViewModel : ObservableObject
         if (_serverToClientMap.Count == 0) { CatalogResults.Clear(); CatalogStatusText = "No items — load OTB + Client"; return; }
 
         // Determine source based on selection hierarchy.
-        // For brush-catalog sub-collections, use pre-built items directly
-        // (they may contain IDs not in OTB). For "Others" / fallback, use OTB keys.
+        // Built-in sub-collections show their pre-built items in the Catalog tab.
+        // User-created collections show items only in the Collection tab —
+        // the Catalog tab always falls back to the full OTB item list.
         IReadOnlyList<PaletteItemViewModel>? sourceItems = null;
         IEnumerable<ushort>? sourceIds = null;
 
-        if (SelectedSubSubCollection != null)
+        if (SelectedSubSubCollection != null && (SelectedSubCollection?.IsBuiltIn ?? false))
             sourceItems = SelectedSubSubCollection.Items;
-        else if (SelectedSubCollection == OthersSubCollection)
-            sourceIds = _serverToClientMap.Keys; // "Others" shows all OTB items
-        else if (SelectedSubCollection != null)
+        else if (SelectedSubCollection != null && SelectedSubCollection.IsBuiltIn && SelectedSubCollection != OthersSubCollection)
             sourceItems = SelectedSubCollection.Items;
         else
-            sourceIds = _serverToClientMap.Keys;
+            sourceIds = _serverToClientMap.Keys; // Full catalog for "Others" and user collections
 
         var search = CatalogSearchText.Trim();
 
@@ -723,7 +748,7 @@ public partial class PaletteViewModel : ObservableObject
         if (vm == null) return;
 
         SelectedSubCollection.Items.Add(vm);
-        RefreshDisplayedItems();
+        SearchCatalog();
         SaveToConfig();
     }
 
@@ -734,9 +759,23 @@ public partial class PaletteViewModel : ObservableObject
         var vm = CreatePaletteItem(serverId);
         if (vm == null) return;
         sub.Items.Add(vm);
-        if (SelectedSubCollection == sub)
-            RefreshDisplayedItems();
+        // Point Collection tab at this sub-collection and switch to it
+        CollectionViewSource = sub.Items;
+        CollectionTabHeader = sub.Name;
+        CatalogTabIndex = 1;
         SaveToConfig();
+    }
+
+    /// <summary>Add a catalog item to a collection that has no sub-collections — auto-creates a "General" sub.</summary>
+    public void AddItemToCollectionRoot(PaletteCollectionViewModel col, ushort serverId)
+    {
+        var sub = col.SubCollections.FirstOrDefault();
+        if (sub == null)
+        {
+            sub = new PaletteSubCollectionViewModel { Name = "General", Parent = col };
+            col.SubCollections.Add(sub);
+        }
+        AddItemToSubCollection(sub, serverId);
     }
 
     /// <summary>Add a catalog item to a specific sub-sub-collection (from context menu).</summary>
@@ -746,8 +785,10 @@ public partial class PaletteViewModel : ObservableObject
         var vm = CreatePaletteItem(serverId);
         if (vm == null) return;
         subsub.Items.Add(vm);
-        if (SelectedSubSubCollection == subsub)
-            RefreshDisplayedItems();
+        // Point Collection tab at this sub-sub-collection and switch to it
+        CollectionViewSource = subsub.Items;
+        CollectionTabHeader = subsub.Name;
+        CatalogTabIndex = 1;
         SaveToConfig();
     }
 
@@ -757,6 +798,17 @@ public partial class PaletteViewModel : ObservableObject
         if (item == null || SelectedSubCollection == null) return;
         SelectedSubCollection.Items.Remove(item);
         DisplayedItems.Remove(item);
+        SaveToConfig();
+    }
+
+    /// <summary>Remove an item from the currently displayed collection view (Collection tab).</summary>
+    public void RemoveItemFromCollectionView(PaletteItemViewModel item)
+    {
+        // Try sub-sub-collection first, then sub-collection
+        if (SelectedSubSubCollection != null)
+            SelectedSubSubCollection.Items.Remove(item);
+        else
+            SelectedSubCollection?.Items.Remove(item);
         SaveToConfig();
     }
 
@@ -1177,7 +1229,7 @@ public partial class PaletteViewModel : ObservableObject
     }
 
     /// <summary>Clear highlight on all catalog items and set it on the matching one.</summary>
-    private void HighlightCatalogItem(ushort serverId)
+    public void HighlightCatalogItem(ushort serverId)
     {
         foreach (var item in CatalogResults)
             item.IsHighlighted = item.ServerId == serverId;

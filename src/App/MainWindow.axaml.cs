@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -8,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using AssetsAndMapEditor.App.Controls;
 using AssetsAndMapEditor.App.ViewModels;
@@ -60,43 +62,20 @@ public partial class MainWindow : Window
 
                 await vm.TryLoadLastSessionAsync();
 
-                // Wire Merge Session menu (dynamic submenu listing other sessions)
-                var mergeMenuItem = this.FindControl<Avalonia.Controls.MenuItem>("MergeSessionMenuItem");
-                if (mergeMenuItem != null)
+                // If user chose "Open Files" from welcome screen, trigger client folder dialog
+                if (vm.PendingOpenFiles)
                 {
-                    mergeMenuItem.SubmenuOpened += (_, _) =>
-                    {
-                        mergeMenuItem.Items.Clear();
-                        var sources = vm.Sessions
-                            .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
-                            .ToList();
-
-                        if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
-                        {
-                            var empty = new Avalonia.Controls.MenuItem
-                            {
-                                Header = vm.ActiveSession?.DatData == null
-                                    ? "Current session has no DAT loaded"
-                                    : "No other sessions with DAT/SPR loaded",
-                                IsEnabled = false,
-                            };
-                            mergeMenuItem.Items.Add(empty);
-                        }
-                        else
-                        {
-                            foreach (var source in sources)
-                            {
-                                var mi = new Avalonia.Controls.MenuItem
-                                {
-                                    Header = $"{source.Name}  ({source.DatData!.Items.Count + source.DatData.Outfits.Count + source.DatData.Effects.Count + source.DatData.Missiles.Count} things)",
-                                    Tag = source,
-                                };
-                                mi.Click += async (_, _) => await vm.MergeSessionAsync(source);
-                                mergeMenuItem.Items.Add(mi);
-                            }
-                        }
-                    };
+                    vm.PendingOpenFiles = false;
+                    if (vm.SelectClientFolderCommand.CanExecute(null))
+                        await vm.SelectClientFolderCommand.ExecuteAsync(null);
                 }
+
+                // Wire Merge Session menus (dynamic submenus listing other sessions)
+                WireMergeMenu(vm, "MergeSessionMenuItem", null);     // All categories
+                WireMergeMenu(vm, "MergeItemsMenuItem", OTB.ThingCategory.Item);
+                WireMergeMenu(vm, "MergeOutfitsMenuItem", OTB.ThingCategory.Outfit);
+                WireMergeMenu(vm, "MergeEffectsMenuItem", OTB.ThingCategory.Effect);
+                WireMergeMenu(vm, "MergeMissilesMenuItem", OTB.ThingCategory.Missile);
 
                 // Wire confirmation dialog for palette delete operations
                 if (vm.Palette != null)
@@ -119,6 +98,8 @@ public partial class MainWindow : Window
                             mapCanvas.BrushCatalog = vm.BrushCatalog;
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
+                        if (args.PropertyName == nameof(vm.MapData))
+                            RefreshHouseComboBox();
                     };
                 }
                 else
@@ -127,6 +108,8 @@ public partial class MainWindow : Window
                     {
                         if (args.PropertyName == nameof(vm.SplitMode))
                             ApplySplitLayout(vm.SplitMode);
+                        if (args.PropertyName == nameof(vm.MapData))
+                            RefreshHouseComboBox();
                     };
                 }
             }
@@ -545,6 +528,18 @@ public partial class MainWindow : Window
             vm.NavigateToClientItem();
     }
 
+    private async void OnPreferencesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var dialog = new PreferencesWindow(vm.ClientItemsPerPage);
+        await dialog.ShowDialog(this);
+        if (!dialog.Saved) return;
+        vm.ClientItemsPerPage = dialog.ItemsPerPage;
+        var settings = AppSettings.Load();
+        settings.ItemsPerPage = dialog.ItemsPerPage;
+        settings.Save();
+    }
+
     private void OnOtbItemDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm)
@@ -604,6 +599,7 @@ public partial class MainWindow : Window
         {
             palette.SelectedPaletteItem = item;
             vm.BrushServerId = item.ServerId;
+            vm.IsBorderRemoverActive = false;
         }
     }
 
@@ -631,7 +627,12 @@ public partial class MainWindow : Window
             && DataContext is MainWindowViewModel vm)
         {
             vm.BrushServerId = item.ServerId;
-            if (vm.Palette != null) vm.Palette.SelectedBrush = null;
+            vm.IsBorderRemoverActive = false;
+            if (vm.Palette != null)
+            {
+                vm.Palette.SelectedBrush = null;
+                vm.Palette.HighlightCatalogItem(item.ServerId);
+            }
 
             // Ground/doodad brush → populate BrushItemIds so auto-bordering runs
             if (vm.BrushCatalog?.GroundsByName.TryGetValue(item.Name, out var ground) == true
@@ -657,18 +658,19 @@ public partial class MainWindow : Window
 
         addToRoot.Items.Clear();
 
-        // Resolve the catalog item from the parent Border's DataContext
-        var catalogItem = ctx.DataContext as PaletteItemViewModel
-                          ?? (ctx.PlacementTarget as Avalonia.Controls.Control)?.DataContext as PaletteItemViewModel;
-
-        // Store the catalog item in the ContextMenu's Tag so click handlers can retrieve it
-        ctx.Tag = catalogItem;
-
         foreach (var col in palette.Collections)
         {
-            if (col.IsBuiltIn) continue; // skip Raw
+            if (col.IsBuiltIn) continue;
 
             var colMi = new MenuItem { Header = col.Name };
+
+            if (col.SubCollections.Count == 0)
+            {
+                colMi.Tag = col;
+                colMi.Click += OnAddCatalogItemToCollectionRoot;
+                addToRoot.Items.Add(colMi);
+                continue;
+            }
 
             foreach (var sub in col.SubCollections)
             {
@@ -676,10 +678,8 @@ public partial class MainWindow : Window
 
                 if (sub.SubSubCollections.Count > 0)
                 {
-                    // SubCollection has children → submenu
                     var subMi = new MenuItem { Header = sub.Name };
 
-                    // Option to add directly to the sub-collection
                     var directMi = new MenuItem { Header = $"{sub.Name} (root)", Tag = sub };
                     directMi.Click += OnAddCatalogItemToSpecificSubCollection;
                     subMi.Items.Add(directMi);
@@ -695,32 +695,37 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    // Leaf sub-collection → direct click
                     var subMi = new MenuItem { Header = sub.Name, Tag = sub };
                     subMi.Click += OnAddCatalogItemToSpecificSubCollection;
                     colMi.Items.Add(subMi);
                 }
             }
 
-            if (colMi.Items.Count > 0)
-                addToRoot.Items.Add(colMi);
+            addToRoot.Items.Add(colMi);
         }
 
         addToRoot.IsEnabled = addToRoot.Items.Count > 0;
     }
 
-    /// <summary>Walk up the visual/logical tree from a MenuItem to find the owning ContextMenu.</summary>
-    private static PaletteItemViewModel? GetCatalogItemFromMenuItem(MenuItem mi)
+    /// <summary>Resolve the catalog item server ID from the MenuItem's inherited DataContext.</summary>
+    private static ushort GetServerIdFromMenuItem(MenuItem mi)
     {
-        // Walk up parent MenuItems to find the ContextMenu
-        Avalonia.Controls.Control? current = mi;
-        while (current != null)
+        // In Avalonia, MenuItems inside a ContextMenu inherit DataContext from the placement target.
+        // Walk up to find the ContextMenu and get the item from PlacementTarget.
+        if (mi.DataContext is PaletteItemViewModel pvm && pvm.ServerId > 0)
+            return pvm.ServerId;
+
+        Avalonia.Controls.Control? cur = mi;
+        while (cur != null)
         {
-            if (current is ContextMenu ctx)
-                return ctx.Tag as PaletteItemViewModel;
-            current = current.Parent as Avalonia.Controls.Control;
+            if (cur is ContextMenu ctx)
+            {
+                var target = (ctx.PlacementTarget as Avalonia.Controls.Control)?.DataContext as PaletteItemViewModel;
+                return target?.ServerId ?? 0;
+            }
+            cur = cur.Parent as Avalonia.Controls.Control;
         }
-        return null;
+        return 0;
     }
 
     private void OnAddCatalogItemToSpecificSubCollection(object? sender, RoutedEventArgs e)
@@ -728,9 +733,18 @@ public partial class MainWindow : Window
         if (sender is MenuItem mi && mi.Tag is PaletteSubCollectionViewModel sub
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
-            var item = GetCatalogItemFromMenuItem(mi);
-            if (item != null)
-                palette.AddItemToSubCollection(sub, item.ServerId);
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToSubCollection(sub, sid);
+        }
+    }
+
+    private void OnAddCatalogItemToCollectionRoot(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is PaletteCollectionViewModel col
+            && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
+        {
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToCollectionRoot(col, sid);
         }
     }
 
@@ -739,9 +753,8 @@ public partial class MainWindow : Window
         if (sender is MenuItem mi && mi.Tag is PaletteSubSubCollectionViewModel subsub
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
-            var item = GetCatalogItemFromMenuItem(mi);
-            if (item != null)
-                palette.AddItemToSubSubCollection(subsub, item.ServerId);
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToSubSubCollection(subsub, sid);
         }
     }
 
@@ -788,6 +801,15 @@ public partial class MainWindow : Window
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
             palette.RemoveSubCollectionCommand.Execute(sub);
+        }
+    }
+
+    private void OnRemoveCollectionItem(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.DataContext is PaletteItemViewModel item
+            && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
+        {
+            palette.RemoveItemFromCollectionView(item);
         }
     }
 
@@ -985,6 +1007,219 @@ public partial class MainWindow : Window
         {
             // Toggle: if already active, deactivate
             vm.ActiveZoneBrush = vm.ActiveZoneBrush == zone ? 0 : zone;
+            vm.IsBorderRemoverActive = false;
+        }
+    }
+
+    private void OnBorderRemoverClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.IsBorderRemoverActive = !vm.IsBorderRemoverActive;
+            if (vm.IsBorderRemoverActive)
+            {
+                // Deactivate other tools
+                vm.ActiveZoneBrush = 0;
+                vm.BrushServerId = 0;
+                vm.BrushItemIds = null;
+                vm.DeactivateSpawnHouseBrushes();
+            }
+        }
+    }
+
+    // ── Spawn/House brush handlers ──
+
+    private void OnSpawnBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsSpawnBrushActive)
+            {
+                vm.IsSpawnBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateSpawnBrush();
+            }
+        }
+    }
+
+    private void OnCreatureBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsCreatureBrushActive)
+            {
+                vm.IsCreatureBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateCreatureBrush();
+            }
+        }
+    }
+
+    private void OnHouseBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsHouseBrushActive)
+            {
+                vm.IsHouseBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateHouseBrush();
+            }
+        }
+    }
+
+    private void OnHouseExitBrushClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            if (vm.IsHouseExitBrushActive)
+            {
+                vm.IsHouseExitBrushActive = false;
+            }
+            else
+            {
+                vm.ActivateHouseExitBrush();
+            }
+        }
+    }
+
+    private void OnHouseSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is HouseComboItem item)
+        {
+            vm.SelectedHouseId = item.Id;
+        }
+    }
+
+    private void OnHouseTownFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is TownComboItem item)
+        {
+            vm.SelectedHouseTownFilter = item.Id;
+            RefreshHouseComboBox();
+        }
+    }
+
+    private void OnTownDoubleClick(object? sender, TappedEventArgs e)
+    {
+        if (sender is not ListBox lb || DataContext is not MainWindowViewModel vm) return;
+        if (lb.SelectedItem is MapTown town)
+            vm.GoToTownCommand.Execute(town);
+    }
+
+    private void OnEditTownsMenuClick(object? sender, RoutedEventArgs e)
+    {
+        var box = this.FindControl<TextBox>("TownSearchBox");
+        box?.Focus();
+    }
+
+    private void OnAddHouseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+        uint townId = vm.SelectedHouseTownFilter;
+        if (townId == 0 && vm.MapData.Towns.Count > 0)
+            townId = vm.MapData.Towns[0].Id;
+        vm.AddNewHouse(townId);
+        RefreshHouseComboBox();
+    }
+
+    private async void OnEditHouseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+        var house = vm.MapData.Houses.FirstOrDefault(h => h.Id == vm.SelectedHouseId);
+        if (house == null) return;
+
+        var dialog = new EditHouseDialog(house, vm.MapData.Towns);
+        await dialog.ShowDialog(this);
+        RefreshHouseComboBox();
+        vm.MarkMapDirty();
+    }
+
+    /// <summary>Refreshes house/town combo boxes from current MapData.</summary>
+    private bool _refreshingHouseCombo;
+    internal void RefreshHouseComboBox()
+    {
+        if (_refreshingHouseCombo) return;
+        _refreshingHouseCombo = true;
+        try
+        {
+            if (DataContext is not MainWindowViewModel vm || vm.MapData == null) return;
+
+            // Town filter
+            var townCb = this.FindControl<ComboBox>("HouseTownComboBox");
+            if (townCb != null)
+            {
+                var townItems = new List<TownComboItem> { new(0, "All Towns") };
+                foreach (var town in vm.MapData.Towns.OrderBy(t => t.Id))
+                    townItems.Add(new(town.Id, $"{town.Name} (#{town.Id})"));
+                townCb.ItemsSource = townItems;
+                townCb.SelectedItem = townItems.FirstOrDefault(t => t.Id == vm.SelectedHouseTownFilter) ?? townItems[0];
+            }
+
+            // House list
+            var houseCb = this.FindControl<ComboBox>("HouseComboBox");
+            if (houseCb != null)
+            {
+                var houses = vm.GetFilteredHouses();
+                var houseItems = houses.Select(h => new HouseComboItem(h.Id, $"{h.Name} (#{h.Id})")).ToList();
+                houseCb.ItemsSource = houseItems;
+                houseCb.SelectedItem = houseItems.FirstOrDefault(h => h.Id == vm.SelectedHouseId);
+            }
+        }
+        finally
+        {
+            _refreshingHouseCombo = false;
+        }
+    }
+
+    // ── Creature handlers ──
+
+    private void OnCreatureFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || DataContext is not MainWindowViewModel vm) return;
+        if (cb.SelectedItem is ComboBoxItem item && item.Content is string filter)
+            vm.CreatureFilter = filter;
+    }
+
+    private void OnCreatureSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListBox lb || DataContext is not MainWindowViewModel vm) return;
+        if (lb.SelectedItem is CreatureEntry entry)
+            vm.SelectCreature(entry);
+    }
+
+    private async void OnLoadCreaturesClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        // Try auto-detect first
+        var xmlPath = CreatureDatabase.FindCreaturesXml(vm.MapFilePath, vm.ClientFolderPath);
+        if (xmlPath != null)
+        {
+            vm.LoadCreatureDatabase(xmlPath);
+            return;
+        }
+
+        // Manual file picker
+        var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Select creatures.xml",
+            AllowMultiple = false,
+            FileTypeFilter = [new("XML Files") { Patterns = ["*.xml"] }]
+        });
+        if (files.Count > 0)
+        {
+            var path = files[0].TryGetLocalPath();
+            if (path != null)
+                vm.LoadCreatureDatabase(path);
         }
     }
 
@@ -1028,6 +1263,57 @@ public partial class MainWindow : Window
         { brush.CommitRenameCommand.Execute(null); vm.Palette.SaveAfterRename(); e.Handled = true; }
         else if (e.Key == Avalonia.Input.Key.Escape)
         { brush.CancelRenameCommand.Execute(null); e.Handled = true; }
+    }
+
+    private void WireMergeMenu(ViewModels.MainWindowViewModel vm, string menuName, OTB.ThingCategory? categoryFilter)
+    {
+        var menuItem = this.FindControl<Avalonia.Controls.MenuItem>(menuName);
+        if (menuItem == null) return;
+
+        menuItem.SubmenuOpened += (_, _) =>
+        {
+            menuItem.Items.Clear();
+            var sources = vm.Sessions
+                .Where(s => s != vm.ActiveSession && s.DatData != null && s.SprFile != null)
+                .ToList();
+
+            if (sources.Count == 0 || vm.ActiveSession?.DatData == null)
+            {
+                var empty = new Avalonia.Controls.MenuItem
+                {
+                    Header = vm.ActiveSession?.DatData == null
+                        ? "Current session has no DAT loaded"
+                        : "No other sessions with DAT/SPR loaded",
+                    IsEnabled = false,
+                };
+                menuItem.Items.Add(empty);
+            }
+            else
+            {
+                foreach (var source in sources)
+                {
+                    int count = categoryFilter switch
+                    {
+                        OTB.ThingCategory.Item => source.DatData!.Items.Count,
+                        OTB.ThingCategory.Outfit => source.DatData!.Outfits.Count,
+                        OTB.ThingCategory.Effect => source.DatData!.Effects.Count,
+                        OTB.ThingCategory.Missile => source.DatData!.Missiles.Count,
+                        _ => source.DatData!.Items.Count + source.DatData.Outfits.Count
+                             + source.DatData.Effects.Count + source.DatData.Missiles.Count,
+                    };
+                    var label = categoryFilter.HasValue ? categoryFilter.Value.ToString().ToLowerInvariant() + "s" : "things";
+                    var mi = new Avalonia.Controls.MenuItem
+                    {
+                        Header = $"{source.Name}  ({count} {label})",
+                        Tag = source,
+                    };
+                    var capturedSource = source;
+                    var capturedFilter = categoryFilter;
+                    mi.Click += async (_, _) => await vm.MergeSessionAsync(capturedSource, capturedFilter);
+                    menuItem.Items.Add(mi);
+                }
+            }
+        };
     }
 
     private async Task<bool> ShowConfirmDialogAsync(string title, string message)
@@ -1092,4 +1378,15 @@ public partial class MainWindow : Window
         await dialog.ShowDialog(this);
         return await tcs.Task;
     }
+}
+
+// Simple record types for ComboBox items
+internal record HouseComboItem(uint Id, string Name)
+{
+    public override string ToString() => Name;
+}
+
+internal record TownComboItem(uint Id, string Name)
+{
+    public override string ToString() => Name;
 }

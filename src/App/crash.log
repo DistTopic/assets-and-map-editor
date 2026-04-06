@@ -1,0 +1,119 @@
+[2026-04-03 10:00:13] UNHANDLED: System.InvalidOperationException: Call from invalid thread
+   at Avalonia.Threading.Dispatcher.<VerifyAccess>g__ThrowVerifyAccess|16_0()
+   at Avalonia.Animation.Animatable..ctor()
+   at Avalonia.Media.Brush..ctor()
+   at Avalonia.Media.SolidColorBrush..ctor(Color color, Double opacity)
+   at AssetsAndMapEditor.App.ViewModels.TibiaColors.BrushFrom8Bit(UInt16 index) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/TibiaColors.cs:line 22
+   at AssetsAndMapEditor.App.DatOtbComparer.CompareColorValue(List`1 diffs, String name, UInt16 otbValue, UInt16 datValue, Action`1 applyToOtb, Action`1 applyToDat) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/DatOtbComparer.cs:line 234
+   at AssetsAndMapEditor.App.DatOtbComparer.CompareItem(OtbItem otb, DatThingType dat) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/DatOtbComparer.cs:line 169
+   at AssetsAndMapEditor.App.DatOtbComparer.FindDivergentItems(OtbData otbData, DatData datData) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/DatOtbComparer.cs:line 24
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.<CompareDatOtbAsync>b__125_0() in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 2986
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.CompareDatOtbAsync() in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 2986
+   at CommunityToolkit.Mvvm.Input.AsyncRelayCommand.AwaitAndThrowIfFailed(Task executionTask)
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__124_0(Object state)
+   at Avalonia.Threading.SendOrPostCallbackDispatcherOperation.InvokeCore()
+   at Avalonia.Threading.Dispatcher.ExecuteJobsCore(Boolean fromExplicitBackgroundProcessingCallback)
+   at Avalonia.Threading.Dispatcher.Signaled()
+   at Avalonia.Native.DispatcherImpl.Events.Signaled()
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnPlatformThreadingInterfaceEventsVTable.Signaled(Void* this)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
+[2026-04-03 21:37:43] UNHANDLED: System.FormatException: The input string '' was not in a correct format.
+   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value)
+   at System.Int32.Parse(String s, NumberStyles style, IFormatProvider provider)
+   at System.Xml.Linq.XAttribute.op_Explicit(XAttribute attribute)
+   at AssetsAndMapEditor.OTB.CreatureDatabase.LoadFromXml(String path) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/OTB/CreatureDatabase.cs:line 45
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.LoadCreatureDatabase(String xmlPath) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 3736
+   at AssetsAndMapEditor.App.MainWindow.OnLoadCreaturesClick(Object sender, RoutedEventArgs e) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/MainWindow.axaml.cs:line 1158
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__124_0(Object state)
+   at Avalonia.Threading.SendOrPostCallbackDispatcherOperation.InvokeCore()
+   at Avalonia.Threading.Dispatcher.ExecuteJobsCore(Boolean fromExplicitBackgroundProcessingCallback)
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnPlatformThreadingInterfaceEventsVTable.Signaled(Void* this)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
+[2026-04-03 21:40:55] UNHANDLED: System.FormatException: The input string '' was not in a correct format.
+   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value)
+   at System.Int32.Parse(String s, NumberStyles style, IFormatProvider provider)
+   at System.Xml.Linq.XAttribute.op_Explicit(XAttribute attribute)
+   at AssetsAndMapEditor.OTB.CreatureDatabase.LoadFromXml(String path) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/OTB/CreatureDatabase.cs:line 45
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.LoadCreatureDatabase(String xmlPath) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 3736
+   at AssetsAndMapEditor.App.MainWindow.OnLoadCreaturesClick(Object sender, RoutedEventArgs e) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/MainWindow.axaml.cs:line 1158
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__124_0(Object state)
+   at Avalonia.Threading.SendOrPostCallbackDispatcherOperation.InvokeCore()
+   at Avalonia.Threading.Dispatcher.ExecuteJobsCore(Boolean fromExplicitBackgroundProcessingCallback)
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnPlatformThreadingInterfaceEventsVTable.Signaled(Void* this)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
+[2026-04-03 21:41:38] UNHANDLED: System.FormatException: The input string '' was not in a correct format.
+   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value)
+   at System.Int32.Parse(String s, NumberStyles style, IFormatProvider provider)
+   at System.Xml.Linq.XAttribute.op_Explicit(XAttribute attribute)
+   at AssetsAndMapEditor.OTB.CreatureDatabase.LoadFromXml(String path) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/OTB/CreatureDatabase.cs:line 45
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.LoadCreatureDatabase(String xmlPath) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 3736
+   at AssetsAndMapEditor.App.MainWindow.OnLoadCreaturesClick(Object sender, RoutedEventArgs e) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/MainWindow.axaml.cs:line 1158
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__124_0(Object state)
+   at Avalonia.Threading.SendOrPostCallbackDispatcherOperation.InvokeCore()
+   at Avalonia.Threading.DispatcherOperation.Execute()
+   at Avalonia.Threading.Dispatcher.ExecuteJobsCore(Boolean fromExplicitBackgroundProcessingCallback)
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnPlatformThreadingInterfaceEventsVTable.Signaled(Void* this)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
+[2026-04-03 21:44:23] UNHANDLED: System.FormatException: The input string '' was not in a correct format.
+   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value)
+   at System.Int32.Parse(String s, NumberStyles style, IFormatProvider provider)
+   at System.Xml.Linq.XAttribute.op_Explicit(XAttribute attribute)
+   at AssetsAndMapEditor.OTB.CreatureDatabase.LoadFromXml(String path) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/OTB/CreatureDatabase.cs:line 45
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.LoadCreatureDatabase(String xmlPath) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 3736
+   at AssetsAndMapEditor.App.MainWindow.OnLoadCreaturesClick(Object sender, RoutedEventArgs e) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/MainWindow.axaml.cs:line 1158
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__124_0(Object state)
+   at Avalonia.Threading.SendOrPostCallbackDispatcherOperation.InvokeCore()
+   at Avalonia.Threading.Dispatcher.ExecuteJobsCore(Boolean fromExplicitBackgroundProcessingCallback)
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnPlatformThreadingInterfaceEventsVTable.Signaled(Void* this)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
