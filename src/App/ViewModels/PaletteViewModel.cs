@@ -206,6 +206,7 @@ public partial class PaletteViewModel : ObservableObject
 
     // ── Collection tab: live reference to the selected collection's items ──
     [ObservableProperty] private ObservableCollection<PaletteItemViewModel>? _collectionViewSource;
+    [ObservableProperty] private string _collectionTabHeader = "Collection";
     [ObservableProperty] private int _catalogTabIndex;
 
     // ── South panel state: catalog or sub-collection view ────────
@@ -347,11 +348,20 @@ public partial class PaletteViewModel : ObservableObject
     private void UpdateCollectionViewSource()
     {
         if (SelectedSubSubCollection != null)
+        {
             CollectionViewSource = SelectedSubSubCollection.Items;
+            CollectionTabHeader = SelectedSubSubCollection.Name;
+        }
         else if (SelectedSubCollection != null && SelectedSubCollection != OthersSubCollection)
+        {
             CollectionViewSource = SelectedSubCollection.Items;
+            CollectionTabHeader = SelectedSubCollection.Name;
+        }
         else
+        {
             CollectionViewSource = null;
+            CollectionTabHeader = "Collection";
+        }
     }
 
     partial void OnIsViewingSubCollectionChanged(bool value)
@@ -749,16 +759,16 @@ public partial class PaletteViewModel : ObservableObject
         var vm = CreatePaletteItem(serverId);
         if (vm == null) return;
         sub.Items.Add(vm);
-        if (SelectedSubCollection == sub)
-            SearchCatalog();
-        CatalogTabIndex = 1; // switch to Collection tab
+        // Point Collection tab at this sub-collection and switch to it
+        CollectionViewSource = sub.Items;
+        CollectionTabHeader = sub.Name;
+        CatalogTabIndex = 1;
         SaveToConfig();
     }
 
     /// <summary>Add a catalog item to a collection that has no sub-collections — auto-creates a "General" sub.</summary>
     public void AddItemToCollectionRoot(PaletteCollectionViewModel col, ushort serverId)
     {
-        // Find or create a default "General" sub-collection
         var sub = col.SubCollections.FirstOrDefault();
         if (sub == null)
         {
@@ -766,11 +776,6 @@ public partial class PaletteViewModel : ObservableObject
             col.SubCollections.Add(sub);
         }
         AddItemToSubCollection(sub, serverId);
-
-        // Auto-navigate to the new sub-collection so the user sees the item
-        SelectedCollection = col;
-        SelectedSubCollection = sub;
-        CatalogTabIndex = 1; // switch to Collection tab
     }
 
     /// <summary>Add a catalog item to a specific sub-sub-collection (from context menu).</summary>
@@ -780,9 +785,10 @@ public partial class PaletteViewModel : ObservableObject
         var vm = CreatePaletteItem(serverId);
         if (vm == null) return;
         subsub.Items.Add(vm);
-        if (SelectedSubSubCollection == subsub)
-            SearchCatalog();
-        CatalogTabIndex = 1; // switch to Collection tab
+        // Point Collection tab at this sub-sub-collection and switch to it
+        CollectionViewSource = subsub.Items;
+        CollectionTabHeader = subsub.Name;
+        CatalogTabIndex = 1;
         SaveToConfig();
     }
 
