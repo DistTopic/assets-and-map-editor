@@ -5881,8 +5881,8 @@ public partial class MainWindowViewModel : ObservableObject
         if (!_originalSnapshots.ContainsKey(key))
             _originalSnapshots[key] = thing.Clone();
 
+        var wasPlaying = IsPlayingAnimation;
         StopCompositionAnimTimer();
-        IsPlayingAnimation = false;
         CompositionFrameGroupIndex = 0;
         CompositionFrame = 0;
         CompositionLayer = 0;
@@ -5892,6 +5892,12 @@ public partial class MainWindowViewModel : ObservableObject
         NotifyAllCompositionLabels();
         BuildCompositionGrid();
         BuildFilmstrip();
+
+        // Persist play state: auto-resume if the new item has animation
+        if (wasPlaying && HasAnimation)
+            StartCompositionAnimTimer();
+        else if (!HasAnimation)
+            IsPlayingAnimation = false;
     }
 
     private void ReloadComposition()
