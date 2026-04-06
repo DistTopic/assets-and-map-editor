@@ -19,6 +19,7 @@ public sealed class DatThingType
     public bool IsStackable { get; set; }
     public bool IsForceUse { get; set; }
     public bool IsMultiUse { get; set; }
+    public bool HasCharges { get; set; }
     public bool IsWritable { get; set; }
     public bool IsWritableOnce { get; set; }
     public bool IsFluidContainer { get; set; }
@@ -35,6 +36,7 @@ public sealed class DatThingType
     public bool IsRotatable { get; set; }
     public bool HasLight { get; set; }
     public bool IsDontHide { get; set; }
+    public bool FloorChange { get; set; }
     public bool IsTranslucent { get; set; }
     public bool HasOffset { get; set; }
     public bool HasElevation { get; set; }

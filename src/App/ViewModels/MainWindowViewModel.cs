@@ -43,6 +43,11 @@ public partial class MainWindowViewModel : ObservableObject
     }
     public bool HasMultipleSessions => Sessions.Count > 1;
 
+    /// <summary>Set by App.axaml.cs when user picks a history entry to restore.</summary>
+    public SessionHistoryEntry? PendingHistoryRestore { get; set; }
+    /// <summary>Set by App.axaml.cs when user picks "Open Files" from the welcome screen.</summary>
+    public bool PendingOpenFiles { get; set; }
+
     // ── Split view ──
     [ObservableProperty] private SplitMode _splitMode = SplitMode.None;
     [ObservableProperty] private SessionViewModel? _secondaryPaneSession;
@@ -351,6 +356,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         MapTileCount = MapData?.Tiles.Count ?? 0;
+        RefreshFilteredTowns();
 
         // Restore map viewport state
         MapCurrentFloor = session.MapCurrentFloor;
@@ -379,7 +385,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (Sessions.Count < 2)
         {
-            StatusText = "Need at least 2 sessions open to transplant items.";
+            StatusText = "Need at least 2 sessions open to transplant.";
             return;
         }
 
@@ -406,10 +412,11 @@ public partial class MainWindowViewModel : ObservableObject
         var targetDat = targetSession.DatData!;
         var targetProtocol = targetDat.ProtocolVersion;
 
-        // Get the thing type from the source
-        if (!_datData.Items.TryGetValue(sourceItem.Id, out var sourceThing))
+        // Get the thing type from the correct category dictionary
+        var sourceDict = GetCategoryDict(_datData, sourceItem.Category);
+        if (!sourceDict.TryGetValue(sourceItem.Id, out var sourceThing))
         {
-            StatusText = $"Client item {sourceItem.Id} not found in DAT.";
+            StatusText = $"Client {sourceItem.Category} {sourceItem.Id} not found in DAT.";
             return;
         }
 
@@ -426,9 +433,11 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task ShowTransplantDialog(TransplantReport report, DatThingType sourceThing,
         SessionViewModel targetSession, DatData targetDat, SprFile sourceSpr)
     {
+        var categoryLabel = sourceThing.Category.ToString().ToLowerInvariant();
+
         // Build message
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Transplant item {sourceThing.Id} from protocol {report.SourceProtocol} → {report.TargetProtocol}");
+        sb.AppendLine($"Transplant {categoryLabel} {sourceThing.Id} from protocol {report.SourceProtocol} → {report.TargetProtocol}");
         sb.AppendLine();
 
         if (report.PreservedAttributes.Count > 0)
@@ -517,27 +526,32 @@ public partial class MainWindowViewModel : ObservableObject
         cancelBtn.Click += (_, _) => dialog.Close();
         confirmBtn.Click += (_, _) =>
         {
-            // Perform the transplant: clone item and add to target DAT
+            // Perform the transplant: clone thing and add to correct target category
             var clone = sourceThing.Clone();
-            ushort newId = (ushort)(targetDat.Items.Keys.DefaultIfEmpty((ushort)99).Max() + 1);
+            var targetDict = GetCategoryDict(targetDat, sourceThing.Category);
+            ushort baseId = sourceThing.Category == ThingCategory.Item ? (ushort)99 : (ushort)0;
+            ushort newId = (ushort)(targetDict.Keys.DefaultIfEmpty(baseId).Max() + 1);
             clone.Id = newId;
 
             // Strip unsupported flags for downcast
             if (report.IsDowncast)
                 StripUnsupportedFlags(clone, report.TargetProtocol);
 
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, report.SourceProtocol, report.TargetProtocol);
+
             // Copy sprites to target session's SPR file (BEFORE adding to DAT)
             if (targetSession.SprFile != null)
                 RemapSpritesToTarget(clone, sourceSpr, targetSession.SprFile);
 
-            targetDat.Items[newId] = clone;
+            targetDict[newId] = clone;
 
             // Rebuild target session's item list so it appears immediately when switching
             targetSession.HasUnsavedChanges = true;
             RebuildSessionClientItems(targetSession);
 
-            StatusText = $"Transplanted item {sourceThing.Id} → {newId} in {targetSession.Name}";
-            AddMapLog($"Transplanted: #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
+            StatusText = $"Transplanted {categoryLabel} {sourceThing.Id} → {newId} in {targetSession.Name}";
+            AddMapLog($"Transplanted: {categoryLabel} #{sourceThing.Id} (proto {report.SourceProtocol}) → #{newId} (proto {report.TargetProtocol})");
             dialog.Close();
         };
         buttonPanel.Children.Add(cancelBtn);
@@ -548,32 +562,97 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static void StripUnsupportedFlags(DatThingType thing, int targetProtocol)
     {
-        if (targetProtocol < 860)
+        // Strip flags not present in the target version (per OB MetadataFlags).
+        // The write methods already only write version-appropriate flags,
+        // but stripping keeps the in-memory model clean.
+        if (targetProtocol <= 986) // V5 and below: no V6-only flags
         {
-            // Remove tier-2 flags not supported in legacy protocols
-            thing.IsMiniMap = false; thing.MiniMapColor = 0;
-            thing.IsLensHelp = false; thing.LensHelp = 0;
-            thing.IsFullGround = false;
-            thing.IsIgnoreLook = false;
-            thing.IsCloth = false; thing.ClothSlot = 0;
-            thing.IsMarketItem = false; thing.MarketCategory = 0; thing.MarketTradeAs = 0;
-            thing.MarketShowAs = 0; thing.MarketName = string.Empty;
-            thing.MarketRestrictProfession = 0; thing.MarketRestrictLevel = 0;
+            thing.IsNoMoveAnimation = false;
             thing.HasDefaultAction = false; thing.DefaultAction = 0;
             thing.IsWrappable = false;
             thing.IsUnwrappable = false;
             thing.IsTopEffect = false;
             thing.IsUsable = false;
         }
+        if (targetProtocol <= 854) // V4 and below: no V5-only flags
+        {
+            thing.IsTranslucent = false;
+            thing.IsCloth = false; thing.ClothSlot = 0;
+            thing.IsMarketItem = false; thing.MarketCategory = 0; thing.MarketTradeAs = 0;
+            thing.MarketShowAs = 0; thing.MarketName = string.Empty;
+            thing.MarketRestrictProfession = 0; thing.MarketRestrictLevel = 0;
+        }
+        if (targetProtocol <= 772) // V3 and below: no V4-only flags
+        {
+            thing.HasCharges = false;
+            thing.IsDontHide = false;
+            thing.IsIgnoreLook = false;
+        }
+    }
+
+    /// <summary>
+    /// Adapts frame group structure when transplanting between protocols with different
+    /// frame group support. Protocol &gt;= 1057 uses frame groups (idle/walking) for outfits;
+    /// protocol &gt;= 1050 uses enhanced animations (frameDurations).
+    /// </summary>
+    private static void AdaptFrameGroups(DatThingType thing, int sourceProtocol, int targetProtocol)
+    {
+        if (thing.Category != ThingCategory.Outfit) return;
+        if (thing.FrameGroups.Length == 0) return;
+
+        bool sourceHasGroups = sourceProtocol >= 1057;
+        bool targetHasGroups = targetProtocol >= 1057;
+        bool sourceHasAnimData = sourceProtocol >= 1050;
+        bool targetHasAnimData = targetProtocol >= 1050;
+
+        // Frame group adaptation (1057 boundary)
+        if (sourceHasGroups && !targetHasGroups)
+        {
+            // Downcast frame groups: keep only the first group
+            thing.FrameGroups = [thing.FrameGroups[0]];
+            thing.FrameGroups[0].Type = FrameGroupType.Default;
+        }
+        else if (!sourceHasGroups && targetHasGroups)
+        {
+            // Upcast frame groups: ensure Type = Default
+            thing.FrameGroups[0].Type = FrameGroupType.Default;
+        }
+
+        // Improved animation adaptation (1050 boundary)
+        if (!sourceHasAnimData && targetHasAnimData)
+        {
+            // Upcast: populate FrameDurations with defaults for animated groups
+            foreach (var fg in thing.FrameGroups)
+            {
+                if (fg.Frames > 1 && (fg.FrameDurations == null || fg.FrameDurations.Length != fg.Frames))
+                {
+                    fg.FrameDurations = new FrameDuration[fg.Frames];
+                    for (int i = 0; i < fg.Frames; i++)
+                        fg.FrameDurations[i] = new FrameDuration { Minimum = 100, Maximum = 100 };
+                }
+            }
+        }
+        else if (sourceHasAnimData && !targetHasAnimData)
+        {
+            // Downcast: strip enhanced animation metadata
+            foreach (var fg in thing.FrameGroups)
+            {
+                fg.AnimationMode = AnimationMode.Async;
+                fg.LoopCount = 0;
+                fg.StartFrame = 0;
+                fg.FrameDurations = [];
+            }
+        }
     }
 
     // ── Full session merge (DAT/SPR) ──
 
     /// <summary>
-    /// Merge all items from a source session into the current (active) session.
+    /// Merge things from a source session into the current (active) session.
+    /// When categoryFilter is null, merges all categories; otherwise only the specified one.
     /// Detects duplicates by comparing sprite images and shows a batch preview dialog.
     /// </summary>
-    public async Task MergeSessionAsync(SessionViewModel sourceSession)
+    public async Task MergeSessionAsync(SessionViewModel sourceSession, ThingCategory? categoryFilter = null)
     {
         if (_datData == null || _sprFile == null)
         {
@@ -591,7 +670,7 @@ public partial class MainWindowViewModel : ObservableObject
         var sourceProtocol = sourceDat.ProtocolVersion;
         var targetProtocol = _datData.ProtocolVersion;
 
-        var categories = new[]
+        var allCategories = new[]
         {
             (ThingCategory.Item,    sourceDat.Items,    _datData.Items),
             (ThingCategory.Outfit,  sourceDat.Outfits,  _datData.Outfits),
@@ -599,8 +678,13 @@ public partial class MainWindowViewModel : ObservableObject
             (ThingCategory.Missile, sourceDat.Missiles,  _datData.Missiles),
         };
 
+        var categories = categoryFilter.HasValue
+            ? allCategories.Where(c => c.Item1 == categoryFilter.Value).ToArray()
+            : allCategories;
+
         int totalSource = categories.Sum(c => c.Item2.Count);
-        StatusText = $"Analyzing {totalSource} source things for duplicates…";
+        var filterLabel = categoryFilter?.ToString().ToLowerInvariant() ?? "all";
+        StatusText = $"Analyzing {totalSource} source {filterLabel} things for duplicates…";
 
         // Analyze each category
         var entries = new List<TransplantEntry>();
@@ -613,6 +697,7 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
                 var duplicateId = FindDuplicateByImage(sourceThing, sourceSpr, targetIndex);
+                bool empty = IsThingEmpty(sourceThing);
 
                 entries.Add(new TransplantEntry
                 {
@@ -621,13 +706,15 @@ public partial class MainWindowViewModel : ObservableObject
                     SourceThing = sourceThing,
                     Report = report,
                     DuplicateTargetId = duplicateId,
-                    Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+                    IsEmpty = empty,
+                    Action = (duplicateId.HasValue || empty) ? TransplantAction.Skip : TransplantAction.Add,
                 });
             }
         }
 
         int dupCount = entries.Count(e => e.DuplicateTargetId.HasValue);
-        StatusText = $"Analyzed {entries.Count} things — {dupCount} duplicates, {entries.Count - dupCount} new.";
+        int emptyCount = entries.Count(e => e.IsEmpty);
+        StatusText = $"Analyzed {entries.Count} things — {dupCount} duplicates, {emptyCount} empty, {entries.Count - dupCount - emptyCount} new.";
 
         // Reuse the batch transplant dialog but pass source SPR for sprite remapping
         await ShowMergeDialog(entries, sourceSession, sourceSpr, sourceProtocol, targetProtocol);
@@ -658,8 +745,8 @@ public partial class MainWindowViewModel : ObservableObject
 
         foreach (var entry in entries)
         {
-            // Duplicates are always skipped — never copied
-            if (entry.Action == TransplantAction.Skip || entry.DuplicateTargetId.HasValue)
+            // Duplicates and empty things are always skipped — never copied
+            if (entry.Action == TransplantAction.Skip || entry.DuplicateTargetId.HasValue || entry.IsEmpty)
             {
                 skipped++;
                 continue;
@@ -670,6 +757,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Strip unsupported flags for downcast
             if (sourceProtocol > targetProtocol)
                 StripUnsupportedFlags(clone, targetProtocol);
+
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, sourceProtocol, targetProtocol);
 
             // Copy sprites from source SPR → current session's SPR
             RemapSpritesToTarget(clone, sourceSpr, _sprFile);
@@ -693,7 +783,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         BuildClientItemList();
 
-        var msg = $"Merge complete: {transplanted} added, {skipped} skipped (duplicates excluded).";
+        var msg = $"Merge complete: {transplanted} added, {skipped} skipped (duplicates/empty excluded).";
         StatusText = msg;
         AddMapLog(msg);
     }
@@ -746,6 +836,7 @@ public partial class MainWindowViewModel : ObservableObject
 
             var report = TransplantReport.Compare(sourceThing, sourceProtocol, targetProtocol);
             var duplicateId = FindDuplicateByImage(sourceThing, _sprFile, targetIndex);
+            bool empty = IsThingEmpty(sourceThing);
 
             entries.Add(new TransplantEntry
             {
@@ -754,7 +845,8 @@ public partial class MainWindowViewModel : ObservableObject
                 SourceThing = sourceThing,
                 Report = report,
                 DuplicateTargetId = duplicateId,
-                Action = duplicateId.HasValue ? TransplantAction.Skip : TransplantAction.Add,
+                IsEmpty = empty,
+                Action = (duplicateId.HasValue || empty) ? TransplantAction.Skip : TransplantAction.Add,
             });
         }
 
@@ -779,10 +871,8 @@ public partial class MainWindowViewModel : ObservableObject
         foreach (var (id, thing) in dict)
         {
             if (thing.FrameGroups.Length == 0) continue;
-            var fg = thing.FrameGroups[0];
-            if (fg.SpriteIndex.Length == 0) continue;
 
-            long hash = ComputeSpriteHash(fg, sprFile);
+            long hash = ComputeSpriteHash(thing.FrameGroups, sprFile);
             if (!index.TryGetValue(hash, out var list))
             {
                 list = [];
@@ -795,42 +885,65 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Computes a hash of the composed sprite data for a frame group.
-    /// Uses all sprites in the first frame to produce a unique fingerprint.
+    /// Computes a hash of the composed sprite data for all frame groups and all frames.
+    /// Produces a unique fingerprint that considers the full visual identity of a thing.
     /// </summary>
-    private static long ComputeSpriteHash(FrameGroup fg, SprFile sprFile)
+    private static long ComputeSpriteHash(FrameGroup[] frameGroups, SprFile sprFile)
     {
-        // Hash all sprites from frame 0 for the item's visual identity
-        int w = fg.Width, h = fg.Height;
-        int layers = fg.Layers;
         long hash = 17;
 
-        for (int l = 0; l < layers; l++)
+        for (int fgi = 0; fgi < frameGroups.Length; fgi++)
         {
-            for (int tw = 0; tw < w; tw++)
-            {
-                for (int th = 0; th < h; th++)
-                {
-                    uint sprId = fg.GetSpriteId(tw, th, l, 0, 0, 0, 0);
-                    var rgba = sprFile.GetSpriteRgba(sprId);
-                    if (rgba == null)
-                    {
-                        hash = hash * 31 + sprId;
-                        continue;
-                    }
+            var fg = frameGroups[fgi];
+            if (fg.SpriteIndex.Length == 0) continue;
 
-                    // FNV-1a style hash over RGBA bytes
-                    for (int i = 0; i < rgba.Length; i += 16)
+            int w = fg.Width, h = fg.Height;
+            int layers = fg.Layers;
+            int frames = fg.Frames;
+            int patX = fg.PatternX, patY = fg.PatternY, patZ = fg.PatternZ;
+
+            // Mix in frame group index to distinguish idle vs walking
+            hash = hash * 31 + fgi;
+
+            for (int f = 0; f < frames; f++)
+            {
+                for (int pz = 0; pz < patZ; pz++)
+                {
+                    for (int py = 0; py < patY; py++)
                     {
-                        long v = rgba[i] | ((long)rgba[i + 1] << 8)
-                                         | ((long)rgba[i + 4] << 16)
-                                         | ((long)rgba[i + 5] << 24)
-                                         | ((long)rgba[i + 8] << 32)
-                                         | ((long)rgba[i + 9] << 40)
-                                         | ((long)rgba[i + 12] << 48)
-                                         | ((long)rgba[i + 13] << 56);
-                        hash ^= v;
-                        hash *= unchecked((long)0x100000001B3);
+                        for (int px = 0; px < patX; px++)
+                        {
+                            for (int l = 0; l < layers; l++)
+                            {
+                                for (int tw = 0; tw < w; tw++)
+                                {
+                                    for (int th = 0; th < h; th++)
+                                    {
+                                        uint sprId = fg.GetSpriteId(tw, th, l, px, py, pz, f);
+                                        var rgba = sprFile.GetSpriteRgba(sprId);
+                                        if (rgba == null)
+                                        {
+                                            hash = hash * 31 + sprId;
+                                            continue;
+                                        }
+
+                                        // FNV-1a style hash over RGBA bytes
+                                        for (int i = 0; i < rgba.Length; i += 16)
+                                        {
+                                            long v = rgba[i] | ((long)rgba[i + 1] << 8)
+                                                             | ((long)rgba[i + 4] << 16)
+                                                             | ((long)rgba[i + 5] << 24)
+                                                             | ((long)rgba[i + 8] << 32)
+                                                             | ((long)rgba[i + 9] << 40)
+                                                             | ((long)rgba[i + 12] << 48)
+                                                             | ((long)rgba[i + 13] << 56);
+                                            hash ^= v;
+                                            hash *= unchecked((long)0x100000001B3);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -848,10 +961,8 @@ public partial class MainWindowViewModel : ObservableObject
         Dictionary<long, List<ushort>> targetIndex)
     {
         if (source.FrameGroups.Length == 0) return null;
-        var fg = source.FrameGroups[0];
-        if (fg.SpriteIndex.Length == 0) return null;
 
-        long hash = ComputeSpriteHash(fg, sourceSpr);
+        long hash = ComputeSpriteHash(source.FrameGroups, sourceSpr);
         if (targetIndex.TryGetValue(hash, out var matches) && matches.Count > 0)
             return matches[0];
 
@@ -887,8 +998,11 @@ public partial class MainWindowViewModel : ObservableObject
                 sb.AppendLine($"    {cat}: {catCount}");
         }
         sb.AppendLine();
-        sb.AppendLine($"  ● New (no match found): {newCount}");
+        int emptyCount = entries.Count(e => e.IsEmpty);
+        sb.AppendLine($"  ● New (no match found): {newCount - emptyCount}");
         sb.AppendLine($"  ● Duplicates detected by sprite image: {dupCount}");
+        if (emptyCount > 0)
+            sb.AppendLine($"  ● Empty (no sprites): {emptyCount}");
         sb.AppendLine();
 
         var anyIgnored = entries.Any(e => e.Report.IgnoredAttributes.Count > 0);
@@ -910,10 +1024,14 @@ public partial class MainWindowViewModel : ObservableObject
             sb.AppendLine();
         }
 
-        sb.AppendLine("Uncheck items to skip them. Duplicates are automatically excluded.");
+        sb.AppendLine("Uncheck items to skip them. Duplicates and empty sprites are automatically excluded.");
 
         // Build item rows with sprite previews rendered from source SPR
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
+
+        // Track animated entries for the dialog's animation timer
+        var animatedEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int fgIndex)>();
+
         foreach (var entry in entries)
         {
             var rowGrid = new Avalonia.Controls.Grid
@@ -924,10 +1042,11 @@ public partial class MainWindowViewModel : ObservableObject
             };
 
             var isDuplicate = entry.DuplicateTargetId.HasValue;
+            var isAutoSkip = isDuplicate || entry.IsEmpty;
             var cb = new Avalonia.Controls.CheckBox
             {
-                IsChecked = !isDuplicate && entry.Action != TransplantAction.Skip,
-                IsEnabled = !isDuplicate,
+                IsChecked = !isAutoSkip && entry.Action != TransplantAction.Skip,
+                IsEnabled = !isAutoSkip,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Margin = new Avalonia.Thickness(4, 0),
             };
@@ -951,15 +1070,30 @@ public partial class MainWindowViewModel : ObservableObject
                 ClipToBounds = true,
             };
             var bmp = ComposeThingBitmapStatic(entry.SourceThing, sourceSpr);
+            Avalonia.Controls.Image? spriteImg = null;
             if (bmp != null)
             {
-                var img = new Avalonia.Controls.Image
+                spriteImg = new Avalonia.Controls.Image
                 {
                     Source = bmp, Width = 32, Height = 32,
                     Stretch = Avalonia.Media.Stretch.Uniform,
                 };
-                Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
-                spriteBorder.Child = img;
+                Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(spriteImg, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+                spriteBorder.Child = spriteImg;
+
+                // Register for animation — pick the frame group with most frames
+                int bestFgIdx = 0;
+                int bestFrames = 0;
+                for (int i = 0; i < entry.SourceThing.FrameGroups.Length; i++)
+                {
+                    if (entry.SourceThing.FrameGroups[i].Frames > bestFrames)
+                    {
+                        bestFrames = entry.SourceThing.FrameGroups[i].Frames;
+                        bestFgIdx = i;
+                    }
+                }
+                if (bestFrames > 1)
+                    animatedEntries.Add((spriteImg, entry.SourceThing, bestFrames, bestFgIdx));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -975,10 +1109,23 @@ public partial class MainWindowViewModel : ObservableObject
             Avalonia.Controls.Grid.SetColumn(textBlock, 2);
             rowGrid.Children.Add(textBlock);
 
-            var statusText = entry.DuplicateTargetId.HasValue
-                ? $"Duplicate → #{entry.DuplicateTargetId}"
-                : "New";
-            var statusColor = entry.DuplicateTargetId.HasValue ? "#f9e2af" : "#a6e3a1";
+            string statusText;
+            string statusColor;
+            if (entry.DuplicateTargetId.HasValue)
+            {
+                statusText = $"Duplicate → #{entry.DuplicateTargetId}";
+                statusColor = "#f9e2af";
+            }
+            else if (entry.IsEmpty)
+            {
+                statusText = "Empty";
+                statusColor = "#6c7086";
+            }
+            else
+            {
+                statusText = "New";
+                statusColor = "#a6e3a1";
+            }
             var statusBlock = new Avalonia.Controls.TextBlock
             {
                 Text = statusText,
@@ -1108,6 +1255,37 @@ public partial class MainWindowViewModel : ObservableObject
         buttonPanel.Children.Add(cancelBtn);
         buttonPanel.Children.Add(confirmBtn);
 
+        // Animation timer for sprite previews in the merge dialog
+        DispatcherTimer? mergeAnimTimer = null;
+        if (animatedEntries.Count > 0)
+        {
+            var animState = animatedEntries.Select(e => new { e.img, e.thing, e.frames, e.fgIndex, frame = new int[] { 0 } }).ToList();
+            int tickCounter = 0;
+            mergeAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            mergeAnimTimer.Tick += (_, _) =>
+            {
+                tickCounter++;
+                foreach (var s in animState)
+                {
+                    int divisor = s.thing.Category switch
+                    {
+                        ThingCategory.Effect => 1,
+                        ThingCategory.Missile => 1,
+                        ThingCategory.Outfit => 3,
+                        _ => 5,
+                    };
+                    if (tickCounter % divisor != 0) continue;
+                    s.frame[0] = (s.frame[0] + 1) % s.frames;
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0], s.fgIndex);
+                    if (newBmp != null)
+                        s.img.Source = newBmp;
+                }
+            };
+            mergeAnimTimer.Start();
+        }
+
+        dialog.Closed += (_, _) => mergeAnimTimer?.Stop();
+
         await dialog.ShowDialog(window);
     }
 
@@ -1170,6 +1348,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Build the item list with sprite previews
         var itemsPanel = new Avalonia.Controls.StackPanel { Spacing = 2 };
+
+        // Track animated entries for the dialog's animation timer
+        var batchAnimEntries = new List<(Avalonia.Controls.Image img, DatThingType thing, int frames, int fgIndex)>();
+
         foreach (var entry in entries)
         {
             var rowGrid = new Avalonia.Controls.Grid
@@ -1180,9 +1362,11 @@ public partial class MainWindowViewModel : ObservableObject
             };
 
             // Checkbox to toggle action
+            var isAutoSkipBatch = entry.DuplicateTargetId.HasValue || entry.IsEmpty;
             var cb = new Avalonia.Controls.CheckBox
             {
-                IsChecked = entry.Action != TransplantAction.Skip || !entry.DuplicateTargetId.HasValue,
+                IsChecked = !isAutoSkipBatch && entry.Action != TransplantAction.Skip,
+                IsEnabled = !entry.IsEmpty,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Margin = new Avalonia.Thickness(4, 0),
             };
@@ -1205,7 +1389,7 @@ public partial class MainWindowViewModel : ObservableObject
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 ClipToBounds = true,
             };
-            var bmp = ComposeThingBitmap(entry.SourceThing);
+            var bmp = ComposeThingBitmapStatic(entry.SourceThing, sourceSpr);
             if (bmp != null)
             {
                 var img = new Avalonia.Controls.Image
@@ -1215,6 +1399,19 @@ public partial class MainWindowViewModel : ObservableObject
                 };
                 Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(img, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
                 spriteBorder.Child = img;
+
+                int bestBatchFgIdx = 0;
+                int bestBatchFrames = 0;
+                for (int i = 0; i < entry.SourceThing.FrameGroups.Length; i++)
+                {
+                    if (entry.SourceThing.FrameGroups[i].Frames > bestBatchFrames)
+                    {
+                        bestBatchFrames = entry.SourceThing.FrameGroups[i].Frames;
+                        bestBatchFgIdx = i;
+                    }
+                }
+                if (bestBatchFrames > 1)
+                    batchAnimEntries.Add((img, entry.SourceThing, bestBatchFrames, bestBatchFgIdx));
             }
             Avalonia.Controls.Grid.SetColumn(spriteBorder, 1);
             rowGrid.Children.Add(spriteBorder);
@@ -1232,10 +1429,23 @@ public partial class MainWindowViewModel : ObservableObject
             rowGrid.Children.Add(textBlock);
 
             // Status badge
-            var statusText = entry.DuplicateTargetId.HasValue
-                ? $"Duplicate → #{entry.DuplicateTargetId}"
-                : "New";
-            var statusColor = entry.DuplicateTargetId.HasValue ? "#f9e2af" : "#a6e3a1";
+            string statusText;
+            string statusColor;
+            if (entry.DuplicateTargetId.HasValue)
+            {
+                statusText = $"Duplicate → #{entry.DuplicateTargetId}";
+                statusColor = "#f9e2af";
+            }
+            else if (entry.IsEmpty)
+            {
+                statusText = "Empty";
+                statusColor = "#6c7086";
+            }
+            else
+            {
+                statusText = "New";
+                statusColor = "#a6e3a1";
+            }
             var statusBlock = new Avalonia.Controls.TextBlock
             {
                 Text = statusText,
@@ -1376,6 +1586,37 @@ public partial class MainWindowViewModel : ObservableObject
         buttonPanel.Children.Add(cancelBtn);
         buttonPanel.Children.Add(confirmBtn);
 
+        // Animation timer for sprite previews in the batch transplant dialog
+        DispatcherTimer? batchAnimTimer = null;
+        if (batchAnimEntries.Count > 0)
+        {
+            var animState = batchAnimEntries.Select(e => new { e.img, e.thing, e.frames, e.fgIndex, frame = new int[] { 0 } }).ToList();
+            int tickCounter = 0;
+            batchAnimTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            batchAnimTimer.Tick += (_, _) =>
+            {
+                tickCounter++;
+                foreach (var s in animState)
+                {
+                    int divisor = s.thing.Category switch
+                    {
+                        ThingCategory.Effect => 1,
+                        ThingCategory.Missile => 1,
+                        ThingCategory.Outfit => 3,
+                        _ => 5,
+                    };
+                    if (tickCounter % divisor != 0) continue;
+                    s.frame[0] = (s.frame[0] + 1) % s.frames;
+                    var newBmp = ComposeThingBitmapStatic(s.thing, sourceSpr, s.frame[0], s.fgIndex);
+                    if (newBmp != null)
+                        s.img.Source = newBmp;
+                }
+            };
+            batchAnimTimer.Start();
+        }
+
+        dialog.Closed += (_, _) => batchAnimTimer?.Stop();
+
         await dialog.ShowDialog(window);
     }
 
@@ -1417,6 +1658,9 @@ public partial class MainWindowViewModel : ObservableObject
             // Strip unsupported flags for downcast
             if (sourceProtocol > targetProtocol)
                 StripUnsupportedFlags(clone, targetProtocol);
+
+            // Adapt frame groups for cross-protocol outfit migration
+            AdaptFrameGroups(clone, sourceProtocol, targetProtocol);
 
             // Copy sprites to target SPR
             if (targetSpr != null)
@@ -1516,8 +1760,25 @@ public partial class MainWindowViewModel : ObservableObject
         public DatThingType SourceThing { get; init; } = null!;
         public TransplantReport Report { get; init; } = null!;
         public ushort? DuplicateTargetId { get; init; }
+        public bool IsEmpty { get; init; }
         public TransplantAction Action { get; set; }
         public ushort? NewTargetId { get; set; }
+    }
+
+    /// <summary>
+    /// Returns true if the thing has no visible sprites (all sprite IDs are 0 across all frame groups).
+    /// </summary>
+    private static bool IsThingEmpty(DatThingType thing)
+    {
+        if (thing.FrameGroups.Length == 0) return true;
+        foreach (var fg in thing.FrameGroups)
+        {
+            foreach (uint sprId in fg.SpriteIndex)
+            {
+                if (sprId != 0) return false;
+            }
+        }
+        return true;
     }
 
     private enum TransplantAction { Skip, Add, Replace }
@@ -2716,6 +2977,58 @@ public partial class MainWindowViewModel : ObservableObject
         StatusText = $"Compacted {remapTable.Count} sprite(s). Save to persist changes.";
     }
 
+    // ── Compare DAT ↔ OTB ───────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task CompareDatOtbAsync()
+    {
+        if (_otbData == null || _datData == null)
+        {
+            StatusText = "Load both OTB and DAT files first.";
+            return;
+        }
+
+        StatusText = "Comparing DAT ↔ OTB properties…";
+        var divergent = await Task.Run(() => DatOtbComparer.FindDivergentItems(_otbData, _datData));
+
+        if (divergent.Count == 0)
+        {
+            StatusText = "All OTB items match their DAT counterparts — no differences found.";
+            return;
+        }
+
+        StatusText = $"Found {divergent.Count} divergent item(s). Review and apply…";
+
+        var dialog = new DatOtbSyncWindow(divergent, _datData, _sprFile);
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            await dialog.ShowDialog(desktop.MainWindow);
+        }
+
+        if (dialog.Result == null)
+        {
+            StatusText = "DAT ↔ OTB compare cancelled.";
+            return;
+        }
+
+        var r = dialog.Result;
+        if (r.OtbPropertiesChanged > 0 || r.DatPropertiesChanged > 0)
+        {
+            HasUnsavedChanges = true;
+            var parts = new List<string>();
+            if (r.OtbPropertiesChanged > 0) parts.Add($"{r.OtbPropertiesChanged} → OTB");
+            if (r.DatPropertiesChanged > 0) parts.Add($"{r.DatPropertiesChanged} → DAT");
+            StatusText = $"Applied {string.Join(", ", parts)} across {r.ItemsAffected} item(s). Save to persist.";
+        }
+        else
+        {
+            StatusText = "No changes applied.";
+        }
+    }
+
     public byte[] MapFloors => MapData?.GetFloors() ?? [7];
 
     partial void OnMapCurrentFloorChanged(byte value)
@@ -2738,14 +3051,40 @@ public partial class MainWindowViewModel : ObservableObject
         {
             MapData = OtbmFile.Load(path);
             MapFilePath = path;
+            var mapDir = Path.GetDirectoryName(path) ?? ".";
+
+            // Load external spawn file
+            if (!string.IsNullOrEmpty(MapData.SpawnFile))
+            {
+                var spawnPath = Path.Combine(mapDir, MapData.SpawnFile);
+                var spawns = SpawnHouseXml.LoadSpawns(spawnPath);
+                MapData.Spawns.Clear();
+                MapData.Spawns.AddRange(spawns);
+                AddMapLog($"Spawns loaded: {spawns.Count} zones from {MapData.SpawnFile}");
+            }
+
+            // Load external house file
+            if (!string.IsNullOrEmpty(MapData.HouseFile))
+            {
+                var housePath = Path.Combine(mapDir, MapData.HouseFile);
+                var houses = SpawnHouseXml.LoadHouses(housePath);
+                MapData.Houses.Clear();
+                MapData.Houses.AddRange(houses);
+                AddMapLog($"Houses loaded: {houses.Count} houses from {MapData.HouseFile}");
+            }
+
             MapTileCount = MapData.Tiles.Count;
-            MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns — {Path.GetFileName(path)}";
+            MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns, {MapData.Spawns.Count} spawns, {MapData.Houses.Count} houses — {Path.GetFileName(path)}";
             MapHasUnsavedChanges = false;
             AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
+            RefreshFilteredTowns();
             OnPropertyChanged(nameof(MapFloors));
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
             OnPropertyChanged(nameof(ExposedOtbData));
+
+            // Auto-load creature database
+            LoadCreatureDatabaseAuto();
 
             // Auto-select floor 7 if available
             var floors = MapData.GetFloors();
@@ -2767,6 +3106,24 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             OtbmFile.Save(MapFilePath, MapData);
+            var mapDir = Path.GetDirectoryName(MapFilePath) ?? ".";
+
+            // Save external spawn file
+            if (!string.IsNullOrEmpty(MapData.SpawnFile))
+            {
+                var spawnPath = Path.Combine(mapDir, MapData.SpawnFile);
+                SpawnHouseXml.SaveSpawns(spawnPath, MapData.Spawns);
+                AddMapLog($"Spawns saved: {MapData.Spawns.Count} zones");
+            }
+
+            // Save external house file
+            if (!string.IsNullOrEmpty(MapData.HouseFile))
+            {
+                var housePath = Path.Combine(mapDir, MapData.HouseFile);
+                SpawnHouseXml.SaveHouses(housePath, MapData.Houses);
+                AddMapLog($"Houses saved: {MapData.Houses.Count} houses");
+            }
+
             MapTileCount = MapData.Tiles.Count;
             MapHasUnsavedChanges = false;
             MapStatusText = $"Map saved: {MapTileCount:N0} tiles — {Path.GetFileName(MapFilePath)}";
@@ -2784,6 +3141,158 @@ public partial class MainWindowViewModel : ObservableObject
     {
         MapHasUnsavedChanges = true;
         MapTileCount = MapData?.Tiles.Count ?? 0;
+    }
+
+    // ── Spawn/House management ──
+
+    /// <summary>Deactivates all spawn/house brush modes.</summary>
+    public void DeactivateSpawnHouseBrushes()
+    {
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+    }
+
+    /// <summary>Activates spawn brush mode (exclusive with other brushes).</summary>
+    public void ActivateSpawnBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsSpawnBrushActive = true;
+    }
+
+    /// <summary>Activates creature brush mode (exclusive with other brushes).</summary>
+    public void ActivateCreatureBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsCreatureBrushActive = true;
+    }
+
+    /// <summary>Activates house brush mode (exclusive with other brushes).</summary>
+    public void ActivateHouseBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseExitBrushActive = false;
+        IsHouseBrushActive = true;
+    }
+
+    /// <summary>Activates house exit brush mode (exclusive with other brushes).</summary>
+    public void ActivateHouseExitBrush()
+    {
+        BrushServerId = 0;
+        BrushItemIds = null;
+        ActiveZoneBrush = 0;
+        IsBorderRemoverActive = false;
+        IsSpawnBrushActive = false;
+        IsCreatureBrushActive = false;
+        IsHouseBrushActive = false;
+        IsHouseExitBrushActive = true;
+    }
+
+    /// <summary>Creates a new house and selects it.</summary>
+    public MapHouse? AddNewHouse(uint townId)
+    {
+        if (MapData == null) return null;
+
+        uint newId = 1;
+        var usedIds = new HashSet<uint>(MapData.Houses.Select(h => h.Id));
+        while (usedIds.Contains(newId)) newId++;
+
+        var house = new MapHouse
+        {
+            Id = newId,
+            Name = $"Unnamed House #{newId}",
+            TownId = townId,
+        };
+        MapData.Houses.Add(house);
+        SelectedHouseId = newId;
+        MarkMapDirty();
+        AddMapLog($"House #{newId} created (Town {townId})");
+        return house;
+    }
+
+    /// <summary>Removes a house and clears all tiles belonging to it.</summary>
+    public void RemoveHouse(uint houseId)
+    {
+        if (MapData == null) return;
+        var house = MapData.Houses.FirstOrDefault(h => h.Id == houseId);
+        if (house == null) return;
+
+        // Clear house from tiles
+        foreach (var tile in MapData.Tiles.Values)
+        {
+            if (tile.HouseId == houseId)
+            {
+                tile.HouseId = 0;
+                // Remove PZ flag
+                tile.Flags &= ~1u; // TILESTATE_PROTECTIONZONE = 0x01
+            }
+        }
+
+        MapData.Houses.Remove(house);
+        if (SelectedHouseId == houseId) SelectedHouseId = 0;
+        MarkMapDirty();
+        AddMapLog($"House #{houseId} removed");
+    }
+
+    /// <summary>Gets a list of houses filtered by selected town.</summary>
+    public List<MapHouse> GetFilteredHouses()
+    {
+        if (MapData == null) return [];
+        if (SelectedHouseTownFilter == 0)
+            return MapData.Houses.OrderBy(h => h.Id).ToList();
+        return MapData.Houses.Where(h => h.TownId == SelectedHouseTownFilter).OrderBy(h => h.Id).ToList();
+    }
+
+    /// <summary>Creates a new spawn at the specified position.</summary>
+    public MapSpawn AddNewSpawn(ushort x, ushort y, byte z, int radius)
+    {
+        var spawn = new MapSpawn { CenterX = x, CenterY = y, CenterZ = z, Radius = radius };
+        MapData?.Spawns.Add(spawn);
+        MarkMapDirty();
+        AddMapLog($"Spawn created at ({x}, {y}, {z}) r={radius}");
+        return spawn;
+    }
+
+    /// <summary>Removes a spawn.</summary>
+    public void RemoveSpawn(MapSpawn spawn)
+    {
+        if (MapData == null) return;
+        MapData.Spawns.Remove(spawn);
+        MarkMapDirty();
+        AddMapLog($"Spawn removed at ({spawn.CenterX}, {spawn.CenterY}, {spawn.CenterZ})");
+    }
+
+    /// <summary>Finds the spawn covering a given position.</summary>
+    public MapSpawn? FindSpawnAt(ushort x, ushort y, byte z)
+    {
+        if (MapData == null) return null;
+        foreach (var spawn in MapData.Spawns)
+        {
+            if (spawn.CenterZ != z) continue;
+            int dx = Math.Abs(x - spawn.CenterX);
+            int dy = Math.Abs(y - spawn.CenterY);
+            if (dx <= spawn.Radius && dy <= spawn.Radius)
+                return spawn;
+        }
+        return null;
     }
 
     /// <summary>Called by MapCanvasControl.ActionLogged event.</summary>
@@ -3166,6 +3675,34 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void MapGoTo() => _mapGoToRequested?.Invoke((ushort)MapGoToX, (ushort)MapGoToY, (byte)MapGoToZ);
 
+    // ── Town navigation ──
+    [ObservableProperty] private string _townSearchText = string.Empty;
+    [ObservableProperty] private ObservableCollection<MapTown> _filteredTowns = [];
+
+    partial void OnTownSearchTextChanged(string value) => RefreshFilteredTowns();
+
+    public void RefreshFilteredTowns()
+    {
+        var towns = MapData?.Towns;
+        if (towns == null || towns.Count == 0) { FilteredTowns = []; return; }
+
+        var query = TownSearchText?.Trim() ?? string.Empty;
+        var sorted = towns
+            .Where(t => string.IsNullOrEmpty(query) || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+
+        // Replace the collection reference so the [ObservableProperty] setter
+        // fires PropertyChanged and the ListBox rebinds even if it was realized late.
+        FilteredTowns = new ObservableCollection<MapTown>(sorted);
+    }
+
+    [RelayCommand]
+    private void GoToTown(MapTown? town)
+    {
+        if (town == null) return;
+        _mapGoToRequested?.Invoke(town.TempleX, town.TempleY, town.TempleZ);
+    }
+
     // Events for the View to hook into (for MapCanvasControl interaction)
     internal Action? _mapCenterRequested;
     internal Action<ushort, ushort, byte>? _mapGoToRequested;
@@ -3186,6 +3723,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _viewShowSpecial = true;
     [ObservableProperty] private bool _viewShowZones = true;
     [ObservableProperty] private bool _viewShowHouses = true;
+    [ObservableProperty] private bool _viewShowSpawns = true;
     [ObservableProperty] private bool _viewShowWaypoints = true;
     [ObservableProperty] private bool _viewShowTowns;
     [ObservableProperty] private bool _viewShowPathing;
@@ -3201,8 +3739,68 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private int _brushSize;       // 0=1x1, 1=3x3, 2=5x5, 3=7x7, 4=9x9, 5=11x11, 6=13x13
     [ObservableProperty] private bool _brushCircle;    // false=square, true=circle
     [ObservableProperty] private int _activeZoneBrush; // 0=none, 1=PZ, 2=NoLogout, 4=NoPvP, 8=PvPZone
+    [ObservableProperty] private bool _isBorderRemoverActive; // border remover tool
     [ObservableProperty] private IList<ushort>? _brushItemIds; // custom brush: random pick from this list
     [ObservableProperty] private bool _useAutomagic = true; // Border Automagic toggle (A key)
+
+    // ── Spawn brush ──
+    [ObservableProperty] private bool _isSpawnBrushActive;
+    [ObservableProperty] private bool _isCreatureBrushActive;
+    [ObservableProperty] private int _spawnBrushRadius = 5;
+    [ObservableProperty] private int _creatureSpawnTime = 60;
+    [ObservableProperty] private string _selectedCreatureName = string.Empty;
+    [ObservableProperty] private bool _selectedCreatureIsNpc;
+
+    // ── House brush ──
+    [ObservableProperty] private bool _isHouseBrushActive;
+    [ObservableProperty] private bool _isHouseExitBrushActive;
+    [ObservableProperty] private uint _selectedHouseId;
+    [ObservableProperty] private uint _selectedHouseTownFilter; // 0 = all towns
+
+    // ── Creature database ──
+    private List<CreatureEntry> _allCreatures = [];
+    [ObservableProperty] private string _creatureSearchText = string.Empty;
+    [ObservableProperty] private string _creatureFilter = "All"; // All, Monsters, NPCs
+    public ObservableCollection<CreatureEntry> FilteredCreatures { get; } = [];
+
+    partial void OnCreatureSearchTextChanged(string value) => RefreshFilteredCreatures();
+    partial void OnCreatureFilterChanged(string value) => RefreshFilteredCreatures();
+
+    public void LoadCreatureDatabase(string xmlPath)
+    {
+        _allCreatures = CreatureDatabase.LoadFromXml(xmlPath);
+        RefreshFilteredCreatures();
+        AddMapLog($"Creatures loaded: {_allCreatures.Count} entries from {Path.GetFileName(xmlPath)}");
+    }
+
+    public void LoadCreatureDatabaseAuto()
+    {
+        var xmlPath = CreatureDatabase.FindCreaturesXml(MapFilePath, ClientFolderPath);
+        if (xmlPath != null)
+            LoadCreatureDatabase(xmlPath);
+    }
+
+    public void RefreshFilteredCreatures()
+    {
+        FilteredCreatures.Clear();
+        var search = CreatureSearchText.Trim();
+        foreach (var c in _allCreatures)
+        {
+            if (CreatureFilter == "Monsters" && c.IsNpc) continue;
+            if (CreatureFilter == "NPCs" && !c.IsNpc) continue;
+            if (!string.IsNullOrEmpty(search) &&
+                c.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            FilteredCreatures.Add(c);
+        }
+    }
+
+    public void SelectCreature(CreatureEntry entry)
+    {
+        SelectedCreatureName = entry.Name;
+        SelectedCreatureIsNpc = entry.IsNpc;
+        if (!IsCreatureBrushActive)
+            ActivateCreatureBrush();
+    }
 
     [ObservableProperty] private string _statusText = "Select the client folder to begin";
     [ObservableProperty] private string _searchText = string.Empty;
@@ -3316,7 +3914,19 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _clientNavigateId = string.Empty;
     [ObservableProperty] private int _clientCurrentPage = 1;
     [ObservableProperty] private int _clientTotalPages = 1;
-    private const int ClientItemsPerPage = 100;
+    private int _clientItemsPerPage;
+    public int ClientItemsPerPage
+    {
+        get => _clientItemsPerPage == 0 ? (_clientItemsPerPage = _appSettings.ItemsPerPage > 0 ? _appSettings.ItemsPerPage : 100) : _clientItemsPerPage;
+        set
+        {
+            if (_clientItemsPerPage == value) return;
+            _clientItemsPerPage = value;
+            OnPropertyChanged();
+            ClientCurrentPage = 1;
+            ApplyClientFilter();
+        }
+    }
     private List<ClientItemViewModel> _clientFilteredItems = [];
     public string[] ClientCategoryOptions { get; } = ["All", "Item", "Outfit", "Effect", "Missile", "Mismatch"];
     public ObservableCollection<ClientItemViewModel> ClientItems { get; } = [];
@@ -3332,6 +3942,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _showGrid;
     [ObservableProperty] private bool _showAllFrames;
     [ObservableProperty] private bool _isPlayingAnimation;
+    [ObservableProperty] private bool _isClientIconView;
 
     public ObservableCollection<SpriteViewModel> FilmstripFrames { get; } = [];
     public bool HasAnimation => (CurrentFrameGroup?.Frames ?? 1) > 1;
@@ -3856,15 +4467,21 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile?.Dispose();
             var (datData, sprFile) = await Task.Run(() =>
             {
-                var d = DatFile.Load(result.DatPath, result.ProtocolVersion);
-                var s = SprFile.Load(result.SprPath, d.Extended);
+                var d = DatFile.Load(result.DatPath, result.ProtocolVersion,
+                    result.Extended, result.ImprovedAnimations, result.FrameGroups);
+                var s = SprFile.Load(result.SprPath, d.Extended, result.Transparency);
                 return (d, s);
             });
             _datData = datData;
             _sprFile = sprFile;
             ClientFolderPath = result.FolderPath;
             IsClientLoaded = true;
-            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
+            var features = new List<string>();
+            if (_datData.Extended) features.Add("Ext");
+            if (_datData.ImprovedAnimations) features.Add("Anim");
+            if (_datData.FrameGroups) features.Add("FG");
+            var featureStr = features.Count > 0 ? $" [{string.Join("+", features)}]" : "";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}{featureStr}";
 
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
@@ -3922,7 +4539,12 @@ public partial class MainWindowViewModel : ObservableObject
             _sprFile = sprFile;
             ClientFolderPath = folderPath;
             IsClientLoaded = true;
-            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}";
+            var features2 = new List<string>();
+            if (_datData.Extended) features2.Add("Ext");
+            if (_datData.ImprovedAnimations) features2.Add("Anim");
+            if (_datData.FrameGroups) features2.Add("FG");
+            var featureStr2 = features2.Count > 0 ? $" [{string.Join("+", features2)}]" : "";
+            StatusText = $"Client loaded: {_datData.ItemCount} items, {_sprFile.SpriteCount} sprites — v{_datData.ProtocolVersion}{featureStr2}";
 
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
@@ -3999,22 +4621,40 @@ public partial class MainWindowViewModel : ObservableObject
 
     public async Task TryLoadLastSessionAsync()
     {
-        // Restore View menu toggles
-        RestoreViewSettings();
-
-        EnsureDefaultSession();
-
-        // Restore sessions from previous app run
-        if (_appSettings.Sessions.Count > 0)
+        // If a history entry was selected from the welcome screen, restore it
+        if (PendingHistoryRestore is { } entry)
         {
-            await RestoreSessionsFromSettings();
+            PendingHistoryRestore = null;
+            // Restore view settings from the history entry
+            RestoreViewSettings(entry.ViewSettings);
+            // Load sessions from the history entry
+            _appSettings.Sessions = new List<SavedSession>(entry.Tabs);
+            EnsureDefaultSession();
+            if (_appSettings.Sessions.Count > 0)
+                await RestoreSessionsFromSettings();
+            return;
         }
+
+        // If user chose "Open Files", just set up a blank session
+        if (PendingOpenFiles)
+        {
+            PendingOpenFiles = false;
+            RestoreViewSettings(_appSettings.ViewSettings);
+            EnsureDefaultSession();
+            // The MainWindow.Loaded handler will trigger the Open Client dialog
+            return;
+        }
+
+        // Default: restore view settings and sessions (backwards compat / no welcome)
+        RestoreViewSettings(_appSettings.ViewSettings);
+        EnsureDefaultSession();
+        if (_appSettings.Sessions.Count > 0)
+            await RestoreSessionsFromSettings();
     }
 
-    private void RestoreViewSettings()
+    private void RestoreViewSettings(Dictionary<string, bool>? vs)
     {
-        var vs = _appSettings.ViewSettings;
-        if (vs.Count == 0) return;
+        if (vs == null || vs.Count == 0) return;
 
         if (vs.TryGetValue(nameof(ViewShowAllFloors), out var v)) ViewShowAllFloors = v;
         if (vs.TryGetValue(nameof(ViewShowAnimation), out v)) ViewShowAnimation = v;
@@ -4028,6 +4668,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (vs.TryGetValue(nameof(ViewShowSpecial), out v)) ViewShowSpecial = v;
         if (vs.TryGetValue(nameof(ViewShowZones), out v)) ViewShowZones = v;
         if (vs.TryGetValue(nameof(ViewShowHouses), out v)) ViewShowHouses = v;
+        if (vs.TryGetValue(nameof(ViewShowSpawns), out v)) ViewShowSpawns = v;
         if (vs.TryGetValue(nameof(ViewShowWaypoints), out v)) ViewShowWaypoints = v;
         if (vs.TryGetValue(nameof(ViewShowTowns), out v)) ViewShowTowns = v;
         if (vs.TryGetValue(nameof(ViewShowPathing), out v)) ViewShowPathing = v;
@@ -4043,10 +4684,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (_currentSession != null)
             SaveCurrentToSession(_currentSession);
 
-        _appSettings.Sessions.Clear();
+        var savedTabs = new List<SavedSession>();
         foreach (var session in Sessions)
         {
-            _appSettings.Sessions.Add(new SavedSession
+            savedTabs.Add(new SavedSession
             {
                 ClientFolderPath = session.ClientFolderPath,
                 OtbPath = session.OtbPath,
@@ -4060,8 +4701,10 @@ public partial class MainWindowViewModel : ObservableObject
             });
         }
 
+        _appSettings.Sessions = new List<SavedSession>(savedTabs);
+
         // Persist View menu toggles
-        _appSettings.ViewSettings = new Dictionary<string, bool>
+        var viewSettings = new Dictionary<string, bool>
         {
             [nameof(ViewShowAllFloors)] = ViewShowAllFloors,
             [nameof(ViewShowAnimation)] = ViewShowAnimation,
@@ -4075,6 +4718,7 @@ public partial class MainWindowViewModel : ObservableObject
             [nameof(ViewShowSpecial)] = ViewShowSpecial,
             [nameof(ViewShowZones)] = ViewShowZones,
             [nameof(ViewShowHouses)] = ViewShowHouses,
+            [nameof(ViewShowSpawns)] = ViewShowSpawns,
             [nameof(ViewShowWaypoints)] = ViewShowWaypoints,
             [nameof(ViewShowTowns)] = ViewShowTowns,
             [nameof(ViewShowPathing)] = ViewShowPathing,
@@ -4082,8 +4726,57 @@ public partial class MainWindowViewModel : ObservableObject
             [nameof(ViewShowTooltips)] = ViewShowTooltips,
             [nameof(ViewShowIngameBox)] = ViewShowIngameBox,
         };
+        _appSettings.ViewSettings = viewSettings;
+
+        // Add a history entry for this closing session (only if there's meaningful data)
+        if (savedTabs.Any(t => t.ClientFolderPath != null || t.OtbPath != null || t.MapFilePath != null))
+        {
+            var historyEntry = new SessionHistoryEntry
+            {
+                ClosedAt = DateTime.UtcNow,
+                DisplayName = BuildHistoryDisplayName(savedTabs),
+                Tabs = new List<SavedSession>(savedTabs),
+                ViewSettings = new Dictionary<string, bool>(viewSettings),
+            };
+
+            // Remove duplicate entries (same set of file paths)
+            var key = string.Join("|", savedTabs
+                .OrderBy(t => t.ClientFolderPath)
+                .Select(t => $"{t.ClientFolderPath}:{t.OtbPath}:{t.MapFilePath}"));
+            _appSettings.History.RemoveAll(h =>
+            {
+                var hk = string.Join("|", h.Tabs
+                    .OrderBy(t => t.ClientFolderPath)
+                    .Select(t => $"{t.ClientFolderPath}:{t.OtbPath}:{t.MapFilePath}"));
+                return hk == key;
+            });
+
+            _appSettings.History.Insert(0, historyEntry);
+
+            // Keep only the 20 most recent
+            if (_appSettings.History.Count > 20)
+                _appSettings.History.RemoveRange(20, _appSettings.History.Count - 20);
+        }
 
         _appSettings.Save();
+    }
+
+    private static string BuildHistoryDisplayName(List<SavedSession> tabs)
+    {
+        var maps = tabs
+            .Where(t => !string.IsNullOrEmpty(t.MapFilePath))
+            .Select(t => Path.GetFileName(t.MapFilePath))
+            .ToList();
+        if (maps.Count > 0) return string.Join(", ", maps.Take(3));
+
+        var protocols = tabs
+            .Where(t => t.ProtocolVersion > 0)
+            .Select(t => $"v{t.ProtocolVersion}")
+            .Distinct()
+            .ToList();
+        if (protocols.Count > 0) return string.Join(", ", protocols);
+
+        return $"{tabs.Count} tab{(tabs.Count != 1 ? "s" : "")}";
     }
 
     /// <summary>Restore sessions saved from a previous app run.</summary>
@@ -4217,6 +4910,7 @@ public partial class MainWindowViewModel : ObservableObject
                     MapCurrentFloor = session.MapCurrentFloor;
                     MapZoom = session.MapZoom;
                     OnPropertyChanged(nameof(MapFloors));
+                    RefreshFilteredTowns();
                 }
 
                 StatusText = IsClientLoaded
@@ -4910,6 +5604,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void ApplyClientFilter()
     {
         _clientFilteredItems.Clear();
+        SelectedClientItem = null;
         ClientItems.Clear();
 
         var search = ClientSearchText.Trim();
@@ -4959,6 +5654,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void LoadClientPage()
     {
+        SelectedClientItem = null;
         ClientItems.Clear();
         int start = (ClientCurrentPage - 1) * ClientItemsPerPage;
         int end = Math.Min(start + ClientItemsPerPage, _clientFilteredItems.Count);
@@ -5200,8 +5896,8 @@ public partial class MainWindowViewModel : ObservableObject
         if (!_originalSnapshots.ContainsKey(key))
             _originalSnapshots[key] = thing.Clone();
 
+        var wasPlaying = IsPlayingAnimation;
         StopCompositionAnimTimer();
-        IsPlayingAnimation = false;
         CompositionFrameGroupIndex = 0;
         CompositionFrame = 0;
         CompositionLayer = 0;
@@ -5211,6 +5907,12 @@ public partial class MainWindowViewModel : ObservableObject
         NotifyAllCompositionLabels();
         BuildCompositionGrid();
         BuildFilmstrip();
+
+        // Persist play state: auto-resume if the new item has animation
+        if (wasPlaying && HasAnimation)
+            StartCompositionAnimTimer();
+        else if (!HasAnimation)
+            IsPlayingAnimation = false;
     }
 
     private void ReloadComposition()
@@ -6198,14 +6900,17 @@ public partial class MainWindowViewModel : ObservableObject
     /// Static version of ComposeThingBitmap that takes an explicit SprFile.
     /// Used for composing sprites in a target session context (e.g. after transplant).
     /// </summary>
-    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile)
+    internal static WriteableBitmap? ComposeThingBitmapStatic(DatThingType thing, SprFile sprFile, int frame = 0, int frameGroupIndex = 0)
     {
         if (thing.FrameGroups.Length == 0) return null;
 
-        var fg = thing.FrameGroups[0];
+        int fgIdx = Math.Clamp(frameGroupIndex, 0, thing.FrameGroups.Length - 1);
+        var fg = thing.FrameGroups[fgIdx];
         int w = fg.Width;
         int h = fg.Height;
         if (w == 0 || h == 0) return null;
+
+        int clampedFrame = Math.Clamp(frame, 0, Math.Max(0, fg.Frames - 1));
 
         // Single 1×1 item
         if (w == 1 && h == 1 && fg.Layers == 1)
@@ -6213,7 +6918,7 @@ public partial class MainWindowViewModel : ObservableObject
             int px = 0;
             if (thing.Category == ThingCategory.Outfit && fg.PatternX > 2)
                 px = 2;
-            uint sprId = fg.GetSpriteId(0, 0, 0, px, 0, 0, 0);
+            uint sprId = fg.GetSpriteId(0, 0, 0, px, 0, 0, clampedFrame);
             var rgba = sprFile.GetSpriteRgba(sprId);
             if (rgba == null) return null;
             try
@@ -6245,7 +6950,7 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 for (int th = 0; th < h; th++)
                 {
-                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, 0);
+                    uint sprId = fg.GetSpriteId(tw, th, l, patX, 0, 0, clampedFrame);
                     var rgba = sprFile.GetSpriteRgba(sprId);
                     if (rgba == null) continue;
 

@@ -21,7 +21,6 @@ public sealed class MinimapOverlayControl : Control
     private const double OverlayMaxW = 600;
     private const double OverlayMaxH = 500;
     private const int TileSize = 32; // MapCanvasControl.TileSize
-    private const int MiniMapTileSize = 2; // pixels per tile in bitmap
 
     // Reference to the map canvas (set from code-behind)
     private MapCanvasControl? _mapCanvas;
@@ -102,6 +101,9 @@ public sealed class MinimapOverlayControl : Control
 
         if (contentW <= 0 || contentH <= 0) return;
 
+        // Tell map canvas what size we need (1 tile = 1 pixel)
+        _mapCanvas?.SetMinimapViewportSize((int)contentW, (int)contentH);
+
         // Draw minimap bitmap if available
         var bitmap = _mapCanvas?.MinimapBitmap;
         if (bitmap != null)
@@ -110,19 +112,16 @@ public sealed class MinimapOverlayControl : Control
             double bmpH = bitmap.Size.Height;
             if (bmpW > 0 && bmpH > 0)
             {
-                // Scale to fit within content area maintaining aspect ratio
-                double scale = Math.Min(contentW / bmpW, contentH / bmpH);
-                double drawW = bmpW * scale;
-                double drawH = bmpH * scale;
-                double drawX = contentX + (contentW - drawW) / 2;
-                double drawY = contentY + (contentH - drawH) / 2;
+                // Center bitmap in content area (1:1 pixel mapping, bitmap may be smaller if map is small)
+                double drawX = contentX + (contentW - bmpW) / 2;
+                double drawY = contentY + (contentH - bmpH) / 2;
 
                 // Nearest-neighbor for pixel art
                 RenderOptions.SetBitmapInterpolationMode(this, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
-                context.DrawImage(bitmap, new Rect(drawX, drawY, drawW, drawH));
+                context.DrawImage(bitmap, new Rect(drawX, drawY, bmpW, bmpH));
 
                 // Draw viewport rectangle
-                DrawViewportRect(context, drawX, drawY, drawW, drawH, bmpW, bmpH);
+                DrawViewportRect(context, drawX, drawY, bmpW, bmpH);
             }
         }
         else
@@ -151,14 +150,12 @@ public sealed class MinimapOverlayControl : Control
     }
 
     private void DrawViewportRect(DrawingContext context,
-        double drawX, double drawY, double drawW, double drawH,
-        double bmpW, double bmpH)
+        double drawX, double drawY, double drawW, double drawH)
     {
-        if (_mapCanvas?.MapDataSource == null) return;
-        var (minX, minY, maxX, maxY) = _mapCanvas.MapDataSource.GetBounds();
-        int tileSpanX = maxX - minX + 1;
-        int tileSpanY = maxY - minY + 1;
-        if (tileSpanX <= 0 || tileSpanY <= 0) return;
+        if (_mapCanvas == null) return;
+
+        int offsetX = _mapCanvas.MinimapOffsetTileX;
+        int offsetY = _mapCanvas.MinimapOffsetTileY;
 
         double zoom = _mapCanvas.ZoomLevel;
         double canvasW = _mapCanvas.Bounds.Width;
@@ -172,17 +169,13 @@ public sealed class MinimapOverlayControl : Control
         double vpTileWidth = canvasW / zoom / TileSize;
         double vpTileHeight = canvasH / zoom / TileSize;
 
-        // Convert tile coordinates to minimap-local pixel coordinates
-        // Each tile is MiniMapTileSize pixels in the bitmap
-        double scaleX = drawW / bmpW;
-        double scaleY = drawH / bmpH;
+        // Convert to minimap pixel space (1 tile = 1 pixel, offset by startTile)
+        double rectX = drawX + vpTileLeft - offsetX;
+        double rectY = drawY + vpTileTop - offsetY;
+        double rectW = vpTileWidth;
+        double rectH = vpTileHeight;
 
-        double rectX = drawX + (vpTileLeft - minX) * MiniMapTileSize * scaleX;
-        double rectY = drawY + (vpTileTop - minY) * MiniMapTileSize * scaleY;
-        double rectW = vpTileWidth * MiniMapTileSize * scaleX;
-        double rectH = vpTileHeight * MiniMapTileSize * scaleY;
-
-        // Clamp to content area
+        // Clamp to drawn area
         var contentRect = new Rect(drawX, drawY, drawW, drawH);
         var vpRect = new Rect(rectX, rectY, rectW, rectH).Intersect(contentRect);
         if (vpRect.Width <= 0 || vpRect.Height <= 0)
@@ -288,7 +281,7 @@ public sealed class MinimapOverlayControl : Control
 
     private void NavigateToMinimapPosition(Point pos)
     {
-        if (_mapCanvas?.MapDataSource == null) return;
+        if (_mapCanvas == null) return;
         var bitmap = _mapCanvas.MinimapBitmap;
         if (bitmap == null) return;
 
@@ -305,30 +298,20 @@ public sealed class MinimapOverlayControl : Control
         double contentX = 4;
         double contentY = contentTop;
 
-        double scale = Math.Min(contentW / bmpW, contentH / bmpH);
-        double drawW = bmpW * scale;
-        double drawH = bmpH * scale;
-        double drawX = contentX + (contentW - drawW) / 2;
-        double drawY = contentY + (contentH - drawH) / 2;
+        // Bitmap position (1:1, centered in content area)
+        double drawX = contentX + (contentW - bmpW) / 2;
+        double drawY = contentY + (contentH - bmpH) / 2;
 
-        // Convert click position to tile coordinates
-        double relX = (pos.X - drawX) / drawW;
-        double relY = (pos.Y - drawY) / drawH;
-        if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return;
-
-        var (minX, minY, maxX, maxY) = _mapCanvas.MapDataSource.GetBounds();
-        int tileSpanX = maxX - minX + 1;
-        int tileSpanY = maxY - minY + 1;
-
-        double targetTileX = minX + relX * tileSpanX;
-        double targetTileY = minY + relY * tileSpanY;
+        // Convert click to tile coordinates (1 pixel = 1 tile)
+        double tileX = _mapCanvas.MinimapOffsetTileX + (pos.X - drawX);
+        double tileY = _mapCanvas.MinimapOffsetTileY + (pos.Y - drawY);
 
         // Center the main canvas viewport on this tile
         double zoom = _mapCanvas.ZoomLevel;
         double canvasW = _mapCanvas.Bounds.Width;
         double canvasH = _mapCanvas.Bounds.Height;
-        _mapCanvas.ViewX = targetTileX * TileSize - canvasW / 2.0 / zoom;
-        _mapCanvas.ViewY = targetTileY * TileSize - canvasH / 2.0 / zoom;
+        _mapCanvas.ViewX = tileX * TileSize - canvasW / 2.0 / zoom;
+        _mapCanvas.ViewY = tileY * TileSize - canvasH / 2.0 / zoom;
     }
 
     /// <summary>Prevent pointer events from passing through to the map canvas below.</summary>

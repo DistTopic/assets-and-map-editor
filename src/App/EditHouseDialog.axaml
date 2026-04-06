@@ -1,0 +1,107 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AssetsAndMapEditor.App.EditHouseDialog"
+        Title="Edit House"
+        Width="400"
+        SizeToContent="Height"
+        MinHeight="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.section">
+            <Setter Property="BorderBrush" Value="#45475a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="20">
+
+        <Border Classes="section">
+            <StackPanel Spacing="8">
+                <TextBlock Text="House Properties" FontWeight="SemiBold" Foreground="#89b4fa"/>
+
+                <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,6,Auto,6,Auto,6,Auto,6,Auto">
+                    <!-- Name -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Opacity="0.7"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="NameBox" Watermark="House name"/>
+
+                    <!-- ID -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="ID" VerticalAlignment="Center" Opacity="0.7"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="IdSpin"
+                                   Minimum="1" Maximum="65535" Increment="1"
+                                   FormatString="N0" HorizontalContentAlignment="Center"/>
+
+                    <!-- Town -->
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Town" VerticalAlignment="Center" Opacity="0.7"/>
+                    <ComboBox Grid.Row="4" Grid.Column="1" x:Name="TownCombo"
+                              HorizontalAlignment="Stretch"/>
+
+                    <!-- Rent -->
+                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Rent" VerticalAlignment="Center" Opacity="0.7"/>
+                    <NumericUpDown Grid.Row="6" Grid.Column="1" x:Name="RentSpin"
+                                   Minimum="0" Maximum="999999999" Increment="100"
+                                   FormatString="N0" HorizontalContentAlignment="Center"/>
+
+                    <!-- Guildhall -->
+                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Type" VerticalAlignment="Center" Opacity="0.7"/>
+                    <CheckBox Grid.Row="8" Grid.Column="1" x:Name="GuildhallCheck"
+                              Content="Guildhall" VerticalAlignment="Center"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+            <Button Content="Cancel" Click="OnCancel"/>
+            <Button Classes="primary" Content="OK" Click="OnOk"/>
+        </StackPanel>
+
+    </StackPanel>
+</Window>

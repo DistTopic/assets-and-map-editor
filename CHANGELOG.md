@@ -7,6 +7,60 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [v2.0.0-preview] — 2026-04-05
+
+> All improvements and fixes delivered after the first public preview release.
+
+### Added
+
+#### Asset Editor
+- **Icon grid view** for the client items panel — toggle between the traditional list and a compact icon grid using the button next to the search bar ([#2], [`1433042`])
+- **Preferences window** accessible from File → Preferences, allowing customization of items per page (range 10–1000, persisted across sessions) ([#2], [`1433042`])
+- **Resizable panels** — all three main columns (client items, editor, OTB detail) can now be resized via draggable splitters ([#5], [`040ab99`])
+- **Animate Always editable** — the "Animate Always" property in the animation card is now a toggleable checkbox instead of a read-only text field ([#6], [`afc8bb9`])
+- **Animation Play state preserved** — the Play checkbox remains active when switching between items that support animation ([#4], [`c537e58`])
+- **Animated sprite previews** in merge and batch transplant confirmation dialogs ([`d0d86a5`])
+- **Category-aware transplant** — transplant and merge menus now support per-category operations (Items, Outfits, Effects, Missiles) ([`8136d2b`])
+- **HasCharges and FloorChange** properties added to the DAT item model ([`71a9978`])
+
+#### Map Editor
+- **Map Properties dialog** — view and edit map metadata (description, dimensions, house file, spawn file) ([`0385f3c`])
+- **Map Statistics dialog** — see tile counts, item counts, and spawn/house summaries ([`0385f3c`], [`1d7e986`])
+- **Map menu** with properties, statistics, and cleanup operations ([`1d7e986`])
+- **Town navigation** with a searchable town list in the properties panel ([`7dbc39d`])
+- **Minimap viewport-centered rendering** for large maps ([`6d01a10`])
+- **Collection items tab** — organize items into named collections from the palette ([`10934d6`])
+
+#### Startup & Session
+- **Welcome window** with session history — on launch, choose from recent sessions or start fresh ([`4291a58`])
+- **Town list restored on startup** — towns now populate correctly when restoring a previous session ([`24827d9`])
+
+#### Infrastructure
+- **CI/CD build workflow** with automated release creation and GitFlow branching strategy ([`f2e8e0f`])
+- **Protocol 1100 support** with short DAT signatures ([`7ca90ee`])
+
+### Fixed
+
+- Collection tab header and view now update immediately when adding items via the context menu ([`3735fab`])
+- Catalog always displays the full OTB item list regardless of active tab ([`9373102`])
+- Town list appears by default when opening a map for the first time ([`8afab56`])
+- Town list populates correctly after restoring a session on startup ([`24827d9`])
+- Merge dialog auto-detects Extended, Improved Animations, Frame Groups, and Transparency from parse results ([`8743016`])
+- Merge duplicate detection now hashes all frame groups, frames, and patterns for accuracy ([`9e4ffa2`])
+- Merge uses the best frame group for outfit animation previews ([`a4ef273`])
+- Transplant skips items with empty sprites instead of crashing ([`0d6b442`])
+- Page navigation and filter changes no longer crash when the selected item index becomes stale ([`1433042`])
+
+### Changed
+
+- Selection highlight color changed from green to magenta for better visibility ([`7ca90ee`])
+- Brush panel removed from the default layout to reduce clutter ([`7ca90ee`])
+- SPR transparency handling decoupled from extended header for cleaner format support ([`43f7c06`])
+- DAT flags aligned with Object Builder reference for compatibility ([`171d508`])
+- Left panel widened from 220px to 270px for better icon grid fit ([`1433042`])
+
+---
+
 ## [v1.0.0-preview] — 2026-03-28
 
 > First public preview release of **Assets And Map Editor** — a cross-platform visual editor
@@ -126,3 +180,34 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 [`d3d35ce`]: https://github.com/DistTopic/assets-and-map-editor/commit/d3d35ce
 [`5c561cc`]: https://github.com/DistTopic/assets-and-map-editor/commit/5c561cc
 [`8a117f6...v1.0.0-preview`]: https://github.com/DistTopic/assets-and-map-editor/compare/8a117f6...v1.0.0-preview
+
+<!-- Unreleased commit reference links -->
+[#2]: https://github.com/DistTopic/assets-and-map-editor/issues/2
+[#4]: https://github.com/DistTopic/assets-and-map-editor/issues/4
+[#5]: https://github.com/DistTopic/assets-and-map-editor/issues/5
+[#6]: https://github.com/DistTopic/assets-and-map-editor/issues/6
+[`1433042`]: https://github.com/DistTopic/assets-and-map-editor/commit/1433042
+[`c537e58`]: https://github.com/DistTopic/assets-and-map-editor/commit/c537e58
+[`040ab99`]: https://github.com/DistTopic/assets-and-map-editor/commit/040ab99
+[`4291a58`]: https://github.com/DistTopic/assets-and-map-editor/commit/4291a58
+[`24827d9`]: https://github.com/DistTopic/assets-and-map-editor/commit/24827d9
+[`afc8bb9`]: https://github.com/DistTopic/assets-and-map-editor/commit/afc8bb9
+[`3735fab`]: https://github.com/DistTopic/assets-and-map-editor/commit/3735fab
+[`9373102`]: https://github.com/DistTopic/assets-and-map-editor/commit/9373102
+[`10934d6`]: https://github.com/DistTopic/assets-and-map-editor/commit/10934d6
+[`8afab56`]: https://github.com/DistTopic/assets-and-map-editor/commit/8afab56
+[`7dbc39d`]: https://github.com/DistTopic/assets-and-map-editor/commit/7dbc39d
+[`6d01a10`]: https://github.com/DistTopic/assets-and-map-editor/commit/6d01a10
+[`0d6b442`]: https://github.com/DistTopic/assets-and-map-editor/commit/0d6b442
+[`9e4ffa2`]: https://github.com/DistTopic/assets-and-map-editor/commit/9e4ffa2
+[`a4ef273`]: https://github.com/DistTopic/assets-and-map-editor/commit/a4ef273
+[`d0d86a5`]: https://github.com/DistTopic/assets-and-map-editor/commit/d0d86a5
+[`43f7c06`]: https://github.com/DistTopic/assets-and-map-editor/commit/43f7c06
+[`8743016`]: https://github.com/DistTopic/assets-and-map-editor/commit/8743016
+[`8136d2b`]: https://github.com/DistTopic/assets-and-map-editor/commit/8136d2b
+[`171d508`]: https://github.com/DistTopic/assets-and-map-editor/commit/171d508
+[`71a9978`]: https://github.com/DistTopic/assets-and-map-editor/commit/71a9978
+[`7ca90ee`]: https://github.com/DistTopic/assets-and-map-editor/commit/7ca90ee
+[`1d7e986`]: https://github.com/DistTopic/assets-and-map-editor/commit/1d7e986
+[`0385f3c`]: https://github.com/DistTopic/assets-and-map-editor/commit/0385f3c
+[`f2e8e0f`]: https://github.com/DistTopic/assets-and-map-editor/commit/f2e8e0f

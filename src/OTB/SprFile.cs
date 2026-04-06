@@ -4,8 +4,8 @@ namespace AssetsAndMapEditor.OTB;
 
 /// <summary>
 /// Tibia .spr file parser supporting multiple protocol versions.
-/// Protocol &lt; 960: 6-byte header (U32 sig + U16 count), no alpha.
-/// Protocol &gt;= 960: 8-byte header (U32 sig + U32 count), RGBA.
+/// Extended (protocol &gt;= 960): 8-byte header (U32 sig + U32 count). Legacy: 6-byte (U32 sig + U16 count).
+/// Transparency: controls pixel format — RGBA (4 bytes) or RGB (3 bytes). Independent from extended.
 /// </summary>
 public sealed class SprFile : IDisposable
 {
@@ -44,30 +44,32 @@ public sealed class SprFile : IDisposable
     /// Open an .spr file with protocol-aware header parsing.
     /// </summary>
     /// <param name="path">Path to Tibia.spr</param>
-    /// <param name="extended">True for protocol &gt;= 960 (U32 sprite count, RGBA). False for legacy (U16 count, RGB).</param>
-    public static SprFile Load(string path, bool extended = true)
+    /// <param name="extended">True for U32 sprite count header (protocol &gt;= 960). False for U16 count.</param>
+    /// <param name="transparency">True for RGBA pixel data (4 bytes per pixel). False for RGB (3 bytes). When null, defaults to same as extended.</param>
+    public static SprFile Load(string path, bool extended = true, bool? transparency = null)
     {
+        bool useAlpha = transparency ?? extended;
         var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
         if (extended)
         {
-            // Protocol >= 960: 4 sig + 4 count = 8 bytes header
+            // Extended: 4 sig + 4 count = 8 bytes header
             var header = new byte[8];
             stream.ReadExactly(header);
             var signature = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(0));
             var count = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4));
             var offsetStart = stream.Position;
-            return new SprFile(stream, signature, count, offsetStart, useAlpha: true, extended: true);
+            return new SprFile(stream, signature, count, offsetStart, useAlpha: useAlpha, extended: true);
         }
         else
         {
-            // Protocol < 960: 4 sig + 2 count = 6 bytes header
+            // Legacy: 4 sig + 2 count = 6 bytes header
             var header = new byte[6];
             stream.ReadExactly(header);
             var signature = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(0));
             var count = (uint)BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(4));
             var offsetStart = stream.Position;
-            return new SprFile(stream, signature, count, offsetStart, useAlpha: false, extended: false);
+            return new SprFile(stream, signature, count, offsetStart, useAlpha: useAlpha, extended: false);
         }
     }
 

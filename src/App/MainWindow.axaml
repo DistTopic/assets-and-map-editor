@@ -5,6 +5,7 @@
         xmlns:vm="using:AssetsAndMapEditor.App.ViewModels"
         xmlns:i="https://github.com/projektanker/icons.avalonia"
         xmlns:ctrl="using:AssetsAndMapEditor.App.Controls"
+        xmlns:otb="using:AssetsAndMapEditor.OTB"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="AssetsAndMapEditor.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -61,6 +62,9 @@
     </Style>
     <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
       <Setter Property="Background" Value="#313244"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ Border#SelectionIndicator">
+      <Setter Property="IsVisible" Value="False"/>
     </Style>
     <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#262637"/>
@@ -241,6 +245,10 @@
         <MenuItem Header="Export Selected..." Command="{Binding ExportThingCommand}" InputGesture="Ctrl+E">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-file-export" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
         </MenuItem>
+        <Separator/>
+        <MenuItem Header="Preferences..." x:Name="PreferencesMenuItem" Click="OnPreferencesClick">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-gear" FontSize="14" Foreground="#9399b2"/></MenuItem.Icon>
+        </MenuItem>
       </MenuItem>
       <MenuItem Header="_Edit" IsVisible="{Binding IsMapEditorActive}">
         <MenuItem Header="Border Options">
@@ -269,6 +277,7 @@
         <MenuItem Header="Show Special" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpecial, Mode=TwoWay}"/>
         <MenuItem Header="Show Zones" ToggleType="CheckBox" IsChecked="{Binding ViewShowZones, Mode=TwoWay}"/>
         <MenuItem Header="Show Houses" ToggleType="CheckBox" IsChecked="{Binding ViewShowHouses, Mode=TwoWay}"/>
+        <MenuItem Header="Show Spawns" ToggleType="CheckBox" IsChecked="{Binding ViewShowSpawns, Mode=TwoWay}"/>
         <MenuItem Header="Show Pathing" ToggleType="CheckBox" IsChecked="{Binding ViewShowPathing, Mode=TwoWay}"/>
         <Separator/>
         <MenuItem Header="Show Waypoints" ToggleType="CheckBox" IsChecked="{Binding ViewShowWaypoints, Mode=TwoWay}"/>
@@ -282,6 +291,10 @@
         </MenuItem>
         <MenuItem Header="Map Statistics…" Command="{Binding ShowMapStatisticsCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-chart-bar" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="Edit Towns…" InputGesture="Ctrl+T" Click="OnEditTownsMenuClick">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-city" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
         </MenuItem>
         <Separator/>
         <MenuItem Header="Cleanup Invalid Items" Command="{Binding MapCleanupInvalidItemsCommand}">
@@ -309,6 +322,10 @@
         <MenuItem Header="Compact Sprites (Fill Empty Slots)…" Command="{Binding CompactSpritesCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-compress" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
         </MenuItem>
+        <Separator/>
+        <MenuItem Header="Compare DAT ↔ OTB Properties…" Command="{Binding CompareDatOtbCommand}">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-arrows-rotate" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+        </MenuItem>
       </MenuItem>
       <MenuItem Header="_Session">
         <MenuItem Header="New Session" Command="{Binding NewSessionCommand}">
@@ -318,11 +335,27 @@
           <MenuItem.Icon><i:Icon Value="fa-solid fa-xmark" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
         </MenuItem>
         <Separator/>
-        <MenuItem Header="Transplant Item..." Command="{Binding TransplantItemCommand}">
+        <MenuItem Header="Transplant Selected..." Command="{Binding TransplantItemCommand}">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-arrow-right-arrow-left" FontSize="14" Foreground="#cba6f7"/></MenuItem.Icon>
         </MenuItem>
-        <MenuItem Header="Merge Session Into Current…" x:Name="MergeSessionMenuItem">
+        <MenuItem Header="Merge All Into Current…" x:Name="MergeSessionMenuItem">
           <MenuItem.Icon><i:Icon Value="fa-solid fa-code-merge" FontSize="14" Foreground="#89b4fa"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Items Into Current…" x:Name="MergeItemsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-cube" FontSize="14" Foreground="#f9e2af"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Outfits Into Current…" x:Name="MergeOutfitsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-shirt" FontSize="14" Foreground="#a6e3a1"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Effects Into Current…" x:Name="MergeEffectsMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-wand-magic-sparkles" FontSize="14" Foreground="#f38ba8"/></MenuItem.Icon>
+          <MenuItem Header="Loading…" IsEnabled="False"/>
+        </MenuItem>
+        <MenuItem Header="Merge Missiles Into Current…" x:Name="MergeMissilesMenuItem">
+          <MenuItem.Icon><i:Icon Value="fa-solid fa-meteor" FontSize="14" Foreground="#fab387"/></MenuItem.Icon>
           <MenuItem Header="Loading…" IsEnabled="False"/>
         </MenuItem>
       </MenuItem>
@@ -489,12 +522,17 @@
           <Grid RowDefinitions="*,Auto">
 
             <!-- ── Top: 3-column layout ── -->
-            <Grid Grid.Row="0" ColumnDefinitions="220,*,260">
+            <Grid Grid.Row="0" ColumnDefinitions="270,Auto,*,Auto,260">
 
             <!-- ── LEFT: Client item list + pagination ── -->
-            <DockPanel Grid.Column="0" Margin="0,0,6,0">
+            <DockPanel Grid.Column="0" Margin="0,0,0,0">
               <!-- Top: search + category filter -->
               <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <ToggleButton DockPanel.Dock="Right" Classes="toolbar" Padding="4,2" MinHeight="28" MinWidth="28"
+                              IsChecked="{Binding IsClientIconView}" ToolTip.Tip="Toggle Icon/List View"
+                              Margin="2,0,0,0">
+                  <i:Icon Value="fa-solid fa-table-cells" FontSize="11"/>
+                </ToggleButton>
                 <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ClientCategoryOptions}"
                           SelectedItem="{Binding ClientCategoryFilter}"
                           FontSize="11" MinHeight="28" Padding="6,3" MinWidth="70" Margin="4,0,0,0"/>
@@ -504,7 +542,7 @@
 
               <!-- Item management buttons -->
               <Border DockPanel.Dock="Top" Background="#181825" CornerRadius="6" Padding="4,3" Margin="0,0,0,4">
-                <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
+                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
                   <Button Classes="toolbar" Content="🔄" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
                           Command="{Binding ReplaceThingCommand}" ToolTip.Tip="Replace"/>
                   <Button Classes="toolbar" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
@@ -532,7 +570,7 @@
                   <Rectangle Width="1" Height="18" Fill="#313244" Margin="4,0"/>
                   <Button Classes="accent" Content="📦" Padding="4,2" FontSize="13" MinHeight="20" MinWidth="26"
                           Command="{Binding CreateServerItemFromClientCommand}" ToolTip.Tip="Create Server Item from Client"/>
-                </StackPanel>
+                </WrapPanel>
               </Border>
 
               <!-- Bottom: pagination bar -->
@@ -565,7 +603,8 @@
                            Foreground="#585b70" FontSize="10"/>
               </Border>
 
-              <!-- Item list -->
+              <Grid>
+              <!-- Item list (standard view) -->
               <ListBox x:Name="ClientItemListBox"
                        ItemsSource="{Binding ClientItems}"
                        SelectedItem="{Binding SelectedClientItem}"
@@ -573,7 +612,8 @@
                        Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                        DoubleTapped="OnClientItemDoubleTapped"
-                       SelectionChanged="OnClientItemSelectionChanged">
+                       SelectionChanged="OnClientItemSelectionChanged"
+                       IsVisible="{Binding !IsClientIconView}">
                 <ListBox.ContextMenu>
                   <ContextMenu x:Name="ClientItemContextMenu" Opening="OnClientItemContextMenuOpening">
                     <MenuItem Header="Transplant to..." x:Name="TransplantToMenuItem"/>
@@ -590,18 +630,22 @@
                   </ContextMenu>
                 </ListBox.ContextMenu>
                 <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                  </Style>
                   <Style Selector="Border.clientSprBox">
                     <Setter Property="BorderBrush" Value="Transparent"/>
                   </Style>
                   <Style Selector="ListBoxItem:selected Border.clientSprBox">
-                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                    <Setter Property="BorderBrush" Value="#ff44ff"/>
+                    <Setter Property="BoxShadow" Value="0 0 0 1 #11111b, 0 0 8 0 #ff44ff"/>
                   </Style>
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:ClientItemViewModel">
                     <Grid ColumnDefinitions="38,*" Height="38" Margin="2,1">
                       <Border Classes="clientSprBox" Background="#11111b" CornerRadius="4" Width="32" Height="32"
-                              BorderThickness="2"
+                              BorderThickness="3"
                               VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
                         <Image Source="{Binding Sprite}" Width="32" Height="32"
                                RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
@@ -612,10 +656,62 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+
+              <!-- Item grid (icon view) -->
+              <ListBox x:Name="ClientItemIconBox"
+                       ItemsSource="{Binding ClientItems}"
+                       SelectedItem="{Binding SelectedClientItem}"
+                       SelectionMode="Multiple"
+                       Background="#181825" BorderBrush="#313244" BorderThickness="1" Padding="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       DoubleTapped="OnClientItemDoubleTapped"
+                       SelectionChanged="OnClientItemSelectionChanged"
+                       IsVisible="{Binding IsClientIconView}">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel/>
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ClientItemViewModel">
+                    <Border Width="36" Height="36" Background="#11111b" CornerRadius="3" Margin="1"
+                            ToolTip.Tip="{Binding Id}" Classes="clientSprBox">
+                      <Image Source="{Binding Sprite}" Width="32" Height="32"
+                             RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="MinWidth" Value="0"/>
+                  </Style>
+                  <Style Selector="ListBoxItem /template/ ContentPresenter">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected Border.clientSprBox">
+                    <Setter Property="BorderBrush" Value="#ff44ff"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                  </Style>
+                </ListBox.Styles>
+              </ListBox>
+              </Grid>
             </DockPanel>
 
+            <!-- Column splitter: Left | Center -->
+            <GridSplitter Grid.Column="1" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          Cursor="SizeWestEast"/>
+
             <!-- ── CENTER: Split top (client editor) / bottom (OTB detail) ── -->
-            <Grid Grid.Column="1" RowDefinitions="*,*" Margin="0,0,6,0">
+            <Grid Grid.Column="2" RowDefinitions="*,Auto,*" Margin="0,0,0,0">
 
             <!-- ── TOP: Thing Type Editor (OB two-tab layout) ── -->
             <TabControl Grid.Row="0">
@@ -669,13 +765,14 @@
                                     <Setter Property="Background" Value="Transparent"/>
                                   </Style>
                                   <Style Selector="ListBoxItem:selected Border.compCell">
-                                    <Setter Property="BorderBrush" Value="#a6e3a1"/>
+                                    <Setter Property="BorderBrush" Value="#ff44ff"/>
+                                    <Setter Property="BoxShadow" Value="0 0 0 1 #11111b, 0 0 8 0 #ff44ff"/>
                                   </Style>
                                 </ListBox.Styles>
                                 <ListBox.ItemTemplate>
                                   <DataTemplate x:DataType="vm:SpriteViewModel">
                                     <Border Classes="compCell" Width="64" Height="64" Margin="1"
-                                            Background="#11111b" BorderThickness="2"
+                                            Background="#11111b" BorderThickness="3"
                                             ToolTip.Tip="{Binding SpriteId}">
                                       <Border.ContextMenu>
                                         <ContextMenu>
@@ -1265,8 +1362,14 @@
               </TabItem>
             </TabControl>
 
+            <!-- Row splitter: Editor | OTB Detail -->
+            <GridSplitter Grid.Row="1" Height="6" Background="Transparent"
+                          ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                          IsVisible="{Binding IsOtbItemEditing}"
+                          Cursor="SizeNorthSouth"/>
+
             <!-- ── BOTTOM: OTB Item Detail (double-click to open) ── -->
-            <ScrollViewer Grid.Row="1" IsVisible="{Binding IsOtbItemEditing}" Margin="0,6,0,0">
+            <ScrollViewer Grid.Row="2" IsVisible="{Binding IsOtbItemEditing}" Margin="0,0,0,0">
               <StackPanel Spacing="10" IsVisible="{Binding SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}">
 
                 <!-- OTB Appearance Card -->
@@ -1394,8 +1497,9 @@
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" RowSpacing="4">
                       <TextBlock Grid.Column="0" Classes="label" Text="DAT Phases" VerticalAlignment="Center"/>
                       <TextBlock Grid.Column="1" Text="{Binding SelectedItem.DatAnimPhases}" FontWeight="Bold" Foreground="#cba6f7" VerticalAlignment="Center"/>
-                      <TextBlock Grid.Column="2" Classes="label" Text="Animate Always" VerticalAlignment="Center"/>
-                      <TextBlock Grid.Column="3" Text="{Binding SelectedItem.DatAnimateAlways}" Foreground="#585b70" VerticalAlignment="Center"/>
+                      <CheckBox Grid.Column="2" Grid.ColumnSpan="2" Content="Animate Always"
+                                IsChecked="{Binding SelectedItem.DatAnimateAlways}"
+                                VerticalAlignment="Center"/>
                     </Grid>
                     <TextBlock Text="{Binding SelectedItem.MismatchDetail}" Foreground="#f38ba8" FontSize="11" TextWrapping="Wrap"
                                IsVisible="{Binding SelectedItem.HasMismatch}"/>
@@ -1407,8 +1511,13 @@
 
             </Grid><!-- end center split grid -->
 
+            <!-- Column splitter: Center | Right -->
+            <GridSplitter Grid.Column="3" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          Cursor="SizeWestEast"/>
+
             <!-- ── RIGHT: OTB Server Items List ── -->
-            <DockPanel Grid.Column="2" Margin="6,0,0,0">
+            <DockPanel Grid.Column="4" Margin="0,0,0,0">
               <TextBlock DockPanel.Dock="Top" Text="OTB Items" Classes="heading" Margin="0,0,0,4"/>
               <!-- Search -->
               <TextBox DockPanel.Dock="Top" Classes="search" Watermark="Buscar Server/Client ID..."
@@ -1448,7 +1557,8 @@
                     <Setter Property="BorderBrush" Value="Transparent"/>
                   </Style>
                   <Style Selector="ListBoxItem:selected Border.otbSprBox">
-                    <Setter Property="BorderBrush" Value="#89b4fa"/>
+                    <Setter Property="BorderBrush" Value="#ff44ff"/>
+                    <Setter Property="BoxShadow" Value="0 0 0 1 #11111b, 0 0 8 0 #ff44ff"/>
                   </Style>
                 </ListBox.Styles>
                 <ListBox.ContextMenu>
@@ -1460,7 +1570,7 @@
                   <DataTemplate x:DataType="vm:ItemViewModel">
                     <Grid ColumnDefinitions="38,Auto,*" Height="36" Margin="3,1">
                       <Border Classes="otbSprBox" Background="#11111b" CornerRadius="4" Width="30" Height="30"
-                              BorderThickness="2"
+                              BorderThickness="3"
                               VerticalAlignment="Center" HorizontalAlignment="Center" ClipToBounds="True">
                         <Image Source="{Binding Sprite}" Width="30" Height="30"
                                RenderOptions.BitmapInterpolationMode="None" Stretch="Uniform"/>
@@ -1639,7 +1749,7 @@
           <Border Grid.Column="1" Background="#181825" CornerRadius="8" Margin="0,0,6,0" Padding="0"
                   IsVisible="{Binding Palette, Converter={x:Static ObjectConverters.IsNotNull}}"
                   x:DataType="vm:MainWindowViewModel">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" DataContext="{Binding Palette}"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" DataContext="{Binding Palette}"
                   x:DataType="vm:PaletteViewModel" Margin="6,8,6,6">
 
               <!-- Row 0: Collection selector -->
@@ -1857,73 +1967,355 @@
                 </DockPanel>
               </Border>
 
-              <!-- Row 5: Items grid (unified catalog + search) -->
-              <Grid Grid.Row="5" RowDefinitions="Auto,*,Auto">
-                <TextBox Grid.Row="0" Watermark="Search items..."
-                         Text="{Binding CatalogSearchText}" FontSize="10"
-                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
-                         CornerRadius="4" Padding="6,4" Margin="0,0,0,4"/>
-                <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
-                  <ScrollViewer>
-                    <ItemsControl ItemsSource="{Binding CatalogResults}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <WrapPanel/>
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PaletteItemViewModel">
-                          <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
-                                  ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
-                                  BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
-                                  BorderBrush="#a6e3a1"
-                                  DoubleTapped="OnCatalogItemDoubleTapped"
-                                  PointerPressed="OnCatalogItemPressed">
-                            <Border.ContextMenu>
-                              <ContextMenu Opening="OnCatalogContextMenuOpening">
-                                <MenuItem Header="Add to Collection"/>
-                                <Separator/>
-                                <MenuItem Header="Add to Brush"
-                                          Click="OnAddCatalogItemToBrush"/>
-                              </ContextMenu>
-                            </Border.ContextMenu>
-                            <Image Source="{Binding Sprite}" Width="32" Height="32"
-                                   RenderOptions.BitmapInterpolationMode="None"/>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </Border>
-                <DockPanel Grid.Row="2" Margin="0,4,0,0">
-                  <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogFirstPageCommand}"
-                            ToolTip.Tip="First page">
-                      <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
-                    </Button>
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogPreviousPageCommand}"
-                            ToolTip.Tip="Previous page">
-                      <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
-                    </Button>
-                  </StackPanel>
-                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogNextPageCommand}"
-                            ToolTip.Tip="Next page">
-                      <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
-                    </Button>
-                    <Button Classes="toolbar" Padding="4,2"
-                            Command="{Binding CatalogLastPageCommand}"
-                            ToolTip.Tip="Last page">
-                      <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
-                    </Button>
-                  </StackPanel>
-                  <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </DockPanel>
-              </Grid>
+              <!-- Row 5: Map Tools (Creatures / Spawns / Houses / Tools) -->
+              <Border Grid.Row="5" Background="#11111b" CornerRadius="4" Padding="0" Margin="0,0,0,4"
+                      x:DataType="vm:MainWindowViewModel" DataContext="{Binding $parent[Window].DataContext}">
+                <TabControl TabStripPlacement="Top" Padding="0" Margin="0"
+                            FontSize="10" Background="Transparent">
+                  <TabControl.Styles>
+                    <Style Selector="TabItem">
+                      <Setter Property="Padding" Value="8,3"/>
+                      <Setter Property="FontSize" Value="10"/>
+                      <Setter Property="Foreground" Value="#585b70"/>
+                      <Setter Property="MinHeight" Value="0"/>
+                    </Style>
+                    <Style Selector="TabItem:selected">
+                      <Setter Property="Foreground" Value="#cdd6f4"/>
+                    </Style>
+                  </TabControl.Styles>
+
+                  <!-- Tab: Creatures -->
+                  <TabItem>
+                    <TabItem.Header>
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <i:Icon Value="fa-solid fa-dragon" FontSize="10" Foreground="#a6e3a1"/>
+                        <TextBlock Text="Creatures"/>
+                      </StackPanel>
+                    </TabItem.Header>
+                    <StackPanel Spacing="3" Margin="6,4,6,6">
+                      <!-- Filter + search -->
+                      <Grid ColumnDefinitions="Auto,*">
+                        <ComboBox Grid.Column="0" FontSize="9" Padding="4,2" MinHeight="22"
+                                  MinWidth="70" Background="#313244" Foreground="#cdd6f4"
+                                  BorderBrush="#45475a" CornerRadius="4"
+                                  x:Name="CreatureFilterCombo"
+                                  SelectionChanged="OnCreatureFilterChanged">
+                          <ComboBoxItem Content="All" IsSelected="True"/>
+                          <ComboBoxItem Content="Monsters"/>
+                          <ComboBoxItem Content="NPCs"/>
+                        </ComboBox>
+                        <TextBox Grid.Column="1" Watermark="Search creatures..."
+                                 Text="{Binding CreatureSearchText}" FontSize="9"
+                                 Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                                 CornerRadius="4" Padding="4,2" MinHeight="22" Margin="3,0,0,0"/>
+                      </Grid>
+                      <!-- Creature list -->
+                      <ListBox x:Name="CreatureListBox" MaxHeight="140"
+                               ItemsSource="{Binding FilteredCreatures}"
+                               Background="Transparent" BorderThickness="0"
+                               SelectionChanged="OnCreatureSelected">
+                        <ListBox.ItemTemplate>
+                          <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="4,1">
+                              <Border Width="6" Height="6" CornerRadius="3" Background="#f38ba8">
+                                <Border.Styles>
+                                  <Style Selector="Border">
+                                    <Setter Property="Background" Value="#f38ba8"/>
+                                  </Style>
+                                </Border.Styles>
+                              </Border>
+                              <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#cdd6f4"/>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+                      <!-- SpawnTime + Brush -->
+                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
+                        <TextBlock Grid.Column="0" Text="Spawn Time" FontSize="9" Foreground="#585b70"
+                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <NumericUpDown Grid.Column="1" Minimum="1" Maximum="86400" FontSize="9"
+                                       Value="{Binding CreatureSpawnTime}" MinHeight="22" Padding="4,2"/>
+                        <Button Grid.Column="2" Classes="toolbar" Padding="5,2" Margin="3,0,0,0"
+                                ToolTip.Tip="Place Creature" Click="OnCreatureBrushClick">
+                          <StackPanel Orientation="Horizontal" Spacing="3">
+                            <i:Icon Value="fa-solid fa-crosshairs" FontSize="9" Foreground="#a6e3a1"/>
+                            <TextBlock Text="Place" FontSize="9" Foreground="#a6e3a1"/>
+                          </StackPanel>
+                        </Button>
+                      </Grid>
+                      <!-- Load creatures button -->
+                      <Button Classes="toolbar" Padding="5,2" HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Center"
+                              ToolTip.Tip="Load creatures.xml from map directory or client folder"
+                              Click="OnLoadCreaturesClick">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <i:Icon Value="fa-solid fa-file-import" FontSize="9" Foreground="#89b4fa"/>
+                          <TextBlock Text="Load creatures.xml" FontSize="9" Foreground="#89b4fa"/>
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                  </TabItem>
+
+                  <!-- Tab: Spawns -->
+                  <TabItem>
+                    <TabItem.Header>
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <i:Icon Value="fa-solid fa-circle-dot" FontSize="10" Foreground="#b4befe"/>
+                        <TextBlock Text="Spawns"/>
+                      </StackPanel>
+                    </TabItem.Header>
+                    <StackPanel Spacing="4" Margin="6,4,6,6">
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,4,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Radius" FontSize="9"
+                                   Foreground="#585b70" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" Minimum="1" Maximum="30" FontSize="9"
+                                       Value="{Binding SpawnBrushRadius}" MinHeight="22" Padding="4,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Time" FontSize="9"
+                                   Foreground="#585b70" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="1" Maximum="86400" FontSize="9"
+                                       Value="{Binding CreatureSpawnTime}" MinHeight="22" Padding="4,2"/>
+                      </Grid>
+                      <StackPanel Orientation="Horizontal" Spacing="3" Margin="0,2,0,0">
+                        <Button Classes="toolbar" Padding="6,3" ToolTip.Tip="Place Spawn zone"
+                                Click="OnSpawnBrushClick">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <i:Icon Value="fa-solid fa-circle-dot" FontSize="10" Foreground="#b4befe"/>
+                            <TextBlock Text="Place Spawn" FontSize="9" Foreground="#b4befe"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Classes="toolbar" Padding="6,3" ToolTip.Tip="Place Creature at spawn"
+                                Click="OnCreatureBrushClick">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <i:Icon Value="fa-solid fa-dragon" FontSize="10" Foreground="#a6e3a1"/>
+                            <TextBlock Text="Place Creature" FontSize="9" Foreground="#a6e3a1"/>
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </StackPanel>
+                  </TabItem>
+
+                  <!-- Tab: Houses -->
+                  <TabItem>
+                    <TabItem.Header>
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <i:Icon Value="fa-solid fa-house" FontSize="10" Foreground="#89b4fa"/>
+                        <TextBlock Text="Houses"/>
+                      </StackPanel>
+                    </TabItem.Header>
+                    <StackPanel Spacing="4" Margin="6,4,6,6">
+                      <!-- Town filter -->
+                      <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0" Text="Town" FontSize="9" Foreground="#585b70"
+                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox Grid.Column="1" FontSize="9" Padding="4,2" MinHeight="22"
+                                  Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                                  CornerRadius="4" HorizontalAlignment="Stretch"
+                                  x:Name="HouseTownComboBox"
+                                  SelectionChanged="OnHouseTownFilterChanged"/>
+                      </Grid>
+                      <!-- House selector -->
+                      <Grid ColumnDefinitions="*,Auto,Auto">
+                        <ComboBox Grid.Column="0" FontSize="9" Padding="4,2" MinHeight="22"
+                                  Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                                  CornerRadius="4" HorizontalAlignment="Stretch"
+                                  x:Name="HouseComboBox"
+                                  SelectionChanged="OnHouseSelectionChanged"/>
+                        <Button Grid.Column="1" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                                ToolTip.Tip="Add House" Click="OnAddHouseClick">
+                          <i:Icon Value="fa-solid fa-plus" FontSize="9" Foreground="#a6e3a1"/>
+                        </Button>
+                        <Button Grid.Column="2" Classes="toolbar" Padding="4,2" Margin="2,0,0,0"
+                                ToolTip.Tip="Edit House" Click="OnEditHouseClick">
+                          <i:Icon Value="fa-solid fa-pen" FontSize="9" Foreground="#89b4fa"/>
+                        </Button>
+                      </Grid>
+                      <!-- Brush buttons -->
+                      <StackPanel Orientation="Horizontal" Spacing="3" Margin="0,2,0,0">
+                        <Button Classes="toolbar" Padding="6,3" ToolTip.Tip="Paint House Tiles"
+                                Click="OnHouseBrushClick">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <i:Icon Value="fa-solid fa-house" FontSize="10" Foreground="#89b4fa"/>
+                            <TextBlock Text="Paint Tiles" FontSize="9" Foreground="#89b4fa"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Classes="toolbar" Padding="6,3" ToolTip.Tip="Set House Exit/Entry"
+                                Click="OnHouseExitBrushClick">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <i:Icon Value="fa-solid fa-door-open" FontSize="10" Foreground="#94e2d5"/>
+                            <TextBlock Text="Set Exit" FontSize="9" Foreground="#94e2d5"/>
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </StackPanel>
+                  </TabItem>
+
+                  <!-- Tab: Tools -->
+                  <TabItem>
+                    <TabItem.Header>
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <i:Icon Value="fa-solid fa-wrench" FontSize="10" Foreground="#f9e2af"/>
+                        <TextBlock Text="Tools"/>
+                      </StackPanel>
+                    </TabItem.Header>
+                    <StackPanel Spacing="4" Margin="6,4,6,6">
+                      <Button Classes="toolbar" Padding="6,3"
+                              ToolTip.Tip="Border Remover — removes auto-border items from tiles"
+                              Click="OnBorderRemoverClick">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <i:Icon Value="fa-solid fa-eraser" FontSize="10" Foreground="#f38ba8"/>
+                          <TextBlock Text="Remove Borders" FontSize="9" Foreground="#f38ba8"/>
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                  </TabItem>
+
+                </TabControl>
+              </Border>
+
+              <!-- Row 6: Catalog + Collection tabs -->
+              <TabControl Grid.Row="6" SelectedIndex="{Binding CatalogTabIndex}"
+                          TabStripPlacement="Top" Padding="0" Margin="0"
+                          FontSize="10" Background="Transparent">
+                <TabControl.Styles>
+                  <Style Selector="TabItem">
+                    <Setter Property="Padding" Value="8,3"/>
+                    <Setter Property="FontSize" Value="10"/>
+                    <Setter Property="Foreground" Value="#585b70"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                  </Style>
+                  <Style Selector="TabItem:selected">
+                    <Setter Property="Foreground" Value="#cdd6f4"/>
+                  </Style>
+                </TabControl.Styles>
+
+                <!-- Tab 0: Catalog -->
+                <TabItem>
+                  <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <i:Icon Value="fa-solid fa-magnifying-glass" FontSize="9" Foreground="#89b4fa"/>
+                      <TextBlock Text="Catalog"/>
+                    </StackPanel>
+                  </TabItem.Header>
+                  <Grid RowDefinitions="Auto,*,Auto">
+                    <TextBox Grid.Row="0" Watermark="Search items..."
+                             Text="{Binding CatalogSearchText}" FontSize="10"
+                             Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                             CornerRadius="4" Padding="6,4" Margin="0,4,0,4"/>
+                    <Border Grid.Row="1" Background="#11111b" CornerRadius="4" Padding="4">
+                      <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding CatalogResults}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                              <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                      ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                      BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                      BorderBrush="#ff44ff"
+                                      BoxShadow="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightBoxShadow}}"
+                                      DoubleTapped="OnCatalogItemDoubleTapped"
+                                      PointerPressed="OnCatalogItemPressed">
+                                <Border.ContextMenu>
+                                  <ContextMenu Opening="OnCatalogContextMenuOpening">
+                                    <MenuItem Header="Add to Collection"/>
+                                    <Separator/>
+                                    <MenuItem Header="Add to Brush"
+                                              Click="OnAddCatalogItemToBrush"/>
+                                  </ContextMenu>
+                                </Border.ContextMenu>
+                                <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                       RenderOptions.BitmapInterpolationMode="None"/>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
+                    </Border>
+                    <DockPanel Grid.Row="2" Margin="0,4,0,0">
+                      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogFirstPageCommand}"
+                                ToolTip.Tip="First page">
+                          <i:Icon Value="fa-solid fa-angles-left" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogPreviousPageCommand}"
+                                ToolTip.Tip="Previous page">
+                          <i:Icon Value="fa-solid fa-chevron-left" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="1">
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogNextPageCommand}"
+                                ToolTip.Tip="Next page">
+                          <i:Icon Value="fa-solid fa-chevron-right" FontSize="10"/>
+                        </Button>
+                        <Button Classes="toolbar" Padding="4,2"
+                                Command="{Binding CatalogLastPageCommand}"
+                                ToolTip.Tip="Last page">
+                          <i:Icon Value="fa-solid fa-angles-right" FontSize="10"/>
+                        </Button>
+                      </StackPanel>
+                      <TextBlock Text="{Binding CatalogStatusText}" FontSize="9" Foreground="#585b70"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </Grid>
+                </TabItem>
+
+                <!-- Tab 1: Collection items -->
+                <TabItem>
+                  <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <i:Icon Value="fa-solid fa-layer-group" FontSize="9" Foreground="#a6e3a1"/>
+                      <TextBlock Text="{Binding CollectionTabHeader}"/>
+                    </StackPanel>
+                  </TabItem.Header>
+                  <Grid RowDefinitions="*">
+                    <Border Background="#11111b" CornerRadius="4" Padding="4" Margin="0,4,0,0">
+                      <Panel>
+                        <!-- Empty state -->
+                        <TextBlock Text="Select a user collection to view its items"
+                                   FontSize="10" Foreground="#585b70" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   IsVisible="{Binding CollectionViewSource, Converter={x:Static ObjectConverters.IsNull}}"/>
+                        <!-- Items grid -->
+                        <ScrollViewer IsVisible="{Binding CollectionViewSource, Converter={x:Static ObjectConverters.IsNotNull}}">
+                          <ItemsControl ItemsSource="{Binding CollectionViewSource}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel/>
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="vm:PaletteItemViewModel">
+                                <Border Width="36" Height="36" Background="#313244" CornerRadius="3" Margin="1"
+                                        ToolTip.Tip="{Binding Tooltip}" Cursor="Hand"
+                                        BorderThickness="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightThickness}}"
+                                        BorderBrush="#ff44ff"
+                                        BoxShadow="{Binding IsHighlighted, Converter={StaticResource BoolToHighlightBoxShadow}}"
+                                        DoubleTapped="OnCatalogItemDoubleTapped"
+                                        PointerPressed="OnCatalogItemPressed">
+                                  <Border.ContextMenu>
+                                    <ContextMenu>
+                                      <MenuItem Header="Remove from Collection"
+                                                Click="OnRemoveCollectionItem"/>
+                                    </ContextMenu>
+                                  </Border.ContextMenu>
+                                  <Image Source="{Binding Sprite}" Width="32" Height="32"
+                                         RenderOptions.BitmapInterpolationMode="None"/>
+                                </Border>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </ScrollViewer>
+                      </Panel>
+                    </Border>
+                  </Grid>
+                </TabItem>
+              </TabControl>
             </Grid>
           </Border>
 
@@ -1953,6 +2345,7 @@
                                        ShowSpecial="{Binding ViewShowSpecial, Mode=TwoWay}"
                                        ShowZones="{Binding ViewShowZones, Mode=TwoWay}"
                                        ShowHouses="{Binding ViewShowHouses, Mode=TwoWay}"
+                                       ShowSpawns="{Binding ViewShowSpawns, Mode=TwoWay}"
                                        ShowWaypoints="{Binding ViewShowWaypoints, Mode=TwoWay}"
                                        ShowTowns="{Binding ViewShowTowns, Mode=TwoWay}"
                                        ShowPathing="{Binding ViewShowPathing, Mode=TwoWay}"
@@ -1963,6 +2356,16 @@
                                        BrushSize="{Binding BrushSize, Mode=TwoWay}"
                                        BrushCircle="{Binding BrushCircle, Mode=TwoWay}"
                                        ActiveZoneBrush="{Binding ActiveZoneBrush, Mode=TwoWay}"
+                                       IsBorderRemoverActive="{Binding IsBorderRemoverActive, Mode=TwoWay}"
+                                       IsSpawnBrushActive="{Binding IsSpawnBrushActive, Mode=TwoWay}"
+                                       IsCreatureBrushActive="{Binding IsCreatureBrushActive, Mode=TwoWay}"
+                                       SpawnBrushRadius="{Binding SpawnBrushRadius, Mode=TwoWay}"
+                                       CreatureSpawnTime="{Binding CreatureSpawnTime, Mode=TwoWay}"
+                                       SelectedCreatureName="{Binding SelectedCreatureName, Mode=TwoWay}"
+                                       SelectedCreatureIsNpc="{Binding SelectedCreatureIsNpc, Mode=TwoWay}"
+                                       IsHouseBrushActive="{Binding IsHouseBrushActive, Mode=TwoWay}"
+                                       IsHouseExitBrushActive="{Binding IsHouseExitBrushActive, Mode=TwoWay}"
+                                       SelectedHouseId="{Binding SelectedHouseId, Mode=TwoWay}"
                                        BrushItemIds="{Binding BrushItemIds}"
                                        UseAutomagic="{Binding UseAutomagic, Mode=TwoWay}"/>
 
@@ -2117,6 +2520,36 @@
                             Margin="0,2,0,0"
                             Command="{Binding MapGoToCommand}"/>
                   </Grid>
+
+                  <Separator Background="#313244" Height="1" Margin="0,4"/>
+
+                  <!-- Towns -->
+                  <TextBlock Text="Towns" Classes="heading" FontSize="11" Margin="0,4,0,0"/>
+                  <TextBox x:Name="TownSearchBox" Watermark="Search town…" FontSize="11"
+                           Text="{Binding TownSearchText, Mode=TwoWay}"
+                           Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                           CornerRadius="4" Padding="6,4" Margin="0,2,0,4"/>
+                  <ListBox ItemsSource="{Binding FilteredTowns}" MinHeight="160" MaxHeight="180"
+                           Background="Transparent" BorderThickness="0" Padding="0"
+                           DoubleTapped="OnTownDoubleClick">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="otb:MapTown">
+                        <StackPanel Spacing="1" Margin="2,2">
+                          <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#cdd6f4" FontWeight="Medium"/>
+                          <TextBlock FontSize="9" Foreground="#585b70">
+                            <TextBlock.Text>
+                              <MultiBinding StringFormat="ID {0}  —  {1}, {2}, {3}">
+                                <Binding Path="Id"/>
+                                <Binding Path="TempleX"/>
+                                <Binding Path="TempleY"/>
+                                <Binding Path="TempleZ"/>
+                              </MultiBinding>
+                            </TextBlock.Text>
+                          </TextBlock>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
 
                   <Separator Background="#313244" Height="1" Margin="0,4"/>
 

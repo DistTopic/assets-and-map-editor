@@ -19,6 +19,8 @@ public sealed class MapData
 
     public List<MapTown> Towns { get; } = [];
     public List<MapWaypoint> Waypoints { get; } = [];
+    public List<MapSpawn> Spawns { get; } = [];
+    public List<MapHouse> Houses { get; } = [];
 
     /// <summary>Get the bounding box of all tiles.</summary>
     public (int minX, int minY, int maxX, int maxY) GetBounds()
@@ -119,4 +121,41 @@ public sealed class MapWaypoint
     public ushort X { get; set; }
     public ushort Y { get; set; }
     public byte Z { get; set; }
+}
+
+/// <summary>A spawn zone with a center position, radius, and creatures.</summary>
+public sealed class MapSpawn
+{
+    public ushort CenterX { get; set; }
+    public ushort CenterY { get; set; }
+    public byte CenterZ { get; set; }
+    public int Radius { get; set; }
+    public List<SpawnCreature> Creatures { get; } = [];
+}
+
+/// <summary>A creature placed within a spawn zone.</summary>
+public sealed class SpawnCreature
+{
+    public string Name { get; set; } = string.Empty;
+    public bool IsNpc { get; set; }
+    /// <summary>Relative X offset from spawn center.</summary>
+    public int RelX { get; set; }
+    /// <summary>Relative Y offset from spawn center.</summary>
+    public int RelY { get; set; }
+    public int SpawnTime { get; set; } = 60;
+    /// <summary>Direction: 0=North, 1=East, 2=South, 3=West.</summary>
+    public int Direction { get; set; }
+}
+
+/// <summary>A house definition with metadata (tiles are marked in OTBM via MapTile.HouseId).</summary>
+public sealed class MapHouse
+{
+    public uint Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public uint TownId { get; set; }
+    public int Rent { get; set; }
+    public bool Guildhall { get; set; }
+    public ushort EntryX { get; set; }
+    public ushort EntryY { get; set; }
+    public byte EntryZ { get; set; }
 }

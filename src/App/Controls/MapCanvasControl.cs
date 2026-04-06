@@ -18,7 +18,6 @@ namespace AssetsAndMapEditor.App.Controls;
 public sealed class MapCanvasControl : Control
 {
     private const int TileSize = 32;
-    private const int MiniMapTileSize = 2;
     private const int MaxLightIntensity = 8;
 
     // Viewport
@@ -26,9 +25,9 @@ public sealed class MapCanvasControl : Control
     private bool _suppressCenterOnLoad;
 
     /// <summary>Camera X position in world pixel coordinates.</summary>
-    public double ViewX { get => _viewX; set { _viewX = value; InvalidateVisual(); } }
+    public double ViewX { get => _viewX; set { _viewX = value; _minimapDirty = true; InvalidateVisual(); } }
     /// <summary>Camera Y position in world pixel coordinates.</summary>
-    public double ViewY { get => _viewY; set { _viewY = value; InvalidateVisual(); } }
+    public double ViewY { get => _viewY; set { _viewY = value; _minimapDirty = true; InvalidateVisual(); } }
 
     /// <summary>Set viewport without triggering CenterOnMap when MapDataSource changes.</summary>
     public void RestoreViewport(double vx, double vy) { _suppressCenterOnLoad = true; _viewX = vx; _viewY = vy; }
@@ -90,6 +89,8 @@ public sealed class MapCanvasControl : Control
     // ── Drag-paint state ──
     private bool _isPainting;        // left mouse held with brush → continuous painting
     private bool _isZonePainting;    // true if painting zones (flags) instead of items
+    private bool _isBorderRemoving;  // true if drag-removing borders
+    private bool _isHousePainting;   // true if painting house tiles
     private MapPosition _lastPaintedTile; // avoid duplicate paint on same tile
     private Dictionary<MapPosition, MapTile?>? _paintUndoSnapshot; // accumulated snapshot for batch undo
 
@@ -99,9 +100,28 @@ public sealed class MapCanvasControl : Control
     public event Action<string>? ActionLogged; // strategic log messages
     public event Action<MapPosition?>? SelectedTileChanged; // single tile selected
 
-    // Minimap
+    // Minimap (viewport-centered, 1 pixel per tile)
     private WriteableBitmap? _minimapBitmap;
     private bool _minimapDirty = true;
+    private int _minimapRequestW = 200, _minimapRequestH = 150;
+
+    /// <summary>Tile X of the top-left corner of the current minimap bitmap.</summary>
+    public int MinimapOffsetTileX { get; private set; }
+    /// <summary>Tile Y of the top-left corner of the current minimap bitmap.</summary>
+    public int MinimapOffsetTileY { get; private set; }
+
+    /// <summary>Sets the desired minimap bitmap size in pixels (1 pixel = 1 tile).</summary>
+    public void SetMinimapViewportSize(int tilesWide, int tilesHigh)
+    {
+        tilesWide = Math.Clamp(tilesWide, 10, 1024);
+        tilesHigh = Math.Clamp(tilesHigh, 10, 1024);
+        if (_minimapRequestW != tilesWide || _minimapRequestH != tilesHigh)
+        {
+            _minimapRequestW = tilesWide;
+            _minimapRequestH = tilesHigh;
+            _minimapDirty = true;
+        }
+    }
 
     /// <summary>Callback to invalidate the minimap overlay when the viewport changes.</summary>
     internal Action? _minimapOverlayInvalidated;
@@ -169,6 +189,9 @@ public sealed class MapCanvasControl : Control
     public static readonly StyledProperty<bool> ShowHousesProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowHouses), true);
 
+    public static readonly StyledProperty<bool> ShowSpawnsProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowSpawns), true);
+
     public static readonly StyledProperty<bool> ShowWaypointsProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(ShowWaypoints), true);
 
@@ -201,11 +224,43 @@ public sealed class MapCanvasControl : Control
     public static readonly StyledProperty<int> ActiveZoneBrushProperty =
         AvaloniaProperty.Register<MapCanvasControl, int>(nameof(ActiveZoneBrush), 0);
 
+    public static readonly StyledProperty<bool> IsBorderRemoverActiveProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(IsBorderRemoverActive), false);
+
     public static readonly StyledProperty<IList<ushort>?> BrushItemIdsProperty =
         AvaloniaProperty.Register<MapCanvasControl, IList<ushort>?>(nameof(BrushItemIds));
 
     public static readonly StyledProperty<bool> UseAutomagicProperty =
         AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(UseAutomagic), true);
+
+    // ── Spawn brush properties ──
+    public static readonly StyledProperty<bool> IsSpawnBrushActiveProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(IsSpawnBrushActive), false);
+
+    public static readonly StyledProperty<bool> IsCreatureBrushActiveProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(IsCreatureBrushActive), false);
+
+    public static readonly StyledProperty<int> SpawnBrushRadiusProperty =
+        AvaloniaProperty.Register<MapCanvasControl, int>(nameof(SpawnBrushRadius), 5);
+
+    public static readonly StyledProperty<int> CreatureSpawnTimeProperty =
+        AvaloniaProperty.Register<MapCanvasControl, int>(nameof(CreatureSpawnTime), 60);
+
+    public static readonly StyledProperty<string> SelectedCreatureNameProperty =
+        AvaloniaProperty.Register<MapCanvasControl, string>(nameof(SelectedCreatureName), string.Empty);
+
+    public static readonly StyledProperty<bool> SelectedCreatureIsNpcProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(SelectedCreatureIsNpc), false);
+
+    // ── House brush properties ──
+    public static readonly StyledProperty<bool> IsHouseBrushActiveProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(IsHouseBrushActive), false);
+
+    public static readonly StyledProperty<bool> IsHouseExitBrushActiveProperty =
+        AvaloniaProperty.Register<MapCanvasControl, bool>(nameof(IsHouseExitBrushActive), false);
+
+    public static readonly StyledProperty<uint> SelectedHouseIdProperty =
+        AvaloniaProperty.Register<MapCanvasControl, uint>(nameof(SelectedHouseId), 0);
 
     private static readonly Random _brushRandom = new();
 
@@ -271,6 +326,7 @@ public sealed class MapCanvasControl : Control
     public bool ShowSpecial { get => GetValue(ShowSpecialProperty); set => SetValue(ShowSpecialProperty, value); }
     public bool ShowZones { get => GetValue(ShowZonesProperty); set => SetValue(ShowZonesProperty, value); }
     public bool ShowHouses { get => GetValue(ShowHousesProperty); set => SetValue(ShowHousesProperty, value); }
+    public bool ShowSpawns { get => GetValue(ShowSpawnsProperty); set => SetValue(ShowSpawnsProperty, value); }
     public bool ShowWaypoints { get => GetValue(ShowWaypointsProperty); set => SetValue(ShowWaypointsProperty, value); }
     public bool ShowTowns { get => GetValue(ShowTownsProperty); set => SetValue(ShowTownsProperty, value); }
     public bool ShowPathing { get => GetValue(ShowPathingProperty); set => SetValue(ShowPathingProperty, value); }
@@ -281,8 +337,20 @@ public sealed class MapCanvasControl : Control
     public int BrushSize { get => GetValue(BrushSizeProperty); set => SetValue(BrushSizeProperty, value); }
     public bool BrushCircle { get => GetValue(BrushCircleProperty); set => SetValue(BrushCircleProperty, value); }
     public int ActiveZoneBrush { get => GetValue(ActiveZoneBrushProperty); set => SetValue(ActiveZoneBrushProperty, value); }
+    public bool IsBorderRemoverActive { get => GetValue(IsBorderRemoverActiveProperty); set => SetValue(IsBorderRemoverActiveProperty, value); }
     public IList<ushort>? BrushItemIds { get => GetValue(BrushItemIdsProperty); set => SetValue(BrushItemIdsProperty, value); }
     public bool UseAutomagic { get => GetValue(UseAutomagicProperty); set => SetValue(UseAutomagicProperty, value); }
+
+    // Spawn/house brush accessors
+    public bool IsSpawnBrushActive { get => GetValue(IsSpawnBrushActiveProperty); set => SetValue(IsSpawnBrushActiveProperty, value); }
+    public bool IsCreatureBrushActive { get => GetValue(IsCreatureBrushActiveProperty); set => SetValue(IsCreatureBrushActiveProperty, value); }
+    public int SpawnBrushRadius { get => GetValue(SpawnBrushRadiusProperty); set => SetValue(SpawnBrushRadiusProperty, value); }
+    public int CreatureSpawnTime { get => GetValue(CreatureSpawnTimeProperty); set => SetValue(CreatureSpawnTimeProperty, value); }
+    public string SelectedCreatureName { get => GetValue(SelectedCreatureNameProperty); set => SetValue(SelectedCreatureNameProperty, value); }
+    public bool SelectedCreatureIsNpc { get => GetValue(SelectedCreatureIsNpcProperty); set => SetValue(SelectedCreatureIsNpcProperty, value); }
+    public bool IsHouseBrushActive { get => GetValue(IsHouseBrushActiveProperty); set => SetValue(IsHouseBrushActiveProperty, value); }
+    public bool IsHouseExitBrushActive { get => GetValue(IsHouseExitBrushActiveProperty); set => SetValue(IsHouseExitBrushActiveProperty, value); }
+    public uint SelectedHouseId { get => GetValue(SelectedHouseIdProperty); set => SetValue(SelectedHouseIdProperty, value); }
 
     private string _hoveredTileInfo = string.Empty;
     public string HoveredTileInfo
@@ -365,6 +433,7 @@ public sealed class MapCanvasControl : Control
               || change.Property == ShowSpecialProperty
               || change.Property == ShowZonesProperty
               || change.Property == ShowHousesProperty
+              || change.Property == ShowSpawnsProperty
               || change.Property == ShowWaypointsProperty
               || change.Property == ShowTownsProperty
               || change.Property == ShowPathingProperty
@@ -374,7 +443,13 @@ public sealed class MapCanvasControl : Control
               || change.Property == BrushServerIdProperty
               || change.Property == BrushSizeProperty
               || change.Property == BrushCircleProperty
-              || change.Property == ActiveZoneBrushProperty)
+              || change.Property == ActiveZoneBrushProperty
+              || change.Property == IsBorderRemoverActiveProperty
+              || change.Property == IsSpawnBrushActiveProperty
+              || change.Property == IsCreatureBrushActiveProperty
+              || change.Property == IsHouseBrushActiveProperty
+              || change.Property == IsHouseExitBrushActiveProperty
+              || change.Property == SelectedHouseIdProperty)
         {
             InvalidateVisual();
         }
@@ -415,6 +490,7 @@ public sealed class MapCanvasControl : Control
         bool showSpecial = ShowSpecial;
         bool showZones = ShowZones;
         bool showHouses = ShowHouses;
+        bool showSpawns = ShowSpawns;
         bool showWaypoints = ShowWaypoints;
         bool showTowns = ShowTowns;
         bool showPathing = ShowPathing;
@@ -684,9 +760,25 @@ public sealed class MapCanvasControl : Control
                     double baseScreenY = (ty * TileSize - _viewY) * zoom - overlayFloorOffset;
                     var tileRect = new Rect(baseScreenX, baseScreenY, tilePixelSize, tilePixelSize);
 
-                    // Show houses
+                    // Show houses — color derived from HouseId; selected house = cyan, others = blue
                     if (showHouses && tile.HouseId > 0)
-                        context.DrawRectangle(new SolidColorBrush(Color.FromArgb(50, 64, 64, 255)), null, tileRect);
+                    {
+                        uint hid = tile.HouseId;
+                        uint currentHid = IsHouseBrushActive || IsHouseExitBrushActive ? SelectedHouseId : 0;
+                        if (hid == currentHid && currentHid > 0)
+                        {
+                            // Selected house: cyan tint
+                            context.DrawRectangle(new SolidColorBrush(Color.FromArgb(65, 64, 255, 255)), null, tileRect);
+                        }
+                        else
+                        {
+                            // Other houses: color from ID
+                            byte hr = (byte)(60 + (hid * 67) % 160);
+                            byte hg = (byte)(60 + (hid * 131) % 160);
+                            byte hb = (byte)(60 + (hid * 197) % 160);
+                            context.DrawRectangle(new SolidColorBrush(Color.FromArgb(55, hr, hg, hb)), null, tileRect);
+                        }
+                    }
 
                     // Show pathing/blocking
                     if (showPathing)
@@ -761,6 +853,103 @@ public sealed class MapCanvasControl : Control
             }
         }
 
+        // ── Show spawns ──
+        if (showSpawns && _mapData.Spawns.Count > 0)
+        {
+            var spawnCirclePen = new Pen(new SolidColorBrush(Color.FromArgb(140, 180, 100, 255)), 1.5,
+                new DashStyle(new double[] { 4, 3 }, 0));
+            var spawnFill = new SolidColorBrush(Color.FromArgb(20, 180, 100, 255));
+            var creatureMarker = new SolidColorBrush(Color.FromArgb(160, 220, 140, 255));
+            var npcMarker = new SolidColorBrush(Color.FromArgb(160, 100, 200, 255));
+
+            foreach (var spawn in _mapData.Spawns)
+            {
+                if (spawn.CenterZ != floor) continue;
+
+                double cx = (spawn.CenterX * TileSize + TileSize / 2.0 - _viewX) * zoom;
+                double cy = (spawn.CenterY * TileSize + TileSize / 2.0 - _viewY) * zoom;
+                double radiusPx = (spawn.Radius + 0.5) * TileSize * zoom;
+
+                // Radius circle
+                var circleGeom = new EllipseGeometry(new Rect(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2));
+                context.DrawGeometry(spawnFill, spawnCirclePen, circleGeom);
+
+                // Center marker (purple diamond)
+                double ms = tilePixelSize * 0.4;
+                double scx = (spawn.CenterX * TileSize - _viewX) * zoom;
+                double scy = (spawn.CenterY * TileSize - _viewY) * zoom;
+                context.DrawRectangle(new SolidColorBrush(Color.FromArgb(200, 180, 100, 255)), null,
+                    new Rect(scx + tilePixelSize * 0.3, scy + tilePixelSize * 0.3, ms, ms));
+
+                // Label
+                if (zoom >= 0.4)
+                {
+                    var label = new FormattedText($"Spawn r={spawn.Radius}", System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                        9 * Math.Max(zoom, 0.6), new SolidColorBrush(Color.FromRgb(180, 100, 255)));
+                    context.DrawText(label, new Point(scx + tilePixelSize + 2, scy));
+                }
+
+                // Creature positions
+                foreach (var creature in spawn.Creatures)
+                {
+                    int absX = spawn.CenterX + creature.RelX;
+                    int absY = spawn.CenterY + creature.RelY;
+                    double crx = (absX * TileSize - _viewX) * zoom;
+                    double cry = (absY * TileSize - _viewY) * zoom;
+                    double dot = Math.Max(4, tilePixelSize * 0.25);
+                    var dotBrush = creature.IsNpc ? npcMarker : creatureMarker;
+                    context.DrawEllipse(dotBrush, null,
+                        new Point(crx + tilePixelSize / 2.0, cry + tilePixelSize / 2.0), dot, dot);
+
+                    // Creature name label
+                    if (zoom >= 0.8)
+                    {
+                        var nameText = new FormattedText(creature.Name, System.Globalization.CultureInfo.CurrentCulture,
+                            FlowDirection.LeftToRight,
+                            new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
+                            8 * zoom, dotBrush);
+                        context.DrawText(nameText, new Point(crx + tilePixelSize * 0.7, cry + tilePixelSize * 0.05));
+                    }
+                }
+            }
+        }
+
+        // ── Show house exits ──
+        if (showHouses && _mapData.Houses.Count > 0)
+        {
+            uint currentHouseId = IsHouseBrushActive || IsHouseExitBrushActive ? SelectedHouseId : 0;
+            foreach (var house in _mapData.Houses)
+            {
+                if (house.EntryX == 0 && house.EntryY == 0) continue;
+                if (house.EntryZ != floor) continue;
+
+                double ex = (house.EntryX * TileSize - _viewX) * zoom;
+                double ey = (house.EntryY * TileSize - _viewY) * zoom;
+
+                // Cyan for selected house, blue for others
+                var exitColor = house.Id == currentHouseId
+                    ? Color.FromArgb(200, 64, 255, 255)
+                    : Color.FromArgb(160, 64, 64, 255);
+                var exitBrush = new SolidColorBrush(exitColor);
+
+                context.DrawRectangle(exitBrush, null,
+                    new Rect(ex + tilePixelSize * 0.15, ey + tilePixelSize * 0.15,
+                             tilePixelSize * 0.7, tilePixelSize * 0.7));
+
+                // Label
+                if (zoom >= 0.5)
+                {
+                    var exitText = new FormattedText($"Exit #{house.Id}", System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                        8 * Math.Max(zoom, 0.5), exitBrush);
+                    context.DrawText(exitText, new Point(ex + tilePixelSize + 2, ey + tilePixelSize * 0.2));
+                }
+            }
+        }
+
         // ── Light overlay ──
         if (lights != null && lights.Count > 0)
             DrawLightOverlay(context, lights, startTileX, startTileY, endTileX, endTileY, zoom);
@@ -792,7 +981,7 @@ public sealed class MapCanvasControl : Control
         // ── Ghost brush (translucent preview of selected item / zone at cursor) ──
         var ghostItemIds = BrushItemIds;
         bool hasGhostList = ghostItemIds != null && ghostItemIds.Count > 0;
-        if (_cursorInsideCanvas && (BrushServerId > 0 || hasGhostList || ActiveZoneBrush > 0) && !_isDragging && !_isPasting && !_isSelecting && !_isMoving)
+        if (_cursorInsideCanvas && (BrushServerId > 0 || hasGhostList || ActiveZoneBrush > 0 || IsBorderRemoverActive || IsSpawnBrushActive || IsCreatureBrushActive || IsHouseBrushActive || IsHouseExitBrushActive) && !_isDragging && !_isPasting && !_isSelecting && !_isMoving)
         {
             int floorTileOff = floor <= 7 ? 7 - floor : 0;
             int ghostTileX = (int)Math.Floor((_viewX + _cursorScreenPos.X / zoom) / TileSize) + floorTileOff;
@@ -818,6 +1007,22 @@ public sealed class MapCanvasControl : Control
                     }
                 }
             }
+            else if (IsBorderRemoverActive)
+            {
+                // Show red-ish translucent overlay with an X indicating border removal
+                var eraseBrush = new SolidColorBrush(Color.FromArgb(50, 243, 139, 168));
+                var erasePen = new Pen(new SolidColorBrush(Color.FromArgb(180, 243, 139, 168)), 2);
+                foreach (var pos in brushTiles)
+                {
+                    double gx = (pos.X * TileSize - _viewX) * zoom - floorOff;
+                    double gy = (pos.Y * TileSize - _viewY) * zoom - floorOff;
+                    var rect = new Rect(gx, gy, tilePixelSize, tilePixelSize);
+                    context.DrawRectangle(eraseBrush, null, rect);
+                    // Draw X
+                    context.DrawLine(erasePen, new Point(gx + 4, gy + 4), new Point(gx + tilePixelSize - 4, gy + tilePixelSize - 4));
+                    context.DrawLine(erasePen, new Point(gx + tilePixelSize - 4, gy + 4), new Point(gx + 4, gy + tilePixelSize - 4));
+                }
+            }
             else if (ActiveZoneBrush > 0)
             {
                 // Show zone color preview
@@ -836,6 +1041,69 @@ public sealed class MapCanvasControl : Control
                     double gy = (pos.Y * TileSize - _viewY) * zoom - floorOff;
                     context.DrawRectangle(zoneBrush, null, new Rect(gx, gy, tilePixelSize, tilePixelSize));
                 }
+            }
+            else if (IsSpawnBrushActive)
+            {
+                // Show spawn radius preview (dashed circle)
+                double cx = (center.X * TileSize + TileSize / 2.0 - _viewX) * zoom - floorOff;
+                double cy = (center.Y * TileSize + TileSize / 2.0 - _viewY) * zoom - floorOff;
+                double radiusPx = (SpawnBrushRadius + 0.5) * TileSize * zoom;
+                var ghostSpawnPen = new Pen(new SolidColorBrush(Color.FromArgb(160, 180, 100, 255)), 2,
+                    new DashStyle(new double[] { 4, 3 }, 0));
+                var ghostSpawnFill = new SolidColorBrush(Color.FromArgb(30, 180, 100, 255));
+                var circleGeom = new EllipseGeometry(new Rect(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2));
+                context.DrawGeometry(ghostSpawnFill, ghostSpawnPen, circleGeom);
+                // Center marker
+                double gxc = (center.X * TileSize - _viewX) * zoom - floorOff;
+                double gyc = (center.Y * TileSize - _viewY) * zoom - floorOff;
+                context.DrawRectangle(new SolidColorBrush(Color.FromArgb(150, 180, 100, 255)), null,
+                    new Rect(gxc + tilePixelSize * 0.3, gyc + tilePixelSize * 0.3, tilePixelSize * 0.4, tilePixelSize * 0.4));
+            }
+            else if (IsCreatureBrushActive)
+            {
+                // Show creature placement preview (green/purple dot)
+                double gxc = (center.X * TileSize - _viewX) * zoom - floorOff;
+                double gyc = (center.Y * TileSize - _viewY) * zoom - floorOff;
+                var dotColor = SelectedCreatureIsNpc
+                    ? Color.FromArgb(120, 100, 200, 255)
+                    : Color.FromArgb(120, 220, 140, 255);
+                context.DrawEllipse(new SolidColorBrush(dotColor), null,
+                    new Point(gxc + tilePixelSize / 2.0, gyc + tilePixelSize / 2.0),
+                    Math.Max(6, tilePixelSize * 0.3), Math.Max(6, tilePixelSize * 0.3));
+                if (zoom >= 0.5 && !string.IsNullOrEmpty(SelectedCreatureName))
+                {
+                    var nameText = new FormattedText(SelectedCreatureName, System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight,
+                        new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
+                        9 * Math.Max(zoom, 0.5), new SolidColorBrush(dotColor));
+                    context.DrawText(nameText, new Point(gxc + tilePixelSize * 0.7, gyc + tilePixelSize * 0.1));
+                }
+            }
+            else if (IsHouseBrushActive)
+            {
+                // Show house tile preview (blue tint)
+                var houseBrush = new SolidColorBrush(Color.FromArgb(80, 64, 64, 255));
+                foreach (var pos in brushTiles)
+                {
+                    double gx = (pos.X * TileSize - _viewX) * zoom - floorOff;
+                    double gy = (pos.Y * TileSize - _viewY) * zoom - floorOff;
+                    context.DrawRectangle(houseBrush, null, new Rect(gx, gy, tilePixelSize, tilePixelSize));
+                }
+            }
+            else if (IsHouseExitBrushActive)
+            {
+                // Show house exit preview (cyan marker)
+                double gxc = (center.X * TileSize - _viewX) * zoom - floorOff;
+                double gyc = (center.Y * TileSize - _viewY) * zoom - floorOff;
+                var exitBrush = new SolidColorBrush(Color.FromArgb(160, 64, 255, 255));
+                context.DrawRectangle(exitBrush, null,
+                    new Rect(gxc + tilePixelSize * 0.2, gyc + tilePixelSize * 0.2, tilePixelSize * 0.6, tilePixelSize * 0.6));
+                // Draw E (for exit)
+                var exitText = new FormattedText("E", System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                    Math.Max(12, tilePixelSize * 0.5), Brushes.White);
+                context.DrawText(exitText, new Point(gxc + tilePixelSize * 0.35, gyc + tilePixelSize * 0.2));
             }
         }
 
@@ -879,6 +1147,11 @@ public sealed class MapCanvasControl : Control
                             DrawItem(context, brushClientId, pos, gx, gy, zoom, elapsedMs, 1.0);
                         }
                 }
+            }
+            else if (IsBorderRemoverActive)
+            {
+                context.DrawRectangle(new SolidColorBrush(Color.FromArgb(40, 243, 139, 168)), null,
+                    new Rect(rx1, ry1, rx2 - rx1, ry2 - ry1));
             }
             else if (ActiveZoneBrush > 0)
             {
@@ -1284,7 +1557,7 @@ public sealed class MapCanvasControl : Control
         _spriteBitmapCache.Clear();
     }
 
-    // ── Minimap rendering ──
+    // ── Minimap rendering (viewport-centered, 1 pixel per tile) ──
 
     private void RenderMinimap()
     {
@@ -1292,56 +1565,81 @@ public sealed class MapCanvasControl : Control
         byte floor = CurrentFloor;
 
         var (minX, minY, maxX, maxY) = _mapData.GetBounds();
-        int w = maxX - minX + 1;
-        int h = maxY - minY + 1;
-        int bmpW = w * MiniMapTileSize;
-        int bmpH = h * MiniMapTileSize;
+        int mapW = maxX - minX + 1;
+        int mapH = maxY - minY + 1;
+        if (mapW <= 0 || mapH <= 0) return;
 
-        if (bmpW <= 0 || bmpH <= 0 || bmpW > 4096 || bmpH > 4096) return;
+        int bmpW = Math.Min(_minimapRequestW, mapW);
+        int bmpH = Math.Min(_minimapRequestH, mapH);
+        if (bmpW <= 0 || bmpH <= 0) return;
 
-        var pixels = new byte[bmpW * bmpH * 4];
+        // Center on current viewport (tile coordinates)
+        double zoom = ZoomLevel;
+        double canvasW = Bounds.Width > 0 ? Bounds.Width : 800;
+        double canvasH = Bounds.Height > 0 ? Bounds.Height : 600;
+        double centerTileX = _viewX / TileSize + canvasW / 2.0 / zoom / TileSize;
+        double centerTileY = _viewY / TileSize + canvasH / 2.0 / zoom / TileSize;
+
+        int startX = (int)(centerTileX - bmpW / 2.0);
+        int startY = (int)(centerTileY - bmpH / 2.0);
+
+        // Clamp to map bounds
+        if (startX < minX) startX = minX;
+        else if (startX + bmpW > maxX + 1) startX = maxX + 1 - bmpW;
+        if (startY < minY) startY = minY;
+        else if (startY + bmpH > maxY + 1) startY = maxY + 1 - bmpH;
+        startX = Math.Max(startX, minX);
+        startY = Math.Max(startY, minY);
+
+        int endX = Math.Min(startX + bmpW, maxX + 1);
+        int endY = Math.Min(startY + bmpH, maxY + 1);
+        int actualW = endX - startX;
+        int actualH = endY - startY;
+        if (actualW <= 0 || actualH <= 0) return;
+
+        MinimapOffsetTileX = startX;
+        MinimapOffsetTileY = startY;
+
+        var pixels = new byte[actualW * actualH * 4];
+        // Background
         for (int i = 0; i < pixels.Length; i += 4)
         {
             pixels[i] = 0x11; pixels[i + 1] = 0x11; pixels[i + 2] = 0x1b; pixels[i + 3] = 0xFF;
         }
 
-        foreach (var (pos, tile) in _mapData.Tiles)
+        // Iterate by coordinate (O(viewport_size), not O(map_size))
+        for (int y = startY; y < endY; y++)
         {
-            if (pos.Z != floor) continue;
-            int px = (pos.X - minX) * MiniMapTileSize;
-            int py = (pos.Y - minY) * MiniMapTileSize;
-            if (px < 0 || py < 0 || px + MiniMapTileSize > bmpW || py + MiniMapTileSize > bmpH) continue;
-
-            Color col;
-            if (tile.Ground != null)
+            for (int x = startX; x < endX; x++)
             {
-                ushort groundClientId = tile.Ground.Id;
-                if (_serverToClientMap != null && _serverToClientMap.TryGetValue(tile.Ground.Id, out var mc))
-                    groundClientId = mc;
-                if (_datData?.Items.TryGetValue(groundClientId, out var dt) == true && dt.IsMiniMap)
-                    col = GetMinimapColor(dt.MiniMapColor);
-                else
-                    col = Color.FromRgb(0x6c, 0x71, 0x86);
-            }
-            else if (tile.Items.Count > 0)
-                col = Color.FromRgb(0x6c, 0x71, 0x86);
-            else
-                col = Color.FromRgb(0x45, 0x47, 0x5a);
+                var pos = new MapPosition((ushort)x, (ushort)y, floor);
+                if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
 
-            for (int dy = 0; dy < MiniMapTileSize; dy++)
-            {
-                for (int dx = 0; dx < MiniMapTileSize; dx++)
+                Color col;
+                if (tile.Ground != null)
                 {
-                    int idx = ((py + dy) * bmpW + px + dx) * 4;
-                    pixels[idx] = col.R; pixels[idx + 1] = col.G;
-                    pixels[idx + 2] = col.B; pixels[idx + 3] = 0xFF;
+                    ushort groundClientId = tile.Ground.Id;
+                    if (_serverToClientMap != null && _serverToClientMap.TryGetValue(tile.Ground.Id, out var mc))
+                        groundClientId = mc;
+                    if (_datData?.Items.TryGetValue(groundClientId, out var dt) == true && dt.IsMiniMap)
+                        col = GetMinimapColor(dt.MiniMapColor);
+                    else
+                        col = Color.FromRgb(0x6c, 0x71, 0x86);
                 }
+                else if (tile.Items.Count > 0)
+                    col = Color.FromRgb(0x6c, 0x71, 0x86);
+                else
+                    col = Color.FromRgb(0x45, 0x47, 0x5a);
+
+                int idx = ((y - startY) * actualW + (x - startX)) * 4;
+                pixels[idx] = col.R; pixels[idx + 1] = col.G;
+                pixels[idx + 2] = col.B; pixels[idx + 3] = 0xFF;
             }
         }
 
         var old = _minimapBitmap;
         _minimapBitmap = new WriteableBitmap(
-            new PixelSize(bmpW, bmpH), new Vector(96, 96),
+            new PixelSize(actualW, actualH), new Vector(96, 96),
             Avalonia.Platform.PixelFormat.Rgba8888, AlphaFormat.Unpremul);
         using (var fb = _minimapBitmap.Lock())
             Marshal.Copy(pixels, 0, fb.Address, pixels.Length);
@@ -1740,6 +2038,207 @@ public sealed class MapCanvasControl : Control
             // Clear all zone flags, then set the requested one
             tile.Flags = (uint)((tile.Flags & ~allZoneFlags) | (uint)zoneFlag);
         }
+    }
+
+    /// <summary>Remove auto-border items from tiles at the given center (using current BrushSize).</summary>
+    private void RemoveBordersAt(MapPosition center, Dictionary<MapPosition, MapTile?> undoSnapshot)
+    {
+        if (_mapData == null || BrushDb == null) return;
+        var tiles = GetBrushTiles(center);
+        foreach (var pos in tiles)
+        {
+            if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+
+            bool hasBorder = false;
+            for (int i = tile.Items.Count - 1; i >= 1; i--)
+                if (BrushDb.BorderItemIds.Contains(tile.Items[i].Id))
+                { hasBorder = true; break; }
+            if (!hasBorder) continue;
+
+            if (!undoSnapshot.ContainsKey(pos))
+                undoSnapshot[pos] = tile.Clone();
+
+            for (int i = tile.Items.Count - 1; i >= 1; i--)
+                if (BrushDb.BorderItemIds.Contains(tile.Items[i].Id))
+                    tile.Items.RemoveAt(i);
+        }
+    }
+
+    /// <summary>Remove auto-border items from all tiles in a rectangular area.</summary>
+    private void FillRemoveBordersArea(MapPosition min, MapPosition max)
+    {
+        if (_mapData == null || BrushDb == null) return;
+        var positions = new List<MapPosition>();
+        for (int y = min.Y; y <= max.Y; y++)
+            for (int x = min.X; x <= max.X; x++)
+                positions.Add(new MapPosition((ushort)x, (ushort)y, CurrentFloor));
+
+        PushUndo(new HashSet<MapPosition>(positions));
+
+        int removed = 0;
+        foreach (var pos in positions)
+        {
+            if (!_mapData.Tiles.TryGetValue(pos, out var tile)) continue;
+            for (int i = tile.Items.Count - 1; i >= 1; i--)
+                if (BrushDb.BorderItemIds.Contains(tile.Items[i].Id))
+                { tile.Items.RemoveAt(i); removed++; }
+        }
+
+        _minimapDirty = true;
+        MapEdited?.Invoke();
+        ActionLogged?.Invoke($"Borders removed: {removed} items from {positions.Count} tiles");
+        InvalidateVisual();
+    }
+
+    // ── Spawn brush methods ──
+
+    /// <summary>Place a spawn center at the given tile position.</summary>
+    private void PlaceSpawnAt(MapPosition pos)
+    {
+        if (_mapData == null) return;
+
+        // Check if there's already a spawn centered here
+        foreach (var existing in _mapData.Spawns)
+        {
+            if (existing.CenterX == pos.X && existing.CenterY == pos.Y && existing.CenterZ == pos.Z)
+            {
+                ActionLogged?.Invoke($"Spawn already exists at ({pos.X}, {pos.Y}, {pos.Z})");
+                return;
+            }
+        }
+
+        int radius = Math.Clamp(SpawnBrushRadius, 1, 30);
+        var spawn = new MapSpawn
+        {
+            CenterX = pos.X,
+            CenterY = pos.Y,
+            CenterZ = pos.Z,
+            Radius = radius
+        };
+        _mapData.Spawns.Add(spawn);
+
+        // Auto-show spawns
+        if (!ShowSpawns) SetCurrentValue(ShowSpawnsProperty, true);
+
+        ActionLogged?.Invoke($"Spawn placed at ({pos.X}, {pos.Y}, {pos.Z}) r={radius}");
+    }
+
+    /// <summary>Place a creature at the given position within the nearest spawn.</summary>
+    private void PlaceCreatureAt(MapPosition pos)
+    {
+        if (_mapData == null) return;
+
+        // Find spawn that covers this position
+        MapSpawn? targetSpawn = null;
+        foreach (var spawn in _mapData.Spawns)
+        {
+            if (spawn.CenterZ != pos.Z) continue;
+            int dx = Math.Abs(pos.X - spawn.CenterX);
+            int dy = Math.Abs(pos.Y - spawn.CenterY);
+            if (dx <= spawn.Radius && dy <= spawn.Radius)
+            {
+                targetSpawn = spawn;
+                break;
+            }
+        }
+
+        // Auto-create spawn if none found (like otacademy AUTO_CREATE_SPAWN)
+        if (targetSpawn == null)
+        {
+            targetSpawn = new MapSpawn
+            {
+                CenterX = pos.X,
+                CenterY = pos.Y,
+                CenterZ = pos.Z,
+                Radius = 1
+            };
+            _mapData.Spawns.Add(targetSpawn);
+            ActionLogged?.Invoke($"Auto-created spawn at ({pos.X}, {pos.Y}, {pos.Z}) r=1");
+        }
+
+        // Remove existing creature at this position
+        int relX = pos.X - targetSpawn.CenterX;
+        int relY = pos.Y - targetSpawn.CenterY;
+        targetSpawn.Creatures.RemoveAll(c => c.RelX == relX && c.RelY == relY);
+
+        // Add new creature
+        var creature = new SpawnCreature
+        {
+            Name = SelectedCreatureName,
+            IsNpc = SelectedCreatureIsNpc,
+            RelX = relX,
+            RelY = relY,
+            SpawnTime = Math.Max(1, CreatureSpawnTime),
+            Direction = 2 // South (default)
+        };
+        targetSpawn.Creatures.Add(creature);
+
+        // Auto-show spawns
+        if (!ShowSpawns) SetCurrentValue(ShowSpawnsProperty, true);
+
+        ActionLogged?.Invoke($"Creature '{SelectedCreatureName}' placed at ({pos.X}, {pos.Y}, {pos.Z}) in spawn ({targetSpawn.CenterX}, {targetSpawn.CenterY})");
+    }
+
+    // ── House brush methods ──
+
+    /// <summary>Paint a tile with the selected house ID (auto-PZ).</summary>
+    private void PaintHouseAt(MapPosition pos, Dictionary<MapPosition, MapTile?> undoSnapshot)
+    {
+        if (_mapData == null) return;
+
+        var brushTiles = GetBrushTiles(pos);
+        foreach (var tilePos in brushTiles)
+        {
+            // Snapshot for undo
+            if (!undoSnapshot.ContainsKey(tilePos))
+            {
+                if (_mapData.Tiles.TryGetValue(tilePos, out var existing))
+                    undoSnapshot[tilePos] = existing.Clone();
+                else
+                    undoSnapshot[tilePos] = null;
+            }
+
+            // Ensure tile exists
+            if (!_mapData.Tiles.TryGetValue(tilePos, out var tile))
+            {
+                tile = new MapTile { Position = tilePos };
+                _mapData.Tiles[tilePos] = tile;
+            }
+
+            // Set house ID and auto-PZ
+            tile.HouseId = SelectedHouseId;
+            tile.Flags |= 1u; // TILESTATE_PROTECTIONZONE = 0x01
+        }
+
+        // Auto-show houses
+        if (!ShowHouses) SetCurrentValue(ShowHousesProperty, true);
+    }
+
+    /// <summary>Set the entry position for the selected house.</summary>
+    private void SetHouseExit(MapPosition pos)
+    {
+        if (_mapData == null) return;
+
+        var house = _mapData.Houses.FirstOrDefault(h => h.Id == SelectedHouseId);
+        if (house == null)
+        {
+            ActionLogged?.Invoke($"House #{SelectedHouseId} not found");
+            return;
+        }
+
+        // Entry should NOT be a house tile (like otacademy)
+        if (_mapData.Tiles.TryGetValue(pos, out var tile) && tile.HouseId != 0)
+        {
+            ActionLogged?.Invoke($"Cannot set entry on a house tile");
+            return;
+        }
+
+        house.EntryX = pos.X;
+        house.EntryY = pos.Y;
+        house.EntryZ = pos.Z;
+
+        MapEdited?.Invoke();
+        ActionLogged?.Invoke($"House #{SelectedHouseId} entry set to ({pos.X}, {pos.Y}, {pos.Z})");
     }
 
     /// <summary>
@@ -2294,6 +2793,85 @@ public sealed class MapCanvasControl : Control
             menu.Items.Add(browseFieldItem);
         }
 
+        // ── Spawn/House context items ──
+        if (_mapData != null)
+        {
+            menu.Items.Add(new Separator());
+
+            // Spawn operations
+            MapSpawn? hoverSpawn = null;
+            foreach (var sp in _mapData.Spawns)
+            {
+                if (sp.CenterZ != tilePos.Z) continue;
+                if (Math.Abs(tilePos.X - sp.CenterX) <= sp.Radius && Math.Abs(tilePos.Y - sp.CenterY) <= sp.Radius)
+                { hoverSpawn = sp; break; }
+            }
+
+            if (hoverSpawn != null)
+            {
+                var selectSpawnItem = new MenuItem { Header = $"Select Spawn (r={hoverSpawn.Radius})" };
+                selectSpawnItem.Click += (_, _) =>
+                {
+                    SetCurrentValue(IsSpawnBrushActiveProperty, true);
+                    ActionLogged?.Invoke($"Selected spawn at ({hoverSpawn.CenterX}, {hoverSpawn.CenterY}) r={hoverSpawn.Radius}");
+                };
+                menu.Items.Add(selectSpawnItem);
+
+                var removeSpawnItem = new MenuItem { Header = "Remove Spawn" };
+                removeSpawnItem.Click += (_, _) =>
+                {
+                    _mapData.Spawns.Remove(hoverSpawn);
+                    MapEdited?.Invoke();
+                    ActionLogged?.Invoke($"Spawn removed at ({hoverSpawn.CenterX}, {hoverSpawn.CenterY})");
+                    InvalidateVisual();
+                };
+                menu.Items.Add(removeSpawnItem);
+
+                // Remove creature at position
+                int relX = tilePos.X - hoverSpawn.CenterX;
+                int relY = tilePos.Y - hoverSpawn.CenterY;
+                var creatureHere = hoverSpawn.Creatures.FirstOrDefault(c => c.RelX == relX && c.RelY == relY);
+                if (creatureHere != null)
+                {
+                    var removeCreatureItem = new MenuItem { Header = $"Remove Creature '{creatureHere.Name}'" };
+                    removeCreatureItem.Click += (_, _) =>
+                    {
+                        hoverSpawn.Creatures.Remove(creatureHere);
+                        MapEdited?.Invoke();
+                        ActionLogged?.Invoke($"Creature '{creatureHere.Name}' removed from ({tilePos.X}, {tilePos.Y})");
+                        InvalidateVisual();
+                    };
+                    menu.Items.Add(removeCreatureItem);
+                }
+            }
+
+            // House operations
+            if (hasTile && tile!.HouseId > 0)
+            {
+                var house = _mapData.Houses.FirstOrDefault(h => h.Id == tile.HouseId);
+                string houseName = house?.Name ?? $"#{tile.HouseId}";
+                var selectHouseItem = new MenuItem { Header = $"Select House '{houseName}'" };
+                selectHouseItem.Click += (_, _) =>
+                {
+                    SetCurrentValue(SelectedHouseIdProperty, tile.HouseId);
+                    SetCurrentValue(IsHouseBrushActiveProperty, true);
+                    ActionLogged?.Invoke($"Selected house #{tile.HouseId}");
+                };
+                menu.Items.Add(selectHouseItem);
+
+                var removeHouseFromTileItem = new MenuItem { Header = "Remove Tile from House" };
+                removeHouseFromTileItem.Click += (_, _) =>
+                {
+                    tile.HouseId = 0;
+                    tile.Flags &= ~1u; // remove PZ
+                    MapEdited?.Invoke();
+                    ActionLogged?.Invoke($"Tile removed from house at ({tilePos.X}, {tilePos.Y})");
+                    InvalidateVisual();
+                };
+                menu.Items.Add(removeHouseFromTileItem);
+            }
+        }
+
         this.ContextMenu = menu;
         menu.Open(this);
     }
@@ -2309,11 +2887,16 @@ public sealed class MapCanvasControl : Control
         if (point.Properties.IsMiddleButtonPressed || point.Properties.IsRightButtonPressed)
         {
             // Right-click clears the brush (like RME: drawing mode → selection mode)
-            if (point.Properties.IsRightButtonPressed && (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0))
+            if (point.Properties.IsRightButtonPressed && (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || IsBorderRemoverActive || IsSpawnBrushActive || IsCreatureBrushActive || IsHouseBrushActive || IsHouseExitBrushActive))
             {
                 SetCurrentValue(BrushServerIdProperty, (ushort)0);
                 SetCurrentValue(BrushItemIdsProperty, null);
                 SetCurrentValue(ActiveZoneBrushProperty, 0);
+                SetCurrentValue(IsBorderRemoverActiveProperty, false);
+                SetCurrentValue(IsSpawnBrushActiveProperty, false);
+                SetCurrentValue(IsCreatureBrushActiveProperty, false);
+                SetCurrentValue(IsHouseBrushActiveProperty, false);
+                SetCurrentValue(IsHouseExitBrushActiveProperty, false);
                 InvalidateVisual();
             }
 
@@ -2363,6 +2946,69 @@ public sealed class MapCanvasControl : Control
                 _minimapDirty = true;
                 MapEdited?.Invoke();
                 ActionLogged?.Invoke($"Zone flag 0x{ActiveZoneBrush:X2} painted at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 4b) Border remover tool
+            else if (IsBorderRemoverActive)
+            {
+                _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>();
+                RemoveBordersAt(tilePos, _paintUndoSnapshot);
+
+                _isPainting = true;
+                _isZonePainting = false;
+                _isBorderRemoving = true;
+                _lastPaintedTile = tilePos;
+                _selectedTiles.Clear();
+                _minimapDirty = true;
+                MapEdited?.Invoke();
+                ActionLogged?.Invoke($"Borders removed at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 4c) Spawn brush — place a new spawn center
+            else if (IsSpawnBrushActive)
+            {
+                PlaceSpawnAt(tilePos);
+                _selectedTiles.Clear();
+                _minimapDirty = true;
+                MapEdited?.Invoke();
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 4d) Creature brush — place a creature in nearby spawn
+            else if (IsCreatureBrushActive && !string.IsNullOrEmpty(SelectedCreatureName))
+            {
+                PlaceCreatureAt(tilePos);
+                _selectedTiles.Clear();
+                _minimapDirty = true;
+                MapEdited?.Invoke();
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 4e) House brush — paint tiles with house ID
+            else if (IsHouseBrushActive && SelectedHouseId > 0)
+            {
+                _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>();
+                PaintHouseAt(tilePos, _paintUndoSnapshot);
+
+                _isPainting = true;
+                _isZonePainting = false;
+                _isBorderRemoving = false;
+                _isHousePainting = true;
+                _lastPaintedTile = tilePos;
+                _selectedTiles.Clear();
+                _minimapDirty = true;
+                MapEdited?.Invoke();
+                ActionLogged?.Invoke($"House #{SelectedHouseId} painted at ({tilePos.X}, {tilePos.Y}, {tilePos.Z})");
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            // 4f) House exit brush — set house entry position
+            else if (IsHouseExitBrushActive && SelectedHouseId > 0)
+            {
+                SetHouseExit(tilePos);
+                _selectedTiles.Clear();
                 InvalidateVisual();
                 e.Handled = true;
             }
@@ -2433,7 +3079,11 @@ public sealed class MapCanvasControl : Control
             {
                 if (_paintUndoSnapshot != null)
                 {
-                    if (_isZonePainting)
+                    if (_isBorderRemoving)
+                        RemoveBordersAt(paintPos, _paintUndoSnapshot);
+                    else if (_isHousePainting)
+                        PaintHouseAt(paintPos, _paintUndoSnapshot);
+                    else if (_isZonePainting)
                         PaintZoneAt(paintPos, ActiveZoneBrush, _paintUndoSnapshot);
                     else if (BrushServerId > 0 || (BrushItemIds?.Count > 0))
                         PaintBrushAt(paintPos, _paintUndoSnapshot);
@@ -2458,7 +3108,7 @@ public sealed class MapCanvasControl : Control
         }
 
         // Repaint for ghost brush / paste preview position update
-        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || _isPasting || _isMoving)
+        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || IsBorderRemoverActive || IsSpawnBrushActive || IsCreatureBrushActive || IsHouseBrushActive || IsHouseExitBrushActive || _isPasting || _isMoving)
             InvalidateVisual();
 
         // Update hovered tile info
@@ -2502,6 +3152,8 @@ public sealed class MapCanvasControl : Control
         if (_isPainting)
         {
             _isPainting = false;
+            _isBorderRemoving = false;
+            _isHousePainting = false;
             if (_paintUndoSnapshot is { Count: > 0 })
             {
                 _undoStack.Push(_paintUndoSnapshot);
@@ -2546,6 +3198,11 @@ public sealed class MapCanvasControl : Control
                 FillArea(minPos, maxPos);
                 e.Handled = true;
             }
+            else if (IsBorderRemoverActive)
+            {
+                FillRemoveBordersArea(minPos, maxPos);
+                e.Handled = true;
+            }
             else if (ActiveZoneBrush > 0)
             {
                 FillZoneArea(minPos, maxPos, ActiveZoneBrush);
@@ -2587,7 +3244,7 @@ public sealed class MapCanvasControl : Control
         base.OnPointerExited(e);
         _cursorInsideCanvas = false;
         _tooltipLines = null;
-        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || ShowTooltips)
+        if (BrushServerId > 0 || (BrushItemIds?.Count > 0) || ActiveZoneBrush > 0 || IsBorderRemoverActive || IsSpawnBrushActive || IsCreatureBrushActive || IsHouseBrushActive || IsHouseExitBrushActive || ShowTooltips)
             InvalidateVisual();
     }
 

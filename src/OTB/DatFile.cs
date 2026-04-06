@@ -12,7 +12,13 @@ public static class DatFile
     /// <summary>Optional log callback for diagnostic messages during load.</summary>
     public static Action<string>? DiagLog { get; set; }
 
-    public static DatData Load(string path, int protocolHint = 0)
+    /// <summary>
+    /// Load a DAT file. Feature flags (extended, improvedAnimations, frameGroups)
+    /// are independent from the protocol version, matching Object Builder's architecture.
+    /// When null, each feature defaults based on the protocol (OB: || version >= threshold).
+    /// </summary>
+    public static DatData Load(string path, int protocolHint = 0,
+        bool? extended = null, bool? improvedAnimations = null, bool? frameGroups = null)
     {
         var raw = File.ReadAllBytes(path);
         var sig = BinaryPrimitives.ReadUInt32LittleEndian(raw);
@@ -21,51 +27,69 @@ public static class DatFile
         DiagLog?.Invoke($"[DAT] File={Path.GetFileName(path)}, size={raw.Length}, sig=0x{sig:X8}, detectedProto={detected}, hint={protocolHint}");
 
         int primary = protocolHint > 0 ? protocolHint : detected;
-        bool primaryExtended = primary >= 960;
 
-        // Try primary protocol with default extended setting
-        try
+        // If caller provides explicit feature flags, use them directly (OB approach)
+        if (extended.HasValue)
         {
-            var result = Parse(raw, primary, primaryExtended);
-            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={primaryExtended}, items={result.ItemCount}");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={primaryExtended}: {ex.Message}");
-        }
-
-        // Try primary protocol with opposite extended setting
-        try
-        {
-            var result = Parse(raw, primary, !primaryExtended);
-            DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, extended={!primaryExtended}, items={result.ItemCount}");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={!primaryExtended}: {ex.Message}");
+            bool ext = extended.Value || primary >= 960;
+            bool anim = (improvedAnimations ?? false) || primary >= 1050;
+            bool fg = (frameGroups ?? false) || primary >= 1057;
+            try
+            {
+                var result = Parse(raw, primary, ext, anim, fg);
+                DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, ext={ext}, anim={anim}, fg={fg}, items={result.ItemCount}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                DiagLog?.Invoke($"[DAT] Parse FAILED (explicit flags): proto={primary}, ext={ext}, anim={anim}, fg={fg}: {ex.Message}");
+                throw new InvalidOperationException(
+                    $"Failed to parse {Path.GetFileName(path)} with explicit flags (proto={primary}, ext={ext}, anim={anim}, fg={fg}): {ex.Message}", ex);
+            }
         }
 
-        // Fallback: try every other protocol with both extended modes
+        // Auto-detect: try feature combinations for the primary protocol.
+        // OB order: all features on first, then protocol defaults, then off.
+        var featureCombos = new (bool ext, bool anim, bool fg)[]
+        {
+            (true, true, true),                                              // all on
+            (primary >= 960, primary >= 1050, primary >= 1057),             // protocol defaults
+            (true, primary >= 1050, primary >= 1057),                       // ext override
+            (primary >= 960, false, false),                                  // no anim/fg
+            (false, false, false),                                           // all off
+        };
+
+        foreach (var (ext, anim, fg) in featureCombos)
+        {
+            try
+            {
+                var result = Parse(raw, primary, ext, anim, fg);
+                DiagLog?.Invoke($"[DAT] Parse OK: proto={primary}, ext={ext}, anim={anim}, fg={fg}, items={result.ItemCount}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                DiagLog?.Invoke($"[DAT] Parse FAILED: proto={primary}, ext={ext}, anim={anim}, fg={fg}: {ex.Message}");
+            }
+        }
+
+        // Fallback: try other protocols with protocol-default features
         int[] allProtocols = [1100, 1098, 1076, 1057, 1050, 960, 860, 854, 810, 800, 790, 780, 770, 760, 750, 740];
         foreach (var proto in allProtocols)
         {
             if (proto == primary) continue;
-            foreach (var ext in new[] { true, false })
+            bool extD = proto >= 960, animD = proto >= 1050, fgD = proto >= 1057;
+            try
             {
-                try
-                {
-                    var result = Parse(raw, proto, ext);
-                    DiagLog?.Invoke($"[DAT] Fallback OK: proto={proto}, extended={ext}, items={result.ItemCount}");
-                    return result;
-                }
-                catch { }
+                var result = Parse(raw, proto, extD, animD, fgD);
+                DiagLog?.Invoke($"[DAT] Fallback OK: proto={proto}, ext={extD}, anim={animD}, fg={fgD}, items={result.ItemCount}");
+                return result;
             }
+            catch { }
         }
 
         throw new InvalidOperationException(
-            $"Failed to parse {Path.GetFileName(path)} (sig=0x{sig:X8}, size={raw.Length}). No protocol/extended combination worked.");
+            $"Failed to parse {Path.GetFileName(path)} (sig=0x{sig:X8}, size={raw.Length}). No protocol/feature combination worked.");
     }
 
     /// <summary>
@@ -75,8 +99,11 @@ public static class DatFile
     public static int DetectProtocol(uint signature)
     {
         // Well-known Tibia.dat signatures (from Object Builder / OTClient sources)
+        // Pre-10.71: full 4-byte signatures (e.g. 0x4A10DC35)
+        // 10.71+: only lower 2 bytes are significant (e.g. 0x0000334F)
         return signature switch
         {
+            // Legacy 4-byte signatures (7.40 – 10.70)
             0x439D5A33 => 740,
             0x41BF05F4 => 750,
             0x41BF05F5 => 760,
@@ -94,11 +121,32 @@ public static class DatFile
             0x500F744E => 1076,
             0x50C5A941 => 1098,
             0x51D6A2D3 => 1100,
+
+            // Short 2-byte signatures (10.71+ / format 10.57)
+            // From 10.71 onwards the upper 2 bytes of the DAT signature are zero.
+            0x334F => 1071,
+            0x3729 => 1072,
+            0x374D => 1073,
+            0x375E => 1074,
+            0x3775 => 1075,
+            0x37DF => 1076,
+            0x38DE => 1077,
+            0x3F26 => 1090,
+            0x3F81 => 1091,
+            0x4086 => 1092,
+            0x40FF => 1093,  // 10.93 test
+            0x413F => 1093,
+            0x41E5 => 1094,
+            0x41F3 => 1095,
+            0x42A3 => 1098,
+            0x4347 => 1099,
+            0x4A10 => 1100,  // 12.71+ clients (format 10.57, protocol 1100)
+
             _ => 1100,
         };
     }
 
-    private static DatData Parse(byte[] raw, int protocolHint, bool extended)
+    private static DatData Parse(byte[] raw, int protocolHint, bool extended, bool improvedAnimations, bool frameGroups)
     {
         var r = new DatReader(raw);
 
@@ -125,7 +173,7 @@ public static class DatFile
         {
             try
             {
-                var thing = ParseThing(r, (ushort)id, ThingCategory.Item, protocol, extended);
+                var thing = ParseThing(r, (ushort)id, ThingCategory.Item, protocol, extended, improvedAnimations, frameGroups);
                 items[(ushort)id] = thing;
             }
             catch (Exception ex)
@@ -140,13 +188,13 @@ public static class DatFile
         try
         {
             for (int id = 1; id <= numOutfits; id++)
-                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit, protocol, extended);
+                outfits[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Outfit, protocol, extended, improvedAnimations, frameGroups);
 
             for (int id = 1; id <= numEffects; id++)
-                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect, protocol, extended);
+                effects[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Effect, protocol, extended, improvedAnimations, frameGroups);
 
             for (int id = 1; id <= numMissiles; id++)
-                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile, protocol, extended);
+                missiles[(ushort)id] = ParseThing(r, (ushort)id, ThingCategory.Missile, protocol, extended, improvedAnimations, frameGroups);
         }
         catch
         {
@@ -155,13 +203,17 @@ public static class DatFile
 
         // If outfit/effect/missile parsing failed AND most of the file is unread,
         // the protocol is almost certainly wrong — reject so fallback tries the next one.
+        // But if items parsed OK and we consumed most of the file, keep the result.
         if (secondaryFailed)
         {
             int remaining = raw.Length - r.Position;
+            double parsedRatio = (double)r.Position / raw.Length;
             int expectedSecondary = (numOutfits + numEffects + numMissiles) * 10; // rough minimum bytes
-            if (remaining > expectedSecondary / 2 && remaining > 1000)
+
+            // Only reject if we have significant unparsed data AND haven't consumed most of the file
+            if (remaining > expectedSecondary / 2 && remaining > 1000 && parsedRatio < 0.5)
                 throw new InvalidOperationException(
-                    $"Secondary categories failed with {remaining} bytes remaining (protocol {protocol}, ext={extended}) — likely wrong protocol.");
+                    $"Secondary categories failed with {remaining} bytes remaining ({parsedRatio:P0} parsed, protocol {protocol}, ext={extended}, anim={improvedAnimations}, fg={frameGroups}) — likely wrong protocol.");
         }
 
         return new DatData
@@ -169,6 +221,8 @@ public static class DatFile
             Signature = signature,
             ProtocolVersion = protocol,
             Extended = extended,
+            ImprovedAnimations = improvedAnimations,
+            FrameGroups = frameGroups,
             ItemCount = (ushort)numItems,
             OutfitCount = (ushort)numOutfits,
             EffectCount = (ushort)numEffects,
@@ -180,23 +234,24 @@ public static class DatFile
         };
     }
 
-    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category, int protocol, bool extended)
+    private static DatThingType ParseThing(DatReader r, ushort id, ThingCategory category,
+        int protocol, bool extended, bool improvedAnimations, bool hasFrameGroups)
     {
         var thing = new DatThingType { Id = id, Category = category };
 
-        // ── Parse flags ──
+        // ── Parse flags ── (determined by protocol only — flag byte format)
         ParseFlags(r, thing, protocol);
 
-        // ── Parse frame groups ──
-        // Frame groups exist for outfits in protocol >= 1050
+        // ── Parse frame groups ── (OB: frameGroups && category == OUTFIT)
         bool isOutfit = category == ThingCategory.Outfit;
-        int groupCount = (isOutfit && protocol >= 1050) ? r.U8() : 1;
+        bool useFrameGroups = hasFrameGroups && isOutfit;
+        int groupCount = useFrameGroups ? r.U8() : 1;
         var groups = new FrameGroup[groupCount];
 
         for (int g = 0; g < groupCount; g++)
         {
             var fg = new FrameGroup();
-            if (isOutfit && protocol >= 1050)
+            if (useFrameGroups)
                 fg.Type = (FrameGroupType)r.U8();
 
             fg.Width = r.U8();
@@ -210,8 +265,8 @@ public static class DatFile
             fg.PatternZ = r.U8();
             fg.Frames = r.U8();
 
-            // Improved animations (protocol >= 1050)
-            if (fg.Frames > 1 && protocol >= 1050)
+            // Improved animations (OB: frameDurations flag, independent of protocol)
+            if (fg.Frames > 1 && improvedAnimations)
             {
                 fg.AnimationMode = (AnimationMode)r.U8();
                 fg.LoopCount = r.S32();
@@ -248,15 +303,15 @@ public static class DatFile
             if (flag == 0xFF) break;
 
             // Dispatch to the correct flag set based on protocol version.
-            // MetadataFlags3: client 7.55-7.72  (protocol < 780)
-            // MetadataFlags4: client 7.80-8.54  (protocol 780-854)
-            // MetadataFlags5: client 8.60-9.86  (protocol 860-1009)
-            // MetadataFlags6: client 10.10+     (protocol >= 1010)
-            if (protocol < 780)
+            // MetadataFlags3: client 7.55-7.72  (protocol <= 772)
+            // MetadataFlags4: client 7.80-8.54  (protocol <= 854)
+            // MetadataFlags5: client 8.60-9.86  (protocol <= 986)
+            // MetadataFlags6: client 10.10+     (protocol > 986)
+            if (protocol <= 772)
                 ParseFlagV3(r, thing, flag);
-            else if (protocol < 860)
+            else if (protocol <= 854)
                 ParseFlagV4(r, thing, flag);
-            else if (protocol < 1010)
+            else if (protocol <= 986)
                 ParseFlagV5(r, thing, flag);
             else
                 ParseFlagV6(r, thing, flag);
@@ -389,7 +444,7 @@ public static class DatFile
             case 0x05: thing.IsStackable = true; break;
             case 0x06: thing.IsForceUse = true; break;
             case 0x07: thing.IsMultiUse = true; break;
-            case 0x08: break; // HasCharges — boolean only, no data, no DatThingType field
+            case 0x08: thing.HasCharges = true; break;
             case 0x09: thing.IsWritable = true; thing.MaxTextLength = r.U16(); break;
             case 0x0A: thing.IsWritableOnce = true; thing.MaxTextLength = r.U16(); break;
             case 0x0B: thing.IsFluidContainer = true; break;
@@ -405,7 +460,7 @@ public static class DatFile
             case 0x15: thing.IsRotatable = true; break;
             case 0x16: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
             case 0x17: thing.IsDontHide = true; break;
-            case 0x18: break; // FloorChange — boolean only
+            case 0x18: thing.FloorChange = true; break;
             case 0x19: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
             case 0x1A: thing.HasElevation = true; thing.Elevation = r.U16(); break;
             case 0x1B: thing.IsLyingObject = true; break;
@@ -445,7 +500,7 @@ public static class DatFile
             case 0x14: thing.IsRotatable = true; break;
             case 0x15: thing.HasLight = true; thing.LightLevel = r.U16(); thing.LightColor = r.U16(); break;
             case 0x16: break; // Unknown flag in MF3
-            case 0x17: break; // FloorChange — boolean only
+            case 0x17: thing.FloorChange = true; break;
             case 0x18: thing.HasOffset = true; thing.OffsetX = r.S16(); thing.OffsetY = r.S16(); break;
             case 0x19: thing.HasElevation = true; thing.Elevation = r.U16(); break;
             case 0x1A: thing.IsLyingObject = true; break;
@@ -459,6 +514,10 @@ public static class DatFile
     public static void Save(string path, DatData data)
     {
         var w = new DatWriter();
+        int protocol = data.ProtocolVersion;
+        bool extended = data.Extended;
+        bool frameDurations = data.ImprovedAnimations;
+        bool frameGroups = data.FrameGroups;
 
         // Header: signature + last IDs
         ushort lastItemId = data.Items.Count > 0 ? data.Items.Keys.Max() : (ushort)99;
@@ -476,65 +535,83 @@ public static class DatFile
         for (int id = 100; id <= lastItemId; id++)
         {
             if (data.Items.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, protocol, extended, frameDurations, false);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, ThingCategory.Item, extended, false);
         }
 
-        // Outfits: 1..lastOutfitId
+        // Outfits: 1..lastOutfitId (frame groups for outfits only)
         for (int id = 1; id <= lastOutfitId; id++)
         {
             if (data.Outfits.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, protocol, extended, frameDurations, frameGroups);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, ThingCategory.Outfit, extended, frameGroups);
         }
 
-        // Effects: 1..lastEffectId
+        // Effects: 1..lastEffectId (no frame groups)
         for (int id = 1; id <= lastEffectId; id++)
         {
             if (data.Effects.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, protocol, extended, frameDurations, false);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, ThingCategory.Effect, extended, false);
         }
 
-        // Missiles: 1..lastMissileId
+        // Missiles: 1..lastMissileId (no frame groups)
         for (int id = 1; id <= lastMissileId; id++)
         {
             if (data.Missiles.TryGetValue((ushort)id, out var thing))
-                WriteThing(w, thing);
+                WriteThing(w, thing, protocol, extended, frameDurations, false);
             else
-                WriteEmptyThing(w);
+                WriteEmptyThing(w, ThingCategory.Missile, extended, false);
         }
 
         File.WriteAllBytes(path, w.ToArray());
     }
 
-    private static void WriteEmptyThing(DatWriter w)
+    private static void WriteEmptyThing(DatWriter w, ThingCategory category, bool extended, bool frameGroups)
     {
         w.U8(0xFF); // end flags
-        // 1 frame group: 1x1, exactSize=32, 1 layer, 1x1x1 pattern, 1 frame, 1 sprite (id=0)
+
+        // Frame group header (OB: frameGroups && category == OUTFIT)
+        bool hasFrameGroups = category == ThingCategory.Outfit && frameGroups;
+        if (hasFrameGroups)
+        {
+            w.U8(1); // 1 frame group
+            w.U8((byte)FrameGroupType.Default); // type = Default
+        }
+
+        // 1x1, 1 layer, 1x1x1 pattern, 1 frame, 1 sprite (id=0)
         w.U8(1); w.U8(1); // width, height
         w.U8(1); // layers
         w.U8(1); w.U8(1); w.U8(1); // patternX/Y/Z
         w.U8(1); // frames
-        w.U32(0); // sprite id
+
+        // Sprite index size depends on extended flag
+        if (extended) w.U32(0); else w.U16(0);
     }
 
-    private static void WriteThing(DatWriter w, DatThingType thing)
+    private static void WriteThing(DatWriter w, DatThingType thing, int protocol,
+        bool extended, bool frameDurations, bool frameGroups)
     {
-        WriteFlags(w, thing);
+        WriteFlags(w, thing, protocol);
 
         bool isOutfit = thing.Category == ThingCategory.Outfit;
-        if (isOutfit)
+        bool hasFrameGroups = isOutfit && frameGroups;
+
+        if (hasFrameGroups)
             w.U8((byte)thing.FrameGroups.Length);
 
         for (int g = 0; g < thing.FrameGroups.Length; g++)
         {
             var fg = thing.FrameGroups[g];
-            if (isOutfit)
-                w.U8((byte)fg.Type);
+            if (hasFrameGroups)
+            {
+                // OB quirk: if only 1 group, write type=1; otherwise write loop index
+                var groupTypeVal = (byte)(thing.FrameGroups.Length < 2 ? 1 : g);
+                w.U8(groupTypeVal);
+            }
 
             w.U8(fg.Width);
             w.U8(fg.Height);
@@ -547,7 +624,8 @@ public static class DatFile
             w.U8(fg.PatternZ);
             w.U8(fg.Frames);
 
-            if (fg.Frames > 1)
+            // Enhanced animation data (OB: frameDurations flag, independent of protocol)
+            if (fg.Frames > 1 && frameDurations)
             {
                 w.U8((byte)fg.AnimationMode);
                 w.S32(fg.LoopCount);
@@ -562,18 +640,64 @@ public static class DatFile
                 }
             }
 
+            // Sprite index size depends on extended flag
             int totalSprites = fg.SpriteCount;
             for (int i = 0; i < totalSprites; i++)
-                w.U32(i < fg.SpriteIndex.Length ? fg.SpriteIndex[i] : 0);
+            {
+                uint sid = i < fg.SpriteIndex.Length ? fg.SpriteIndex[i] : 0;
+                if (extended) w.U32(sid); else w.U16((ushort)sid);
+            }
         }
     }
 
-    private static void WriteFlags(DatWriter w, DatThingType t)
+    private static void WriteFlags(DatWriter w, DatThingType t, int protocol)
     {
+        // OB uses separate writers: writeItemProperties() for items,
+        // writeProperties() for non-items (outfits/effects/missiles).
+        if (t.Category == ThingCategory.Item)
+        {
+            if (protocol <= 772)      WriteFlagsV3(w, t);
+            else if (protocol <= 854) WriteFlagsV4(w, t);
+            else if (protocol <= 986) WriteFlagsV5(w, t);
+            else                      WriteFlagsV6(w, t);
+        }
+        else
+        {
+            WriteNonItemFlags(w, t, protocol);
+        }
+    }
+
+    /// <summary>
+    /// OB writeProperties() for non-items: only HAS_LIGHT, HAS_OFFSET, ANIMATE_ALWAYS.
+    /// V6 also writes TOP_EFFECT for effects.
+    /// </summary>
+    private static void WriteNonItemFlags(DatWriter w, DatThingType t, int protocol)
+    {
+        byte lightFlag, offsetFlag, animAlwaysFlag;
+        if (protocol <= 772)      { lightFlag = 0x15; offsetFlag = 0x18; animAlwaysFlag = 0x1B; }
+        else if (protocol <= 854) { lightFlag = 0x16; offsetFlag = 0x19; animAlwaysFlag = 0x1C; }
+        else if (protocol <= 986) { lightFlag = 0x15; offsetFlag = 0x18; animAlwaysFlag = 0x1B; }
+        else                      { lightFlag = 0x16; offsetFlag = 0x19; animAlwaysFlag = 0x1C; }
+
+        if (t.HasLight) { w.U8(lightFlag); w.U16(t.LightLevel); w.U16(t.LightColor); }
+        if (t.HasOffset) { w.U8(offsetFlag); w.S16(t.OffsetX); w.S16(t.OffsetY); }
+        if (t.IsAnimateAlways) w.U8(animAlwaysFlag);
+
+        // V6 only: TopEffect for effects
+        if (protocol > 986 && t.IsTopEffect && t.Category == ThingCategory.Effect)
+            w.U8(0x26);
+
+        w.U8(0xFF); // end marker
+    }
+
+    /// <summary>MetadataFlags6 — client 10.10+ (protocol &gt; 986). Item flags only.</summary>
+    private static void WriteFlagsV6(DatWriter w, DatThingType t)
+    {
+        // Ground group — mutually exclusive (OB uses if/else-if chain)
         if (t.IsGround) { w.U8(0x00); w.U16(t.GroundSpeed); }
-        if (t.IsGroundBorder) w.U8(0x01);
-        if (t.IsOnBottom) w.U8(0x02);
-        if (t.IsOnTop) w.U8(0x03);
+        else if (t.IsGroundBorder) w.U8(0x01);
+        else if (t.IsOnBottom) w.U8(0x02);
+        else if (t.IsOnTop) w.U8(0x03);
         if (t.IsContainer) w.U8(0x04);
         if (t.IsStackable) w.U8(0x05);
         if (t.IsForceUse) w.U8(0x06);
@@ -621,6 +745,138 @@ public static class DatFile
         if (t.IsUnwrappable) w.U8(0x25);
         if (t.IsTopEffect) w.U8(0x26);
         if (t.IsUsable) w.U8(0xFE);
+        w.U8(0xFF); // end marker
+    }
+
+    /// <summary>MetadataFlags5 — client 8.60-9.86 (protocol 855-986). Item flags only.</summary>
+    private static void WriteFlagsV5(DatWriter w, DatThingType t)
+    {
+        // Ground group — mutually exclusive (OB uses if/else-if chain)
+        if (t.IsGround) { w.U8(0x00); w.U16(t.GroundSpeed); }
+        else if (t.IsGroundBorder) w.U8(0x01);
+        else if (t.IsOnBottom) w.U8(0x02);
+        else if (t.IsOnTop) w.U8(0x03);
+        if (t.IsContainer) w.U8(0x04);
+        if (t.IsStackable) w.U8(0x05);
+        if (t.IsForceUse) w.U8(0x06);
+        if (t.IsMultiUse) w.U8(0x07);
+        if (t.IsWritable) { w.U8(0x08); w.U16(t.MaxTextLength); }
+        if (t.IsWritableOnce) { w.U8(0x09); w.U16(t.MaxTextLength); }
+        if (t.IsFluidContainer) w.U8(0x0A);
+        if (t.IsFluid) w.U8(0x0B);
+        if (t.IsUnpassable) w.U8(0x0C);
+        if (t.IsUnmoveable) w.U8(0x0D);
+        if (t.IsBlockMissile) w.U8(0x0E);
+        if (t.IsBlockPathfind) w.U8(0x0F);
+        // NoMoveAnimation does NOT exist in V5
+        if (t.IsPickupable) w.U8(0x10);
+        if (t.IsHangable) w.U8(0x11);
+        if (t.IsVertical) w.U8(0x12);
+        if (t.IsHorizontal) w.U8(0x13);
+        if (t.IsRotatable) w.U8(0x14);
+        if (t.HasLight) { w.U8(0x15); w.U16(t.LightLevel); w.U16(t.LightColor); }
+        if (t.IsDontHide) w.U8(0x16);
+        if (t.IsTranslucent) w.U8(0x17);
+        if (t.HasOffset) { w.U8(0x18); w.S16(t.OffsetX); w.S16(t.OffsetY); }
+        if (t.HasElevation) { w.U8(0x19); w.U16(t.Elevation); }
+        if (t.IsLyingObject) w.U8(0x1A);
+        if (t.IsAnimateAlways) w.U8(0x1B);
+        if (t.IsMiniMap) { w.U8(0x1C); w.U16(t.MiniMapColor); }
+        if (t.IsLensHelp) { w.U8(0x1D); w.U16(t.LensHelp); }
+        if (t.IsFullGround) w.U8(0x1E);
+        if (t.IsIgnoreLook) w.U8(0x1F);
+        if (t.IsCloth) { w.U8(0x20); w.U16(t.ClothSlot); }
+        if (t.IsMarketItem)
+        {
+            w.U8(0x21);
+            w.U16(t.MarketCategory);
+            w.U16(t.MarketTradeAs);
+            w.U16(t.MarketShowAs);
+            var nameBytes = Encoding.Latin1.GetBytes(t.MarketName ?? string.Empty);
+            w.U16((ushort)nameBytes.Length);
+            w.Bytes(nameBytes);
+            w.U16(t.MarketRestrictProfession);
+            w.U16(t.MarketRestrictLevel);
+        }
+        // DefaultAction, Wrappable, Unwrappable, TopEffect, Usable not in V5
+        w.U8(0xFF); // end marker
+    }
+
+    /// <summary>MetadataFlags4 — client 7.80-8.54 (protocol 773-854). Item flags only.</summary>
+    private static void WriteFlagsV4(DatWriter w, DatThingType t)
+    {
+        // Ground group — mutually exclusive (OB uses if/else-if chain)
+        if (t.IsGround) { w.U8(0x00); w.U16(t.GroundSpeed); }
+        else if (t.IsGroundBorder) w.U8(0x01);
+        else if (t.IsOnBottom) w.U8(0x02);
+        else if (t.IsOnTop) w.U8(0x03);
+        if (t.IsContainer) w.U8(0x04);
+        if (t.IsStackable) w.U8(0x05);
+        if (t.IsForceUse) w.U8(0x06);
+        if (t.IsMultiUse) w.U8(0x07);
+        if (t.HasCharges) w.U8(0x08);
+        if (t.IsWritable) { w.U8(0x09); w.U16(t.MaxTextLength); }
+        if (t.IsWritableOnce) { w.U8(0x0A); w.U16(t.MaxTextLength); }
+        if (t.IsFluidContainer) w.U8(0x0B);
+        if (t.IsFluid) w.U8(0x0C);
+        if (t.IsUnpassable) w.U8(0x0D);
+        if (t.IsUnmoveable) w.U8(0x0E);
+        if (t.IsBlockMissile) w.U8(0x0F);
+        if (t.IsBlockPathfind) w.U8(0x10);
+        if (t.IsPickupable) w.U8(0x11);
+        if (t.IsHangable) w.U8(0x12);
+        if (t.IsVertical) w.U8(0x13);
+        if (t.IsHorizontal) w.U8(0x14);
+        if (t.IsRotatable) w.U8(0x15);
+        if (t.HasLight) { w.U8(0x16); w.U16(t.LightLevel); w.U16(t.LightColor); }
+        if (t.IsDontHide) w.U8(0x17);
+        if (t.FloorChange) w.U8(0x18);
+        if (t.HasOffset) { w.U8(0x19); w.S16(t.OffsetX); w.S16(t.OffsetY); }
+        if (t.HasElevation) { w.U8(0x1A); w.U16(t.Elevation); }
+        if (t.IsLyingObject) w.U8(0x1B);
+        if (t.IsAnimateAlways) w.U8(0x1C);
+        if (t.IsMiniMap) { w.U8(0x1D); w.U16(t.MiniMapColor); }
+        if (t.IsLensHelp) { w.U8(0x1E); w.U16(t.LensHelp); }
+        if (t.IsFullGround) w.U8(0x1F);
+        if (t.IsIgnoreLook) w.U8(0x20);
+        w.U8(0xFF); // end marker
+    }
+
+    /// <summary>MetadataFlags3 — client 7.55-7.72 (protocol &lt;= 772). Item flags only.</summary>
+    private static void WriteFlagsV3(DatWriter w, DatThingType t)
+    {
+        // Ground group — mutually exclusive (OB uses if/else-if chain)
+        if (t.IsGround) { w.U8(0x00); w.U16(t.GroundSpeed); }
+        else if (t.IsGroundBorder) w.U8(0x01);
+        else if (t.IsOnBottom) w.U8(0x02);
+        else if (t.IsOnTop) w.U8(0x03);
+        if (t.IsContainer) w.U8(0x04);
+        if (t.IsStackable) w.U8(0x05);
+        if (t.IsForceUse) w.U8(0x06);
+        if (t.IsMultiUse) w.U8(0x07);
+        if (t.IsWritable) { w.U8(0x08); w.U16(t.MaxTextLength); }
+        if (t.IsWritableOnce) { w.U8(0x09); w.U16(t.MaxTextLength); }
+        if (t.IsFluidContainer) w.U8(0x0A);
+        if (t.IsFluid) w.U8(0x0B);
+        if (t.IsUnpassable) w.U8(0x0C);
+        if (t.IsUnmoveable) w.U8(0x0D);
+        if (t.IsBlockMissile) w.U8(0x0E);
+        if (t.IsBlockPathfind) w.U8(0x0F);
+        if (t.IsPickupable) w.U8(0x10);
+        if (t.IsHangable) w.U8(0x11);
+        if (t.IsVertical) w.U8(0x12);
+        if (t.IsHorizontal) w.U8(0x13);
+        if (t.IsRotatable) w.U8(0x14);
+        if (t.HasLight) { w.U8(0x15); w.U16(t.LightLevel); w.U16(t.LightColor); }
+        // 0x16 = unknown in V3; skip
+        if (t.FloorChange) w.U8(0x17);
+        if (t.HasOffset) { w.U8(0x18); w.S16(t.OffsetX); w.S16(t.OffsetY); }
+        if (t.HasElevation) { w.U8(0x19); w.U16(t.Elevation); }
+        if (t.IsLyingObject) w.U8(0x1A);
+        if (t.IsAnimateAlways) w.U8(0x1B);
+        if (t.IsMiniMap) { w.U8(0x1C); w.U16(t.MiniMapColor); }
+        if (t.IsLensHelp) { w.U8(0x1D); w.U16(t.LensHelp); }
+        if (t.IsFullGround) w.U8(0x1E);
         w.U8(0xFF); // end marker
     }
 
@@ -742,6 +998,10 @@ public sealed class DatData
     public int ProtocolVersion { get; init; }
     /// <summary>True if sprite indices are U32 (extended). False if U16.</summary>
     public bool Extended { get; init; }
+    /// <summary>True if enhanced animation data (frame durations) are present.</summary>
+    public bool ImprovedAnimations { get; init; }
+    /// <summary>True if outfits use frame group headers.</summary>
+    public bool FrameGroups { get; init; }
     public ushort ItemCount { get; init; }
     public ushort OutfitCount { get; init; }
     public ushort EffectCount { get; init; }
