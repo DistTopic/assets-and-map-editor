@@ -3680,17 +3680,16 @@ public partial class MainWindowViewModel : ObservableObject
     public void RefreshFilteredTowns()
     {
         var towns = MapData?.Towns;
-        if (towns == null || towns.Count == 0) { FilteredTowns.Clear(); return; }
+        if (towns == null || towns.Count == 0) { FilteredTowns = []; return; }
 
         var query = TownSearchText?.Trim() ?? string.Empty;
         var sorted = towns
             .Where(t => string.IsNullOrEmpty(query) || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
 
-        FilteredTowns.Clear();
-        foreach (var t in sorted)
-            FilteredTowns.Add(t);
+        // Replace the collection reference so the [ObservableProperty] setter
+        // fires PropertyChanged and the ListBox rebinds even if it was realized late.
+        FilteredTowns = new ObservableCollection<MapTown>(sorted);
     }
 
     [RelayCommand]

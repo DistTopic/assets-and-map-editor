@@ -348,7 +348,7 @@ public partial class PaletteViewModel : ObservableObject
     {
         if (SelectedSubSubCollection != null)
             CollectionViewSource = SelectedSubSubCollection.Items;
-        else if (SelectedSubCollection != null && SelectedSubCollection != OthersSubCollection && !SelectedSubCollection.IsBuiltIn)
+        else if (SelectedSubCollection != null && SelectedSubCollection != OthersSubCollection)
             CollectionViewSource = SelectedSubCollection.Items;
         else
             CollectionViewSource = null;
@@ -449,19 +449,18 @@ public partial class PaletteViewModel : ObservableObject
         if (_serverToClientMap.Count == 0) { CatalogResults.Clear(); CatalogStatusText = "No items — load OTB + Client"; return; }
 
         // Determine source based on selection hierarchy.
-        // For brush-catalog sub-collections, use pre-built items directly
-        // (they may contain IDs not in OTB). For "Others" / fallback, use OTB keys.
+        // Built-in sub-collections show their pre-built items in the Catalog tab.
+        // User-created collections show items only in the Collection tab —
+        // the Catalog tab always falls back to the full OTB item list.
         IReadOnlyList<PaletteItemViewModel>? sourceItems = null;
         IEnumerable<ushort>? sourceIds = null;
 
-        if (SelectedSubSubCollection != null)
+        if (SelectedSubSubCollection != null && (SelectedSubCollection?.IsBuiltIn ?? false))
             sourceItems = SelectedSubSubCollection.Items;
-        else if (SelectedSubCollection == OthersSubCollection)
-            sourceIds = _serverToClientMap.Keys; // "Others" shows all OTB items
-        else if (SelectedSubCollection != null)
+        else if (SelectedSubCollection != null && SelectedSubCollection.IsBuiltIn && SelectedSubCollection != OthersSubCollection)
             sourceItems = SelectedSubCollection.Items;
         else
-            sourceIds = _serverToClientMap.Keys;
+            sourceIds = _serverToClientMap.Keys; // Full catalog for "Others" and user collections
 
         var search = CatalogSearchText.Trim();
 
