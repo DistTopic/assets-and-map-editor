@@ -43,6 +43,11 @@ public partial class MainWindowViewModel : ObservableObject
     }
     public bool HasMultipleSessions => Sessions.Count > 1;
 
+    /// <summary>Set by App.axaml.cs when user picks a history entry to restore.</summary>
+    public SessionHistoryEntry? PendingHistoryRestore { get; set; }
+    /// <summary>Set by App.axaml.cs when user picks "Open Files" from the welcome screen.</summary>
+    public bool PendingOpenFiles { get; set; }
+
     // ── Split view ──
     [ObservableProperty] private SplitMode _splitMode = SplitMode.None;
     [ObservableProperty] private SessionViewModel? _secondaryPaneSession;
@@ -351,7 +356,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         MapTileCount = MapData?.Tiles.Count ?? 0;
-        Dispatcher.UIThread.Post(RefreshFilteredTowns);
+        RefreshFilteredTowns();
 
         // Restore map viewport state
         MapCurrentFloor = session.MapCurrentFloor;
@@ -3072,8 +3077,7 @@ public partial class MainWindowViewModel : ObservableObject
             MapStatusText = $"Map loaded: {MapTileCount:N0} tiles, {MapData.Towns.Count} towns, {MapData.Spawns.Count} spawns, {MapData.Houses.Count} houses — {Path.GetFileName(path)}";
             MapHasUnsavedChanges = false;
             AddMapLog($"Map opened: {Path.GetFileName(path)} ({MapTileCount:N0} tiles)");
-            // Defer town refresh so the Properties panel ListBox is realized first
-            Dispatcher.UIThread.Post(RefreshFilteredTowns);
+            RefreshFilteredTowns();
             OnPropertyChanged(nameof(MapFloors));
             OnPropertyChanged(nameof(ExposedDatData));
             OnPropertyChanged(nameof(ExposedSprFile));
@@ -4604,22 +4608,40 @@ public partial class MainWindowViewModel : ObservableObject
 
     public async Task TryLoadLastSessionAsync()
     {
-        // Restore View menu toggles
-        RestoreViewSettings();
-
-        EnsureDefaultSession();
-
-        // Restore sessions from previous app run
-        if (_appSettings.Sessions.Count > 0)
+        // If a history entry was selected from the welcome screen, restore it
+        if (PendingHistoryRestore is { } entry)
         {
-            await RestoreSessionsFromSettings();
+            PendingHistoryRestore = null;
+            // Restore view settings from the history entry
+            RestoreViewSettings(entry.ViewSettings);
+            // Load sessions from the history entry
+            _appSettings.Sessions = new List<SavedSession>(entry.Tabs);
+            EnsureDefaultSession();
+            if (_appSettings.Sessions.Count > 0)
+                await RestoreSessionsFromSettings();
+            return;
         }
+
+        // If user chose "Open Files", just set up a blank session
+        if (PendingOpenFiles)
+        {
+            PendingOpenFiles = false;
+            RestoreViewSettings(_appSettings.ViewSettings);
+            EnsureDefaultSession();
+            // The MainWindow.Loaded handler will trigger the Open Client dialog
+            return;
+        }
+
+        // Default: restore view settings and sessions (backwards compat / no welcome)
+        RestoreViewSettings(_appSettings.ViewSettings);
+        EnsureDefaultSession();
+        if (_appSettings.Sessions.Count > 0)
+            await RestoreSessionsFromSettings();
     }
 
-    private void RestoreViewSettings()
+    private void RestoreViewSettings(Dictionary<string, bool>? vs)
     {
-        var vs = _appSettings.ViewSettings;
-        if (vs.Count == 0) return;
+        if (vs == null || vs.Count == 0) return;
 
         if (vs.TryGetValue(nameof(ViewShowAllFloors), out var v)) ViewShowAllFloors = v;
         if (vs.TryGetValue(nameof(ViewShowAnimation), out v)) ViewShowAnimation = v;
@@ -4649,10 +4671,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (_currentSession != null)
             SaveCurrentToSession(_currentSession);
 
-        _appSettings.Sessions.Clear();
+        var savedTabs = new List<SavedSession>();
         foreach (var session in Sessions)
         {
-            _appSettings.Sessions.Add(new SavedSession
+            savedTabs.Add(new SavedSession
             {
                 ClientFolderPath = session.ClientFolderPath,
                 OtbPath = session.OtbPath,
@@ -4666,8 +4688,10 @@ public partial class MainWindowViewModel : ObservableObject
             });
         }
 
+        _appSettings.Sessions = new List<SavedSession>(savedTabs);
+
         // Persist View menu toggles
-        _appSettings.ViewSettings = new Dictionary<string, bool>
+        var viewSettings = new Dictionary<string, bool>
         {
             [nameof(ViewShowAllFloors)] = ViewShowAllFloors,
             [nameof(ViewShowAnimation)] = ViewShowAnimation,
@@ -4689,8 +4713,57 @@ public partial class MainWindowViewModel : ObservableObject
             [nameof(ViewShowTooltips)] = ViewShowTooltips,
             [nameof(ViewShowIngameBox)] = ViewShowIngameBox,
         };
+        _appSettings.ViewSettings = viewSettings;
+
+        // Add a history entry for this closing session (only if there's meaningful data)
+        if (savedTabs.Any(t => t.ClientFolderPath != null || t.OtbPath != null || t.MapFilePath != null))
+        {
+            var historyEntry = new SessionHistoryEntry
+            {
+                ClosedAt = DateTime.UtcNow,
+                DisplayName = BuildHistoryDisplayName(savedTabs),
+                Tabs = new List<SavedSession>(savedTabs),
+                ViewSettings = new Dictionary<string, bool>(viewSettings),
+            };
+
+            // Remove duplicate entries (same set of file paths)
+            var key = string.Join("|", savedTabs
+                .OrderBy(t => t.ClientFolderPath)
+                .Select(t => $"{t.ClientFolderPath}:{t.OtbPath}:{t.MapFilePath}"));
+            _appSettings.History.RemoveAll(h =>
+            {
+                var hk = string.Join("|", h.Tabs
+                    .OrderBy(t => t.ClientFolderPath)
+                    .Select(t => $"{t.ClientFolderPath}:{t.OtbPath}:{t.MapFilePath}"));
+                return hk == key;
+            });
+
+            _appSettings.History.Insert(0, historyEntry);
+
+            // Keep only the 20 most recent
+            if (_appSettings.History.Count > 20)
+                _appSettings.History.RemoveRange(20, _appSettings.History.Count - 20);
+        }
 
         _appSettings.Save();
+    }
+
+    private static string BuildHistoryDisplayName(List<SavedSession> tabs)
+    {
+        var maps = tabs
+            .Where(t => !string.IsNullOrEmpty(t.MapFilePath))
+            .Select(t => Path.GetFileName(t.MapFilePath))
+            .ToList();
+        if (maps.Count > 0) return string.Join(", ", maps.Take(3));
+
+        var protocols = tabs
+            .Where(t => t.ProtocolVersion > 0)
+            .Select(t => $"v{t.ProtocolVersion}")
+            .Distinct()
+            .ToList();
+        if (protocols.Count > 0) return string.Join(", ", protocols);
+
+        return $"{tabs.Count} tab{(tabs.Count != 1 ? "s" : "")}";
     }
 
     /// <summary>Restore sessions saved from a previous app run.</summary>
@@ -4824,6 +4897,7 @@ public partial class MainWindowViewModel : ObservableObject
                     MapCurrentFloor = session.MapCurrentFloor;
                     MapZoom = session.MapZoom;
                     OnPropertyChanged(nameof(MapFloors));
+                    RefreshFilteredTowns();
                 }
 
                 StatusText = IsClientLoaded
