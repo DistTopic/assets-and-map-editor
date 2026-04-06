@@ -36,6 +36,7 @@ public class AppSettings
     public Dictionary<string, bool> ViewSettings { get; set; } = [];
     /// <summary>Recent session snapshots (newest first). Capped at 20.</summary>
     public List<SessionHistoryEntry> History { get; set; } = [];
+    public int ItemsPerPage { get; set; } = 100;
 
     private static string SettingsFilePath =>
         Path.Combine(

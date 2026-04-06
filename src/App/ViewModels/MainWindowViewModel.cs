@@ -3914,7 +3914,19 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _clientNavigateId = string.Empty;
     [ObservableProperty] private int _clientCurrentPage = 1;
     [ObservableProperty] private int _clientTotalPages = 1;
-    private const int ClientItemsPerPage = 100;
+    private int _clientItemsPerPage;
+    public int ClientItemsPerPage
+    {
+        get => _clientItemsPerPage == 0 ? (_clientItemsPerPage = _appSettings.ItemsPerPage > 0 ? _appSettings.ItemsPerPage : 100) : _clientItemsPerPage;
+        set
+        {
+            if (_clientItemsPerPage == value) return;
+            _clientItemsPerPage = value;
+            OnPropertyChanged();
+            ClientCurrentPage = 1;
+            ApplyClientFilter();
+        }
+    }
     private List<ClientItemViewModel> _clientFilteredItems = [];
     public string[] ClientCategoryOptions { get; } = ["All", "Item", "Outfit", "Effect", "Missile", "Mismatch"];
     public ObservableCollection<ClientItemViewModel> ClientItems { get; } = [];
@@ -3930,6 +3942,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _showGrid;
     [ObservableProperty] private bool _showAllFrames;
     [ObservableProperty] private bool _isPlayingAnimation;
+    [ObservableProperty] private bool _isClientIconView;
 
     public ObservableCollection<SpriteViewModel> FilmstripFrames { get; } = [];
     public bool HasAnimation => (CurrentFrameGroup?.Frames ?? 1) > 1;
@@ -5591,6 +5604,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void ApplyClientFilter()
     {
         _clientFilteredItems.Clear();
+        SelectedClientItem = null;
         ClientItems.Clear();
 
         var search = ClientSearchText.Trim();
@@ -5640,6 +5654,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void LoadClientPage()
     {
+        SelectedClientItem = null;
         ClientItems.Clear();
         int start = (ClientCurrentPage - 1) * ClientItemsPerPage;
         int end = Math.Min(start + ClientItemsPerPage, _clientFilteredItems.Count);

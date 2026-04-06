@@ -528,6 +528,18 @@ public partial class MainWindow : Window
             vm.NavigateToClientItem();
     }
 
+    private async void OnPreferencesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var dialog = new PreferencesWindow(vm.ClientItemsPerPage);
+        await dialog.ShowDialog(this);
+        if (!dialog.Saved) return;
+        vm.ClientItemsPerPage = dialog.ItemsPerPage;
+        var settings = AppSettings.Load();
+        settings.ItemsPerPage = dialog.ItemsPerPage;
+        settings.Save();
+    }
+
     private void OnOtbItemDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm)
