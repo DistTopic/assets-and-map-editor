@@ -62,6 +62,14 @@ public partial class MainWindow : Window
 
                 await vm.TryLoadLastSessionAsync();
 
+                // If user chose "Open Files" from welcome screen, trigger client folder dialog
+                if (vm.PendingOpenFiles)
+                {
+                    vm.PendingOpenFiles = false;
+                    if (vm.SelectClientFolderCommand.CanExecute(null))
+                        await vm.SelectClientFolderCommand.ExecuteAsync(null);
+                }
+
                 // Wire Merge Session menus (dynamic submenus listing other sessions)
                 WireMergeMenu(vm, "MergeSessionMenuItem", null);     // All categories
                 WireMergeMenu(vm, "MergeItemsMenuItem", OTB.ThingCategory.Item);
@@ -638,26 +646,15 @@ public partial class MainWindow : Window
 
         addToRoot.Items.Clear();
 
-        // Resolve the catalog item from the parent Border's DataContext
-        var catalogItem = ctx.DataContext as PaletteItemViewModel
-                          ?? (ctx.PlacementTarget as Avalonia.Controls.Control)?.DataContext as PaletteItemViewModel;
-
-        // Store the catalog item in the ContextMenu's Tag so click handlers can retrieve it
-        ctx.Tag = catalogItem;
-
         foreach (var col in palette.Collections)
         {
-            if (col.IsBuiltIn) continue; // skip Raw
+            if (col.IsBuiltIn) continue;
 
             var colMi = new MenuItem { Header = col.Name };
 
             if (col.SubCollections.Count == 0)
             {
-                // No sub-collections — clicking the collection itself adds to an
-                // auto-created "General" sub-collection.
-                // Embed both the collection and catalog item in Tag so the handler
-                // doesn't need to traverse the (possibly disconnected) parent tree.
-                colMi.Tag = (col, catalogItem);
+                colMi.Tag = col;
                 colMi.Click += OnAddCatalogItemToCollectionRoot;
                 addToRoot.Items.Add(colMi);
                 continue;
@@ -669,18 +666,16 @@ public partial class MainWindow : Window
 
                 if (sub.SubSubCollections.Count > 0)
                 {
-                    // SubCollection has children → submenu
                     var subMi = new MenuItem { Header = sub.Name };
 
-                    // Option to add directly to the sub-collection
-                    var directMi = new MenuItem { Header = $"{sub.Name} (root)", Tag = (sub, catalogItem) };
+                    var directMi = new MenuItem { Header = $"{sub.Name} (root)", Tag = sub };
                     directMi.Click += OnAddCatalogItemToSpecificSubCollection;
                     subMi.Items.Add(directMi);
                     subMi.Items.Add(new Separator());
 
                     foreach (var subsub in sub.SubSubCollections)
                     {
-                        var subsubMi = new MenuItem { Header = subsub.Name, Tag = (subsub, catalogItem) };
+                        var subsubMi = new MenuItem { Header = subsub.Name, Tag = subsub };
                         subsubMi.Click += OnAddCatalogItemToSubSubCollection;
                         subMi.Items.Add(subsubMi);
                     }
@@ -688,47 +683,66 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    // Leaf sub-collection → direct click
-                    var subMi = new MenuItem { Header = sub.Name, Tag = (sub, catalogItem) };
+                    var subMi = new MenuItem { Header = sub.Name, Tag = sub };
                     subMi.Click += OnAddCatalogItemToSpecificSubCollection;
                     colMi.Items.Add(subMi);
                 }
             }
 
-            // Always show the collection even if all sub-collections were built-in
             addToRoot.Items.Add(colMi);
         }
 
         addToRoot.IsEnabled = addToRoot.Items.Count > 0;
     }
 
+    /// <summary>Resolve the catalog item server ID from the MenuItem's inherited DataContext.</summary>
+    private static ushort GetServerIdFromMenuItem(MenuItem mi)
+    {
+        // In Avalonia, MenuItems inside a ContextMenu inherit DataContext from the placement target.
+        // Walk up to find the ContextMenu and get the item from PlacementTarget.
+        if (mi.DataContext is PaletteItemViewModel pvm && pvm.ServerId > 0)
+            return pvm.ServerId;
+
+        Avalonia.Controls.Control? cur = mi;
+        while (cur != null)
+        {
+            if (cur is ContextMenu ctx)
+            {
+                var target = (ctx.PlacementTarget as Avalonia.Controls.Control)?.DataContext as PaletteItemViewModel;
+                return target?.ServerId ?? 0;
+            }
+            cur = cur.Parent as Avalonia.Controls.Control;
+        }
+        return 0;
+    }
+
     private void OnAddCatalogItemToSpecificSubCollection(object? sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem mi
-            && mi.Tag is (PaletteSubCollectionViewModel sub, PaletteItemViewModel item)
+        if (sender is MenuItem mi && mi.Tag is PaletteSubCollectionViewModel sub
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
-            palette.AddItemToSubCollection(sub, item.ServerId);
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToSubCollection(sub, sid);
         }
     }
 
     private void OnAddCatalogItemToCollectionRoot(object? sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem mi
-            && mi.Tag is (PaletteCollectionViewModel col, PaletteItemViewModel item)
+        if (sender is MenuItem mi && mi.Tag is PaletteCollectionViewModel col
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
-            palette.AddItemToCollectionRoot(col, item.ServerId);
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToCollectionRoot(col, sid);
         }
     }
 
     private void OnAddCatalogItemToSubSubCollection(object? sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem mi
-            && mi.Tag is (PaletteSubSubCollectionViewModel subsub, PaletteItemViewModel item)
+        if (sender is MenuItem mi && mi.Tag is PaletteSubSubCollectionViewModel subsub
             && DataContext is MainWindowViewModel vm && vm.Palette is { } palette)
         {
-            palette.AddItemToSubSubCollection(subsub, item.ServerId);
+            var sid = GetServerIdFromMenuItem(mi);
+            if (sid > 0) palette.AddItemToSubSubCollection(subsub, sid);
         }
     }
 

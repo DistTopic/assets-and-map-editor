@@ -15,12 +15,27 @@ public class SavedSession
     public double MapZoom { get; set; } = 1.0;
 }
 
+/// <summary>
+/// A snapshot of the entire editor state at the moment it was closed.
+/// Contains one or more SavedSessions (tabs) plus a timestamp.
+/// </summary>
+public class SessionHistoryEntry
+{
+    public DateTime ClosedAt { get; set; }
+    public string DisplayName { get; set; } = "";
+    public List<SavedSession> Tabs { get; set; } = [];
+    public Dictionary<string, bool> ViewSettings { get; set; } = [];
+}
+
 public class AppSettings
 {
     public string? LastOtbPath { get; set; }
     public string? LastClientFolderPath { get; set; }
+    /// <summary>Legacy — kept for backward compat but no longer used for auto-restore.</summary>
     public List<SavedSession> Sessions { get; set; } = [];
     public Dictionary<string, bool> ViewSettings { get; set; } = [];
+    /// <summary>Recent session snapshots (newest first). Capped at 20.</summary>
+    public List<SessionHistoryEntry> History { get; set; } = [];
 
     private static string SettingsFilePath =>
         Path.Combine(
