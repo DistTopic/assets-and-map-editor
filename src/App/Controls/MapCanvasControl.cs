@@ -1023,7 +1023,7 @@ public sealed class MapCanvasControl : Control
                     context.DrawLine(erasePen, new Point(gx + tilePixelSize - 4, gy + 4), new Point(gx + 4, gy + tilePixelSize - 4));
                 }
             }
-            else if (ActiveZoneBrush > 0)
+            else if (ActiveZoneBrush != 0)
             {
                 // Show zone color preview
                 Color zoneColor = ActiveZoneBrush switch
@@ -1032,6 +1032,7 @@ public sealed class MapCanvasControl : Control
                     4 => Color.FromArgb(80, 0, 200, 255),   // NoPvP
                     2 => Color.FromArgb(80, 255, 255, 0),   // NoLogout
                     8 => Color.FromArgb(80, 255, 0, 0),     // PvPZone
+                    < 0 => Color.FromArgb(60, 88, 91, 112), // Clear zone
                     _ => Color.FromArgb(60, 255, 255, 255),
                 };
                 var zoneBrush = new SolidColorBrush(zoneColor);
@@ -2021,6 +2022,8 @@ public sealed class MapCanvasControl : Control
 
         // All zone flags that we toggle
         const uint allZoneFlags = 0x01 | 0x02 | 0x04 | 0x08;
+        // Negative values (e.g. -1) mean "clear all zones"
+        uint flagToApply = zoneFlag < 0 ? 0u : (uint)zoneFlag;
         var tiles = GetBrushTiles(center);
 
         foreach (var pos in tiles)
@@ -2030,13 +2033,13 @@ public sealed class MapCanvasControl : Control
 
             if (!_mapData.Tiles.TryGetValue(pos, out var tile))
             {
-                if (zoneFlag == 0) continue; // clearing zone on non-existent tile is a no-op
+                if (flagToApply == 0) continue; // clearing zone on non-existent tile is a no-op
                 tile = new MapTile { Position = pos };
                 _mapData.Tiles[pos] = tile;
             }
 
             // Clear all zone flags, then set the requested one
-            tile.Flags = (uint)((tile.Flags & ~allZoneFlags) | (uint)zoneFlag);
+            tile.Flags = (tile.Flags & ~allZoneFlags) | flagToApply;
         }
     }
 
@@ -2335,6 +2338,8 @@ public sealed class MapCanvasControl : Control
         if (_mapData == null) return;
 
         const uint allZoneFlags = 0x01 | 0x02 | 0x04 | 0x08;
+        // Negative values (e.g. -1) mean "clear all zones"
+        uint flagToApply = zoneFlag < 0 ? 0u : (uint)zoneFlag;
         var positions = new List<MapPosition>();
         for (int y = min.Y; y <= max.Y; y++)
             for (int x = min.X; x <= max.X; x++)
@@ -2346,11 +2351,11 @@ public sealed class MapCanvasControl : Control
         {
             if (!_mapData.Tiles.TryGetValue(pos, out var tile))
             {
-                if (zoneFlag == 0) continue;
+                if (flagToApply == 0) continue;
                 tile = new MapTile { Position = pos };
                 _mapData.Tiles[pos] = tile;
             }
-            tile.Flags = (uint)((tile.Flags & ~allZoneFlags) | (uint)zoneFlag);
+            tile.Flags = (tile.Flags & ~allZoneFlags) | flagToApply;
         }
 
         int count = positions.Count;
@@ -2934,7 +2939,7 @@ public sealed class MapCanvasControl : Control
                 e.Handled = true;
             }
             // 4) Zone brush (paint tile flags)
-            else if (ActiveZoneBrush >= 0 && ActiveZoneBrush != 0)
+            else if (ActiveZoneBrush != 0)
             {
                 _paintUndoSnapshot = new Dictionary<MapPosition, MapTile?>();
                 PaintZoneAt(tilePos, ActiveZoneBrush, _paintUndoSnapshot);
@@ -3203,7 +3208,7 @@ public sealed class MapCanvasControl : Control
                 FillRemoveBordersArea(minPos, maxPos);
                 e.Handled = true;
             }
-            else if (ActiveZoneBrush > 0)
+            else if (ActiveZoneBrush != 0)
             {
                 FillZoneArea(minPos, maxPos, ActiveZoneBrush);
                 e.Handled = true;

@@ -302,6 +302,11 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ClientCategoryFilter));
         #pragma warning restore MVVMTK0034
 
+        // Clear selections before clearing collections to avoid Avalonia SelectionModel
+        // referencing stale indices during CollectionChanged
+        SelectedItem = null;
+        SelectedClientItem = null;
+
         // Clear visible collections — they will be repopulated by the filters below
         Items.Clear();
         ClientItems.Clear();
@@ -3944,6 +3949,25 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _isPlayingAnimation;
     [ObservableProperty] private bool _isClientIconView;
 
+    private int _spriteZoom = 1;
+    public int SpriteZoom
+    {
+        get => _spriteZoom;
+        set
+        {
+            value = Math.Clamp(value, 1, 6);
+            if (SetProperty(ref _spriteZoom, value))
+            {
+                OnPropertyChanged(nameof(SpriteImageSize));
+                OnPropertyChanged(nameof(SpriteCellSize));
+                OnPropertyChanged(nameof(SpriteRowHeight));
+            }
+        }
+    }
+    public int SpriteImageSize => 32 * _spriteZoom;
+    public int SpriteCellSize => 32 * _spriteZoom + 4;
+    public int SpriteRowHeight => 32 * _spriteZoom + 6;
+
     public ObservableCollection<SpriteViewModel> FilmstripFrames { get; } = [];
     public bool HasAnimation => (CurrentFrameGroup?.Frames ?? 1) > 1;
     public bool HasMultipleGroups => (_currentCompositionThing?.FrameGroups.Length ?? 1) > 1;
@@ -4430,7 +4454,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnCompositionFrameChanged(int value) { OnPropertyChanged(nameof(CompositionFrameLabel)); ReloadCompositionGridOnly(); }
     partial void OnCompositionLayerChanged(int value) { OnPropertyChanged(nameof(CompositionLayerLabel)); ReloadComposition(); }
-    partial void OnCompositionPatternXChanged(int value) { OnPropertyChanged(nameof(CompositionPatternXLabel)); OnPropertyChanged(nameof(DirectionLabel)); ReloadComposition(); }
+    partial void OnCompositionPatternXChanged(int value) { OnPropertyChanged(nameof(CompositionPatternXLabel)); OnPropertyChanged(nameof(DirectionLabel)); _appSettings.PreferredDirection = value; _appSettings.Save(); ReloadComposition(); }
     partial void OnCompositionPatternYChanged(int value) { OnPropertyChanged(nameof(CompositionPatternYLabel)); ReloadComposition(); }
     partial void OnCompositionPatternZChanged(int value) => ReloadComposition();
     partial void OnCompositionFrameGroupIndexChanged(int value) { NotifyAllCompositionLabels(); ReloadComposition(); }
@@ -4868,6 +4892,25 @@ public partial class MainWindowViewModel : ObservableObject
             if (!string.IsNullOrEmpty(session.MapFilePath) && File.Exists(session.MapFilePath))
             {
                 session.MapData = OtbmFile.Load(session.MapFilePath);
+
+                // Load external spawn/house files so they are not lost on save
+                var mapDir = Path.GetDirectoryName(session.MapFilePath) ?? ".";
+
+                if (!string.IsNullOrEmpty(session.MapData.SpawnFile))
+                {
+                    var spawnPath = Path.Combine(mapDir, session.MapData.SpawnFile);
+                    var spawns = SpawnHouseXml.LoadSpawns(spawnPath);
+                    session.MapData.Spawns.Clear();
+                    session.MapData.Spawns.AddRange(spawns);
+                }
+
+                if (!string.IsNullOrEmpty(session.MapData.HouseFile))
+                {
+                    var housePath = Path.Combine(mapDir, session.MapData.HouseFile);
+                    var houses = SpawnHouseXml.LoadHouses(housePath);
+                    session.MapData.Houses.Clear();
+                    session.MapData.Houses.AddRange(houses);
+                }
             }
 
             session.UpdateName();
@@ -5901,10 +5944,11 @@ public partial class MainWindowViewModel : ObservableObject
         CompositionFrameGroupIndex = 0;
         CompositionFrame = 0;
         CompositionLayer = 0;
-        CompositionPatternX = 0;
+        CompositionPatternX = _appSettings.PreferredDirection;
         CompositionPatternY = 0;
         CompositionPatternZ = 0;
         NotifyAllCompositionLabels();
+        ClampNavigationIndices();
         BuildCompositionGrid();
         BuildFilmstrip();
 
@@ -6053,9 +6097,10 @@ public partial class MainWindowViewModel : ObservableObject
         CompositionFrameGroupIndex = 0;
         CompositionFrame = 0;
         CompositionLayer = 0;
-        CompositionPatternX = 0;
+        CompositionPatternX = _appSettings.PreferredDirection;
         CompositionPatternY = 0;
         CompositionPatternZ = 0;
+        ClampNavigationIndices();
         NotifyAllCompositionLabels();
         OnPropertyChanged(nameof(IsItemSelected));
         OnPropertyChanged(nameof(IsOutfitSelected));

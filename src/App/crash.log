@@ -117,3 +117,34 @@
    at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
    at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
    at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
+[2026-04-08 10:39:14] UNHANDLED: System.ArgumentOutOfRangeException: Index was out of range. Must be non-negative and less than the size of the collection. (Parameter 'index')
+   at System.Collections.ObjectModel.Collection`1.System.Collections.IList.get_Item(Int32 index)
+   at Avalonia.Controls.Selection.SelectedItems`1.GetEnumerator()+MoveNext()
+   at System.Linq.Enumerable.<ToArray>g__EnumerableToArray|324_0[TSource](IEnumerable`1 source)
+   at Avalonia.Controls.Primitives.SelectingItemsControl.OnSelectionModelSelectionChanged(Object sender, SelectionModelSelectionChangedEventArgs e)
+   at Avalonia.Controls.Selection.SelectionModel`1.CommitOperation(Operation operation, Boolean raisePropertyChanged)
+   at Avalonia.Controls.Utils.CollectionChangedEventManager.Entry.<Avalonia.Utilities.IWeakEventSubscriber<System.Collections.Specialized.NotifyCollectionChangedEventArgs>.OnEvent>g__Notify|6_0(INotifyCollectionChanged incc, NotifyCollectionChangedEventArgs args, WeakReference`1[] listeners)
+   at Avalonia.Utilities.WeakEvent`2.Subscription.OnEvent(Object sender, TEventArgs eventArgs)
+   at System.Collections.ObjectModel.Collection`1.Clear()
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.LoadFromSession(SessionViewModel session) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 307
+   at AssetsAndMapEditor.App.ViewModels.MainWindowViewModel.SwitchToSession(SessionViewModel session) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/ViewModels/MainWindowViewModel.cs:line 201
+   at AssetsAndMapEditor.App.MainWindow.OnSessionTabPressed(Object sender, PointerPressedEventArgs e) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/MainWindow.axaml.cs:line 242
+   at Avalonia.Interactivity.EventRoute.RaiseEventImpl(RoutedEventArgs e)
+   at Avalonia.Interactivity.EventRoute.RaiseEvent(Interactive source, RoutedEventArgs e)
+   at Avalonia.Interactivity.Interactive.RaiseEvent(RoutedEventArgs e)
+   at Avalonia.Input.MouseDevice.MouseDown(IMouseDevice device, UInt64 timestamp, IInputElement root, Point p, PointerPointProperties properties, KeyModifiers inputModifiers, IInputElement hitTest)
+   at Avalonia.Input.MouseDevice.ProcessRawEvent(RawPointerEventArgs e)
+   at Avalonia.Controls.TopLevel.<>c.<HandleInput>b__150_0(Object state)
+   at Avalonia.Threading.Dispatcher.Send(SendOrPostCallback action, Object arg, Nullable`1 priority)
+   at Avalonia.Native.TopLevelImpl.RawMouseEvent(AvnRawMouseEventType type, AvnPointerDeviceType deviceType, UInt64 timeStamp, AvnInputModifiers modifiers, AvnPoint point, AvnVector delta, Single pressure, Single xTilt, Single yTilt)
+   at Avalonia.Native.Interop.Impl.__MicroComIAvnTopLevelEventsVTable.RawMouseEvent(Void* this, AvnRawMouseEventType type, AvnPointerDeviceType deviceType, UInt64 timeStamp, AvnInputModifiers modifiers, AvnPoint point, AvnVector delta, Single pressure, Single xTilt, Single yTilt)
+--- End of stack trace from previous location ---
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Native.DispatcherImpl.RunLoop(CancellationToken token)
+   at Avalonia.Threading.DispatcherFrame.Run(IControlledDispatcherImpl impl)
+   at Avalonia.Threading.Dispatcher.PushFrame(DispatcherFrame frame)
+   at Avalonia.Threading.Dispatcher.MainLoop(CancellationToken cancellationToken)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.StartCore(String[] args)
+   at Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime.Start(String[] args)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, Action`1 lifetimeBuilder)
+   at AssetsAndMapEditor.App.Program.Main(String[] args) in /Users/brewertonsantos/dev/pokeorigins-tibia/assets-and-map-editor/src/App/Program.cs:line 25
